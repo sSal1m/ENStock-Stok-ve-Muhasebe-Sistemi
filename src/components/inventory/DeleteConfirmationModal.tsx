@@ -1,0 +1,171 @@
+"use client";
+
+import { useRef, useEffect, useState } from "react";
+import { supabase } from "@/lib/supabaseClient";
+import toast from "react-hot-toast";
+
+interface Props {
+  isOpen: boolean;
+  onClose: () => void;
+  onSuccess: () => void;
+  productId: string;
+  productName: string;
+}
+
+export default function DeleteConfirmationModal({
+  isOpen,
+  onClose,
+  onSuccess,
+  productId,
+  productName,
+}: Props) {
+  const [deleting, setDeleting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const confirmButtonRef = useRef<HTMLButtonElement>(null);
+
+  // Modal açıldığında odakla
+  useEffect(() => {
+    if (isOpen) {
+      setError(null);
+      setDeleting(false);
+      setTimeout(() => confirmButtonRef.current?.focus(), 50);
+    }
+  }, [isOpen]);
+
+  // ESC tuşu ile kapat
+  useEffect(() => {
+    if (!isOpen) return;
+    const handler = (e: KeyboardEvent) => {
+      if (e.key === "Escape") onClose();
+    };
+    window.addEventListener("keydown", handler);
+    return () => window.removeEventListener("keydown", handler);
+  }, [isOpen, onClose]);
+
+  async function handleDelete() {
+    setDeleting(true);
+    setError(null);
+
+    try {
+      const { error: deleteError } = await supabase
+        .from("products")
+        .delete()
+        .eq("id", productId);
+
+      if (deleteError) throw deleteError;
+
+      toast.success(`"${productName}" başarıyla silindi!`, {
+        duration: 3000,
+        icon: "🗑️",
+      });
+
+      onSuccess();
+      onClose();
+    } catch (err: unknown) {
+      const errorMessage =
+        err instanceof Error ? err.message : "Bilinmeyen bir hata oluştu.";
+      setError(errorMessage);
+      toast.error(errorMessage, { duration: 3000 });
+      setDeleting(false);
+    }
+  }
+
+  if (!isOpen) return null;
+
+  return (
+    /* Backdrop */
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center p-4"
+      onClick={(e) => {
+        if (e.target === e.currentTarget) onClose();
+      }}
+    >
+      {/* Blur overlay */}
+      <div className="absolute inset-0 bg-on-surface/30 backdrop-blur-sm" />
+
+      {/* Modal kutusu */}
+      <div className="relative z-10 w-full max-w-md bg-white rounded-2xl shadow-2xl shadow-error/20 border border-error/20 animate-in fade-in slide-in-from-bottom-4 duration-200">
+        {/* Başlık */}
+        <div className="flex items-start justify-between px-6 pt-6 pb-4 border-b border-error/20">
+          <div className="flex items-center gap-3">
+            <div className="w-9 h-9 bg-error/10 text-error rounded-lg flex items-center justify-center">
+              <span className="material-symbols-outlined text-lg">delete</span>
+            </div>
+            <div>
+              <h3 className="text-base font-extrabold text-on-surface">
+                Ürünü Sil
+              </h3>
+              <p className="text-[11px] text-slate-400">Bu işlem geri alınamaz</p>
+            </div>
+          </div>
+          <button
+            onClick={onClose}
+            className="p-1.5 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-lg transition-colors"
+          >
+            <span className="material-symbols-outlined text-base">close</span>
+          </button>
+        </div>
+
+        {/* İçerik */}
+        <div className="px-6 py-5 space-y-4">
+          {/* Hata mesajı */}
+          {error && (
+            <div className="flex items-center gap-2 p-3 bg-error-container/20 border border-error-container/40 rounded-xl text-xs font-semibold text-error">
+              <span className="material-symbols-outlined text-sm">error</span>
+              {error}
+            </div>
+          )}
+
+          {/* Uyarı mesajı */}
+          <div className="flex items-start gap-3 p-3 bg-error/5 border border-error/20 rounded-xl">
+            <span className="material-symbols-outlined text-error text-xl flex-shrink-0 mt-0.5">
+              warning
+            </span>
+            <div className="text-sm">
+              <p className="font-bold text-on-surface mb-1">
+                "{productName}" ürününü silmek istediğinize emin misiniz?
+              </p>
+              <p className="text-xs text-slate-500">
+                Bu ürün Supabase veritabanından kalıcı olarak kaldırılacaktır.
+                İlişkili veriler de etkilenebilir.
+              </p>
+            </div>
+          </div>
+        </div>
+
+        {/* Butonlar */}
+        <div className="px-6 py-4 bg-surface-container-low/30 border-t border-error/20 flex gap-3 justify-end">
+          <button
+            onClick={onClose}
+            disabled={deleting}
+            className="px-6 py-2 text-on-surface font-bold text-sm hover:bg-slate-100 rounded-lg transition-colors disabled:opacity-50"
+          >
+            Vazgeç
+          </button>
+          <button
+            ref={confirmButtonRef}
+            onClick={handleDelete}
+            disabled={deleting}
+            className="px-6 py-2 bg-error text-on-error font-bold text-sm rounded-lg hover:bg-error-container hover:text-on-error-container transition-colors disabled:opacity-70 flex items-center gap-2"
+          >
+            {deleting ? (
+              <>
+                <span className="material-symbols-outlined animate-spin text-sm">
+                  progress_activity
+                </span>
+                Siliniyor...
+              </>
+            ) : (
+              <>
+                <span className="material-symbols-outlined text-base">
+                  delete
+                </span>
+                Sil
+              </>
+            )}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}

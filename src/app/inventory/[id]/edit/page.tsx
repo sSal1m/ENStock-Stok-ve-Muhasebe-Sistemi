@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
+import toast, { Toaster } from "react-hot-toast";
 import { supabase } from "@/lib/supabaseClient";
 
 interface Category {
@@ -95,6 +96,7 @@ export default function EditProductPage() {
   const handleSave = async () => {
     if (!form.name || !form.sku) {
       setError("Ürün adı ve SKU zorunludur.");
+      toast.error("Ürün adı ve SKU zorunludur.");
       return;
     }
 
@@ -102,28 +104,78 @@ export default function EditProductPage() {
     setError(null);
 
     try {
+      // String verileri Number türüne dönüştür - BU ÇOK ÖNEMLİ!
+      const purchasePrice = Number(form.purchase_price) || 0;
+      const salePrice = Number(form.sale_price) || 0;
+      const stockQty = Number(form.stock_quantity) || 0;
+      const criticalLmt = Number(form.critical_limit) || 0;
+
+      // Validasyon: sayılar negatif olamaz
+      if (purchasePrice < 0 || salePrice < 0 || stockQty < 0 || criticalLmt < 0) {
+        const msg = "Fiyat ve stok miktarları negatif olamaz.";
+        setError(msg);
+        toast.error(msg);
+        setSaving(false);
+        return;
+      }
+
       const updates = {
         name: form.name.trim(),
         sku: form.sku.trim(),
         category_id: form.category_id || null,
-        purchase_price: parseFloat(form.purchase_price) || 0,
-        sale_price: parseFloat(form.sale_price) || 0,
-        stock_quantity: parseInt(form.stock_quantity, 10) || 0,
-        critical_limit: parseInt(form.critical_limit, 10) || 0,
-        updated_at: new Date().toISOString()
+        purchase_price: purchasePrice,
+        sale_price: salePrice,
+        stock_quantity: Math.floor(stockQty),
+        critical_limit: Math.floor(criticalLmt),
+        updated_at: new Date().toISOString(),
       };
+
+      console.log("Supabase güncellemesi yapılıyor:", updates);
 
       const { error: updateError } = await supabase
         .from("products")
         .update(updates)
         .eq("id", id);
 
-      if (updateError) throw updateError;
+      if (updateError) {
+        console.error("Supabase güncellememe hatası:", updateError);
+        throw updateError;
+      }
+
+      // ✅ GÖREV 2: Ürün Düzenleme İşlemini Kaydet (unit_price ile)
+      const { error: logError } = await supabase
+        .from("inventory_logs")
+        .insert({
+          product_id: id,
+          action_type: "Güncellemeler",
+          quantity_change: 0,
+          previous_stock: null,
+          new_stock: null,
+          unit_price: salePrice || null,
+          note: "Ürün bilgileri düzenlendi (Ad, Fiyat, Kategori vb.)",
+          created_at: new Date().toISOString(),
+        });
+
+      if (logError) {
+        console.error("inventory_logs kaydında hata:", logError);
+        // Log hatası kritik değil, devam et
+      }
       
-      // Başarılı olursa detaya dön
-      router.push(`/inventory/${id}`);
+      // Toast bildirimi göster
+      toast.success(`"${form.name}" başarıyla güncellendi!`, {
+        duration: 3000,
+        icon: "✅",
+      });
+
+      // Başarılı olursa ana listeye dön
+      setTimeout(() => {
+        router.push("/inventory");
+      }, 1500);
     } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : "Bilinmeyen bir hata oluştu.");
+      const errorMsg = err instanceof Error ? err.message : "Bilinmeyen bir hata oluştu.";
+      console.error("Kaydetme işleminde detaylı hata:", err);
+      setError(errorMsg);
+      toast.error(errorMsg);
       setSaving(false);
     }
   };
@@ -412,6 +464,37 @@ export default function EditProductPage() {
           )}
         </button>
       </div>
+
+      {/* ── Toast Notification Container ── */}
+      <Toaster
+        position="top-right"
+        reverseOrder={false}
+        gutter={8}
+        toastOptions={{
+          duration: 3000,
+          style: {
+            background: "#363636",
+            color: "#fff",
+            borderRadius: "8px",
+            fontSize: "14px",
+            fontWeight: "500",
+          },
+          success: {
+            duration: 3000,
+            style: {
+              background: "#10b981",
+              color: "white",
+            },
+          },
+          error: {
+            duration: 3000,
+            style: {
+              background: "#ef4444",
+              color: "white",
+            },
+          },
+        }}
+      />
     </div>
   );
 }

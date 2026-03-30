@@ -2,69 +2,59 @@
 
 /* ─── Material Design 3 / KOBİ Design Tokens ─── */
 @theme inline {
-  /* Background & Surface */
-  --color-background: #f8f9ff;
-  --color-surface: #f8f9ff;
-  --color-surface-dim: #cbdbf5;
-  --color-surface-bright: #f8f9ff;
-  --color-surface-variant: #d3e4fe;
-  --color-surface-container-lowest: #ffffff;
-  --color-surface-container-low: #eff4ff;
-  --color-surface-container: #e5eeff;
-  --color-surface-container-high: #dce9ff;
-  --color-surface-container-highest: #d3e4fe;
+  /* Colors */
+  --color-tertiary-fixed-dim: #ffb783;
+  --color-secondary: #515f74;
+  --color-on-surface: #131b2e;
+  --color-on-primary-container: #fffbff;
   --color-surface-tint: #4d44e3;
-  --color-inverse-surface: #213145;
-  --color-inverse-on-surface: #eaf1ff;
-
-  /* Primary */
-  --color-primary: #3525cd;
-  --color-on-primary: #ffffff;
-  --color-primary-container: #4f46e5;
-  --color-on-primary-container: #dad7ff;
-  --color-primary-fixed: #e2dfff;
+  --color-surface-container-low: #f2f3ff;
+  --color-primary-container: #645efb;
+  --color-on-tertiary-container: #fffbff;
   --color-primary-fixed-dim: #c3c0ff;
-  --color-on-primary-fixed: #0f0069;
+  --color-on-primary: #ffffff;
+  --color-tertiary-container: #b55d00;
+  --color-secondary-fixed: #d5e3fc;
+  --color-outline-variant: #c7c4d7;
+  --color-on-secondary-container: #57657a;
   --color-on-primary-fixed-variant: #3323cc;
-  --color-inverse-primary: #c3c0ff;
-
-  /* Secondary */
-  --color-secondary: #58579b;
-  --color-on-secondary: #ffffff;
-  --color-secondary-container: #b6b4ff;
-  --color-on-secondary-container: #454386;
-  --color-secondary-fixed: #e2dfff;
-  --color-secondary-fixed-dim: #c3c0ff;
-  --color-on-secondary-fixed: #140f54;
-  --color-on-secondary-fixed-variant: #413f82;
-
-  /* Tertiary */
-  --color-tertiary: #7e3000;
-  --color-on-tertiary: #ffffff;
-  --color-tertiary-container: #a44100;
-  --color-on-tertiary-container: #ffd2be;
-  --color-tertiary-fixed: #ffdbcc;
-  --color-tertiary-fixed-dim: #ffb695;
-  --color-on-tertiary-fixed: #351000;
-  --color-on-tertiary-fixed-variant: #7b2f00;
-
-  /* Error */
-  --color-error: #ba1a1a;
-  --color-on-error: #ffffff;
   --color-error-container: #ffdad6;
+  --color-on-tertiary-fixed: #301400;
+  --color-outline: #767586;
+  --color-tertiary-fixed: #ffdcc5;
+  --color-on-error: #ffffff;
+  --color-surface-container: #eaedff;
+  --color-inverse-surface: #283044;
+  --color-surface-bright: #faf8ff;
+  --color-inverse-on-surface: #eef0ff;
   --color-on-error-container: #93000a;
-
-  /* On Surface & Outline */
-  --color-on-surface: #0b1c30;
-  --color-on-surface-variant: #464555;
-  --color-on-background: #0b1c30;
-  --color-outline: #777587;
-  --color-outline-variant: #c7c4d8;
+  --color-primary: #4b41e1;
+  --color-on-secondary-fixed: #0d1c2e;
+  --color-secondary-fixed-dim: #b9c7df;
+  --color-on-tertiary: #ffffff;
+  --color-surface-container-highest: #dae2fd;
+  --color-inverse-primary: #c3c0ff;
+  --color-on-secondary-fixed-variant: #3a485b;
+  --color-on-primary-fixed: #0f0069;
+  --color-surface-container-high: #e2e7ff;
+  --color-surface-variant: #dae2fd;
+  --color-tertiary: #904900;
+  --color-on-surface-variant: #464554;
+  --color-background: #faf8ff;
+  --color-surface-dim: #d2d9f4;
+  --color-surface: #faf8ff;
+  --color-primary-fixed: #e2dfff;
+  --color-on-background: #131b2e;
+  --color-error: #ba1a1a;
+  --color-secondary-container: #d5e3fc;
+  --color-on-tertiary-fixed-variant: #703700;
+  --color-surface-container-lowest: #ffffff;
+  --color-on-secondary: #ffffff;
 
   /* Typography */
   --font-headline: "Manrope", sans-serif;
-  --font-body: "Manrope", sans-serif;
-  --font-label: "Manrope", sans-serif;
+  --font-body: "Inter", sans-serif;
+  --font-label: "Inter", sans-serif;
 
   /* Border Radius */
   --radius: 0.25rem;
@@ -86,4 +76,24 @@ body {
 
 .material-symbols-outlined {
   font-variation-settings: "FILL" 0, "wght" 400, "GRAD" 0, "opsz" 24;
+}
+
+.mesh-pattern {
+  background-image: radial-gradient(at 0% 0%, rgba(255, 255, 255, 0.1) 0, transparent 50%), 
+                    radial-gradient(at 50% 0%, rgba(255, 255, 255, 0.05) 0, transparent 50%), 
+                    radial-gradient(at 100% 0%, rgba(255, 255, 255, 0.1) 0, transparent 50%);
+}
+
+.glass-effect {
+  background: rgba(250, 248, 255, 0.8);
+  backdrop-filter: blur(12px);
+}
+
+.signature-gradient {
+  background: linear-gradient(135deg, #4b41e1 0%, #645efb 100%);
+}
+
+.font-label {
+  font-size: 0.6875rem;
+  letter-spacing: 0.05em;
 }

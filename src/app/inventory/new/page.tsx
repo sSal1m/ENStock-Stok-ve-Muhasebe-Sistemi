@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useCallback } from "react";
 import { useRouter } from "next/navigation";
+import toast, { Toaster } from "react-hot-toast";
 import { supabase } from "@/lib/supabaseClient";
 
 // ─── Tipler ────────────────────────────────────────────────────────────────
@@ -91,28 +92,84 @@ export default function NewInventoryPage() {
     e.preventDefault();
     setError(null);
 
-    if (!form.name.trim()) { setError("Ürün adı zorunludur."); return; }
-    if (!form.sku.trim()) { setError("Barkod / SKU zorunludur."); return; }
-    if (!form.category_id) { setError("Lütfen bir kategori seçin."); return; }
+    if (!form.name.trim()) { 
+      const msg = "Ürün adı zorunludur.";
+      setError(msg);
+      toast.error(msg);
+      return; 
+    }
+    if (!form.sku.trim()) { 
+      const msg = "Barkod / SKU zorunludur.";
+      setError(msg);
+      toast.error(msg);
+      return; 
+    }
+    if (!form.category_id) { 
+      const msg = "Lütfen bir kategori seçin.";
+      setError(msg);
+      toast.error(msg);
+      return; 
+    }
 
     setSaving(true);
     try {
-      const { error: insertError } = await supabase.from("products").insert({
-        name: form.name.trim(),
-        sku: form.sku.trim(),
-        category_id: form.category_id,
-        description: form.description.trim() || null,
-        purchase_price: toNum(form.purchase_price),
-        sale_price: toNum(form.sale_price),
-        stock_quantity: Math.round(toNum(form.stock_quantity)),
-        critical_limit: Math.round(toNum(form.critical_limit)),
-        tax_rate: form.tax_rate,
+      // `.select()` ile yeni ürünün id'sini de al
+      const { data: insertedData, error: insertError } = await supabase
+        .from("products")
+        .insert({
+          name: form.name.trim(),
+          sku: form.sku.trim(),
+          category_id: form.category_id,
+          description: form.description.trim() || null,
+          purchase_price: toNum(form.purchase_price),
+          sale_price: toNum(form.sale_price),
+          stock_quantity: Math.round(toNum(form.stock_quantity)),
+          critical_limit: Math.round(toNum(form.critical_limit)),
+          tax_rate: form.tax_rate,
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+        })
+        .select();
+
+      if (insertError) {
+        console.error("Ürün ekleme hatası:", insertError);
+        throw insertError;
+      }
+
+      // ✅ Yeni ürün kaydının id'sini al ve inventory_logs'a kaydet (unit_price ile)
+      const newProduct = insertedData?.[0];
+      if (newProduct) {
+        const purchasePrice = Number(form.purchase_price) || 0;
+        const { error: logError } = await supabase
+          .from("inventory_logs")
+          .insert({
+            product_id: newProduct.id,
+            action_type: "Ürün Oluşturma",
+            quantity_change: newProduct.stock_quantity,
+            previous_stock: 0,
+            new_stock: newProduct.stock_quantity,
+            unit_price: purchasePrice || null,
+            note: "Yeni ürün oluşturuldu",
+            created_at: new Date().toISOString(),
+          });
+
+        if (logError) {
+          console.warn("inventory_logs kaydında hata (kritik değil):", logError);
+        }
+      }
+      
+      toast.success(`"${form.name}" başarıyla eklendi!`, {
+        duration: 3000,
+        icon: "✅",
       });
 
-      if (insertError) throw insertError;
-      router.push("/inventory");
+      setTimeout(() => {
+        router.push("/inventory");
+      }, 1500);
     } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : "Kayıt sırasında bir hata oluştu.");
+      const errorMsg = err instanceof Error ? err.message : "Kayıt sırasında bir hata oluştu.";
+      setError(errorMsg);
+      toast.error(errorMsg);
       setSaving(false);
     }
   }
@@ -492,6 +549,37 @@ export default function NewInventoryPage() {
           </div>
         </form>
       </div>
+
+      {/* ── Toast Notification Container ── */}
+      <Toaster
+        position="top-right"
+        reverseOrder={false}
+        gutter={8}
+        toastOptions={{
+          duration: 3000,
+          style: {
+            background: "#363636",
+            color: "#fff",
+            borderRadius: "8px",
+            fontSize: "14px",
+            fontWeight: "500",
+          },
+          success: {
+            duration: 3000,
+            style: {
+              background: "#10b981",
+              color: "white",
+            },
+          },
+          error: {
+            duration: 3000,
+            style: {
+              background: "#ef4444",
+              color: "white",
+            },
+          },
+        }}
+      />
     </div>
   );
 }

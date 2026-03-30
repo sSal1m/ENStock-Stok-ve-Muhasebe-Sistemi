@@ -2,8 +2,10 @@
 
 import { useEffect, useState, useCallback } from "react";
 import { useRouter } from "next/navigation";
+import toast, { Toaster } from "react-hot-toast";
 import { supabase } from "@/lib/supabaseClient";
 import CategoryModal from "@/components/inventory/CategoryModal";
+import DeleteConfirmationModal from "@/components/inventory/DeleteConfirmationModal";
 import Link from "next/link";
 
 // ─── Tipler ────────────────────────────────────────────────────────────────
@@ -17,6 +19,11 @@ interface Product {
   stock_quantity: number;
   critical_limit: number;
   categories: { name: string }[] | null;
+}
+
+interface Category {
+  id: string;
+  name: string;
 }
 
 interface Stats {
@@ -78,6 +85,7 @@ function SkeletonRow() {
 export default function InventoryPage() {
   const [products, setProducts] = useState<Product[]>([]);
   const [filtered, setFiltered] = useState<Product[]>([]);
+  const [categories, setCategories] = useState<Category[]>([]);
   const [stats, setStats] = useState<Stats | null>(null);
   const [criticalItems, setCriticalItems] = useState<Product[]>([]);
 
@@ -88,6 +96,8 @@ export default function InventoryPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [isCategoryModalOpen, setIsCategoryModalOpen] = useState(false);
+  const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
+  const [deleteTarget, setDeleteTarget] = useState<{ id: string; name: string } | null>(null);
   const router = useRouter();
 
   // ── Veri Çekme ──────────────────────────────────────────────────────────
@@ -95,6 +105,16 @@ export default function InventoryPage() {
     setLoading(true);
     setError(null);
     try {
+      // 1. Kategorileri çek
+      const { data: categoryData, error: categoryError } = await supabase
+        .from("categories")
+        .select("id, name")
+        .order("name");
+
+      if (categoryError) throw categoryError;
+      setCategories((categoryData ?? []) as Category[]);
+
+      // 2. Ürünler + kategori join
       const { data: productData, error: productError } = await supabase
         .from("products")
         .select("id, sku, name, purchase_price, sale_price, stock_quantity, critical_limit, categories(name)")
@@ -102,8 +122,17 @@ export default function InventoryPage() {
 
       if (productError) throw productError;
       const prods = (productData ?? []) as Product[];
+
+      // 3. İnsights: kritik limit altındaki ürünler
       const criticals = prods.filter((p) => p.stock_quantity <= p.critical_limit);
-      const totalStockValue = prods.reduce((sum, p) => sum + p.stock_quantity * p.purchase_price, 0);
+
+      // 4. İstatistikler
+      const totalStockValue = prods.reduce(
+        (sum, p) => sum + p.stock_quantity * p.purchase_price,
+        0
+      );
+
+      // 5. Fatura sayısı
       const { count: invoiceCount } = await supabase
         .from("invoices")
         .select("id", { count: "exact", head: true });
@@ -118,58 +147,17 @@ export default function InventoryPage() {
         invoiceCount: invoiceCount ?? 0,
       });
     } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : "Bilinmeyen bir hata oluştu.");
+      const errorMsg = err instanceof Error ? err.message : "Bilinmeyen bir hata oluştu.";
+      setError(errorMsg);
+      toast.error(errorMsg);
     } finally {
       setLoading(false);
     }
   }, []);
 
   useEffect(() => {
-    async function fetchAll() {
-      setLoading(true);
-      setError(null);
-      try {
-        // 1. Ürünler + kategori join
-        const { data: productData, error: productError } = await supabase
-          .from("products")
-          .select("id, sku, name, purchase_price, sale_price, stock_quantity, critical_limit, categories(name)")
-          .order("name");
-
-        if (productError) throw productError;
-        const prods = (productData ?? []) as Product[];
-
-        // 2. İnsights: kritik limit altındaki ürünler
-        const criticals = prods.filter((p) => p.stock_quantity <= p.critical_limit);
-
-        // 3. İstatistikler
-        const totalStockValue = prods.reduce(
-          (sum, p) => sum + p.stock_quantity * p.purchase_price,
-          0
-        );
-
-        // 4. Fatura sayısı (aylık sirkülasyon için basit count)
-        const { count: invoiceCount } = await supabase
-          .from("invoices")
-          .select("id", { count: "exact", head: true });
-
-        setProducts(prods);
-        setFiltered(prods);
-        setCriticalItems(criticals);
-        setStats({
-          totalProducts: prods.length,
-          lowStockCount: criticals.length,
-          totalStockValue,
-          invoiceCount: invoiceCount ?? 0,
-        });
-      } catch (err: unknown) {
-        setError(err instanceof Error ? err.message : "Bilinmeyen bir hata oluştu.");
-      } finally {
-        setLoading(false);
-      }
-    }
-
     fetchAll();
-  }, []);
+  }, [fetchAll]);
 
   // ── Anlık Arama & Filtre ────────────────────────────────────────────────
   useEffect(() => {
@@ -181,6 +169,18 @@ export default function InventoryPage() {
       result = result.filter(
         (p) => p.name.toLowerCase().includes(q) || p.sku.toLowerCase().includes(q)
       );
+    }
+
+    // Kategori filtresi — kategorileri ID ile kontrol et
+    if (categoryFilter !== "all") {
+      result = result.filter((p) => {
+        // Supabase'ten gelen categories bir object (dikkat: array DEĞİL)
+        const selectedCategory = categories.find((c) => c.id === categoryFilter);
+        if (!selectedCategory) return false;
+        
+        // categories nested object olduğu için doğrudan karşılaştır
+        return p.categories?.name === selectedCategory.name;
+      });
     }
 
     // Stok durumu filtresi
@@ -195,7 +195,7 @@ export default function InventoryPage() {
     }
 
     setFiltered(result);
-  }, [search, stockFilter, products]);
+  }, [search, stockFilter, products, categoryFilter, categories]);
 
   // ── Hata Durumu ──────────────────────────────────────────────────────────
   if (error) {
@@ -355,7 +355,9 @@ export default function InventoryPage() {
                 onChange={(e) => setCategoryFilter(e.target.value)}
               >
                 <option value="all">Kategori: Tümü</option>
-                {/* Kategori seçenekleri veriden üretilecek — şimdilik tümü */}
+                {categories.map((cat) => (
+                  <option key={cat.id} value={cat.id}>{cat.name}</option>
+                ))}
               </select>
               <select
                 className="bg-white border border-indigo-100 rounded-xl px-4 py-2.5 text-sm font-medium focus:ring-2 focus:ring-primary outline-none"
@@ -424,7 +426,7 @@ export default function InventoryPage() {
                 filtered.map((item) => {
                   const level = getStockLevel(item.stock_quantity, item.critical_limit);
                   const percent = getStockPercent(item.stock_quantity, item.critical_limit);
-                  const categoryName = item.categories?.[0]?.name ?? "—";
+                  const categoryName = item.categories?.name ?? "—";
 
                   return (
                     <tr key={item.id} className="hover:bg-indigo-50/20 transition-colors group">
@@ -480,7 +482,13 @@ export default function InventoryPage() {
                           >
                             <span className="material-symbols-outlined text-lg">edit</span>
                           </button>
-                          <button className="p-2 text-error hover:bg-error-container/20 rounded-lg">
+                          <button
+                            onClick={() => {
+                              setDeleteTarget({ id: item.id, name: item.name });
+                              setIsDeleteModalOpen(true);
+                            }}
+                            className="p-2 text-error hover:bg-error-container/20 rounded-lg"
+                          >
                             <span className="material-symbols-outlined text-lg">delete</span>
                           </button>
                         </div>
@@ -614,7 +622,71 @@ export default function InventoryPage() {
       <CategoryModal
         isOpen={isCategoryModalOpen}
         onClose={() => setIsCategoryModalOpen(false)}
-        onSuccess={fetchAll}
+        onSuccess={() => {
+          toast.success("Kategori başarıyla eklendi!", { duration: 3000 });
+          fetchAll();
+        }}
+      />
+
+      {/* ── Silme Onay Modalı ── */}
+      {deleteTarget && (
+        <DeleteConfirmationModal
+          isOpen={isDeleteModalOpen}
+          onClose={() => {
+            setIsDeleteModalOpen(false);
+            setDeleteTarget(null);
+          }}
+          onSuccess={() => {
+            setIsDeleteModalOpen(false);
+            setDeleteTarget(null);
+            fetchAll();
+          }}
+          productId={deleteTarget.id}
+          productName={deleteTarget.name}
+        />
+      )}
+
+      {/* ── Toast Notification Container ── */}
+      <Toaster
+        position="top-right"
+        reverseOrder={false}
+        gutter={8}
+        containerClassName=""
+        containerStyle={{}}
+        toastOptions={{
+          // Default options
+          duration: 3000,
+          style: {
+            background: "#363636",
+            color: "#fff",
+            borderRadius: "8px",
+            fontSize: "14px",
+            fontWeight: "500",
+          },
+          // Default options for specific types
+          success: {
+            duration: 3000,
+            style: {
+              background: "#10b981",
+              color: "white",
+            },
+            iconTheme: {
+              primary: "white",
+              secondary: "#10b981",
+            },
+          },
+          error: {
+            duration: 3000,
+            style: {
+              background: "#ef4444",
+              color: "white",
+            },
+            iconTheme: {
+              primary: "white",
+              secondary: "#ef4444",
+            },
+          },
+        }}
       />
     </div>
   );

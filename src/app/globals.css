@@ -2,54 +2,65 @@
 
 /* ─── Material Design 3 / KOBİ Design Tokens ─── */
 @theme inline {
-  /* Colors */
-  --color-tertiary-fixed-dim: #ffb783;
-  --color-secondary: #515f74;
-  --color-on-surface: #131b2e;
-  --color-on-primary-container: #fffbff;
-  --color-surface-tint: #4d44e3;
-  --color-surface-container-low: #f2f3ff;
-  --color-primary-container: #645efb;
-  --color-on-tertiary-container: #fffbff;
-  --color-primary-fixed-dim: #c3c0ff;
-  --color-on-primary: #ffffff;
-  --color-tertiary-container: #b55d00;
-  --color-secondary-fixed: #d5e3fc;
-  --color-outline-variant: #c7c4d7;
-  --color-on-secondary-container: #57657a;
-  --color-on-primary-fixed-variant: #3323cc;
-  --color-error-container: #ffdad6;
-  --color-on-tertiary-fixed: #301400;
-  --color-outline: #767586;
-  --color-tertiary-fixed: #ffdcc5;
-  --color-on-error: #ffffff;
-  --color-surface-container: #eaedff;
-  --color-inverse-surface: #283044;
-  --color-surface-bright: #faf8ff;
-  --color-inverse-on-surface: #eef0ff;
-  --color-on-error-container: #93000a;
-  --color-primary: #4b41e1;
-  --color-on-secondary-fixed: #0d1c2e;
-  --color-secondary-fixed-dim: #b9c7df;
-  --color-on-tertiary: #ffffff;
-  --color-surface-container-highest: #dae2fd;
-  --color-inverse-primary: #c3c0ff;
-  --color-on-secondary-fixed-variant: #3a485b;
-  --color-on-primary-fixed: #0f0069;
-  --color-surface-container-high: #e2e7ff;
-  --color-surface-variant: #dae2fd;
-  --color-tertiary: #904900;
-  --color-on-surface-variant: #464554;
+  /* Background & Surface */
   --color-background: #faf8ff;
-  --color-surface-dim: #d2d9f4;
   --color-surface: #faf8ff;
-  --color-primary-fixed: #e2dfff;
-  --color-on-background: #131b2e;
-  --color-error: #ba1a1a;
-  --color-secondary-container: #d5e3fc;
-  --color-on-tertiary-fixed-variant: #703700;
+  --color-surface-dim: #d2d9f4;
+  --color-surface-bright: #faf8ff;
+  --color-surface-variant: #dae2fd;
   --color-surface-container-lowest: #ffffff;
+  --color-surface-container-low: #f2f3ff;
+  --color-surface-container: #eaedff;
+  --color-surface-container-high: #e2e7ff;
+  --color-surface-container-highest: #dae2fd;
+  --color-surface-tint: #4d44e3;
+  --color-inverse-surface: #283044;
+  --color-inverse-on-surface: #eef0ff;
+
+  /* Primary */
+  --color-primary: #4b41e1;
+  --color-on-primary: #ffffff;
+  --color-primary-container: #645efb;
+  --color-on-primary-container: #fffbff;
+  --color-primary-fixed: #e2dfff;
+  --color-primary-fixed-dim: #c3c0ff;
+  --color-on-primary-fixed: #0f0069;
+  --color-on-primary-fixed-variant: #3323cc;
+  --color-inverse-primary: #c3c0ff;
+
+  /* Secondary */
+  --color-secondary: #515f74;
   --color-on-secondary: #ffffff;
+  --color-secondary-container: #d5e3fc;
+  --color-on-secondary-container: #57657a;
+  --color-secondary-fixed: #d5e3fc;
+  --color-secondary-fixed-dim: #b9c7df;
+  --color-on-secondary-fixed: #0d1c2e;
+  --color-on-secondary-fixed-variant: #3a485b;
+
+  /* Tertiary */
+  --color-tertiary: #904900;
+  --color-on-tertiary: #ffffff;
+  --color-tertiary-container: #b55d00;
+  --color-on-tertiary-container: #fffbff;
+  --color-tertiary-fixed: #ffdcc5;
+  --color-tertiary-fixed-dim: #ffb783;
+  --color-on-tertiary-fixed: #301400;
+  --color-on-tertiary-fixed-variant: #703700;
+
+  /* Error */
+  --color-error: #ba1a1a;
+  --color-on-error: #ffffff;
+  --color-error-container: #ffdad6;
+  --color-on-error-container: #93000a;
+
+  /* On Surface & Outline */
+  --color-on-surface: #131b2e;
+  --color-on-surface-variant: #464554;
+  --color-on-background: #131b2e;
+  --color-outline: #767586;
+  --color-outline-variant: #c7c4d7;
+
 
   /* Typography */
   --font-headline: "Manrope", sans-serif;

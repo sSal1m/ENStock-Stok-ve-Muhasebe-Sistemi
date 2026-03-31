@@ -57,19 +57,51 @@ export default function NewInventoryPage() {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [catLoading, setCatLoading] = useState(true);
+  const [userId, setUserId] = useState<string | null>(null);
+  const [showNewCategoryForm, setShowNewCategoryForm] = useState(false);
+  const [newCategoryName, setNewCategoryName] = useState("");
+  const [savingCategory, setSavingCategory] = useState(false);
 
-  // ── Kategorileri Çek ────────────────────────────────────────────────────
+  // ── Kullanıcı ID'sini Al ────────────────────────────────────────────────
+  useEffect(() => {
+    async function getUser() {
+      const { data: { user }, error } = await supabase.auth.getUser();
+      if (error || !user) {
+        setError("Kullanıcı oturum açmamış.");
+        return;
+      }
+      setUserId(user.id);
+    }
+    getUser();
+  }, []);
+
+  // ── Kategorileri Çek (sadece bu kullanıcının) ────────────────────────────
   useEffect(() => {
     async function fetchCategories() {
+      if (!userId) return;
+      
+      console.log("📦 Kategoriler çekiliyor - User ID:", userId);
       const { data, error } = await supabase
         .from("categories")
         .select("id, name")
+        .eq("user_id", userId)
         .order("name");
-      if (!error && data) setCategories(data as Category[]);
+      
+      if (error) {
+        console.error("❌ Kategorileri çekme hatası:", error);
+        console.error("Hata detayları:", {
+          message: error.message,
+          code: error.code,
+          hint: error.hint,
+        });
+      } else {
+        console.log("✅ Kategoriler başarıyla çekildi:", data);
+        if (data) setCategories(data as Category[]);
+      }
       setCatLoading(false);
     }
     fetchCategories();
-  }, []);
+  }, [userId]);
 
   // ── Form Değişiklik Handler ─────────────────────────────────────────────
   const handleChange = useCallback(
@@ -79,6 +111,76 @@ export default function NewInventoryPage() {
     },
     []
   );
+
+  // ── Yeni Kategori Ekle ──────────────────────────────────────────────────
+  async function handleAddCategory() {
+    if (!newCategoryName.trim()) {
+      toast.error("Kategori adı boş olamaz.");
+      return;
+    }
+
+    setSavingCategory(true);
+    try {
+      // ✅ User Session Check: Mevcut kullanıcıyı auth'dan al
+      const { data: authData, error: authError } = await supabase.auth.getUser();
+      
+      if (authError || !authData.user) {
+        const errorMsg = "Kullanıcı oturum açmamış. Lütfen giriş yapınız.";
+        console.error("Auth hatası:", authError);
+        toast.error(errorMsg);
+        setSavingCategory(false);
+        return;
+      }
+
+      const currentUserId = authData.user.id;
+      console.log("🔐 Mevcut User ID:", currentUserId);
+
+      // ✅ Debug: Insert işleminde gönderilecek veriyi göster
+      const insertPayload = {
+        user_id: currentUserId,
+        name: newCategoryName.trim(),
+        created_at: new Date().toISOString(),
+      };
+      console.log("📤 Kategoriye gönderilecek veri:", insertPayload);
+
+      // ✅ Explicit ID: user_id mutlaka eklenmiş durumda
+      const { data: insertedCategory, error: insertError } = await supabase
+        .from("categories")
+        .insert(insertPayload)
+        .select();
+
+      if (insertError) {
+        console.error("❌ Kategori ekleme hatası:", insertError);
+        console.error("Hata detayları:", {
+          message: insertError.message,
+          code: insertError.code,
+          hint: insertError.hint,
+        });
+        throw insertError;
+      }
+
+      console.log("✅ Kategori başarıyla eklendi:", insertedCategory);
+
+      // Yeni kategoriyi form state'ine ekle
+      if (insertedCategory && insertedCategory.length > 0) {
+        const newCategory = insertedCategory[0];
+        setCategories((prev) => [...prev, newCategory]);
+        setForm((prev) => ({ ...prev, category_id: newCategory.id }));
+        
+        // Toast'ta doğru kategori adını göster
+        const categoryNameForToast = newCategoryName;
+        setNewCategoryName("");
+        setShowNewCategoryForm(false);
+        toast.success(`"${categoryNameForToast}" kategorisi başarıyla eklendi!`);
+      }
+    } catch (err: unknown) {
+      const errorMsg = err instanceof Error ? err.message : "Kategori eklenirken bir hata oluştu.";
+      console.error("🔥 Kategori ekleme detaylı hatası:", err);
+      toast.error(errorMsg);
+    } finally {
+      setSavingCategory(false);
+    }
+  }
 
   // ── Hesaplamalar (Hızlı Özet) ───────────────────────────────────────────
   const salePrice = toNum(form.sale_price);
@@ -91,6 +193,13 @@ export default function NewInventoryPage() {
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setError(null);
+
+    if (!userId) {
+      const msg = "Kullanıcı oturum açmamış.";
+      setError(msg);
+      toast.error(msg);
+      return;
+    }
 
     if (!form.name.trim()) { 
       const msg = "Ürün adı zorunludur.";
@@ -113,48 +222,74 @@ export default function NewInventoryPage() {
 
     setSaving(true);
     try {
+      console.log("📝 Ürün kaydı başlatılıyor - User ID:", userId);
+
       // `.select()` ile yeni ürünün id'sini de al
+      const productPayload = {
+        user_id: userId,
+        name: form.name.trim(),
+        sku: form.sku.trim(),
+        category_id: form.category_id,
+        description: form.description.trim() || null,
+        purchase_price: toNum(form.purchase_price),
+        sale_price: toNum(form.sale_price),
+        stock_quantity: Math.round(toNum(form.stock_quantity)),
+        critical_limit: Math.round(toNum(form.critical_limit)),
+        tax_rate: form.tax_rate,
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      };
+      console.log("📤 Products'a gönderilecek veri:", productPayload);
+
       const { data: insertedData, error: insertError } = await supabase
         .from("products")
-        .insert({
-          name: form.name.trim(),
-          sku: form.sku.trim(),
-          category_id: form.category_id,
-          description: form.description.trim() || null,
-          purchase_price: toNum(form.purchase_price),
-          sale_price: toNum(form.sale_price),
-          stock_quantity: Math.round(toNum(form.stock_quantity)),
-          critical_limit: Math.round(toNum(form.critical_limit)),
-          tax_rate: form.tax_rate,
-          created_at: new Date().toISOString(),
-          updated_at: new Date().toISOString(),
-        })
+        .insert(productPayload)
         .select();
 
       if (insertError) {
-        console.error("Ürün ekleme hatası:", insertError);
+        console.error("❌ Ürün ekleme hatası:", insertError);
+        console.error("Hata detayları:", {
+          message: insertError.message,
+          code: insertError.code,
+          hint: insertError.hint,
+        });
         throw insertError;
       }
+
+      console.log("✅ Ürün başarıyla eklendi:", insertedData);
 
       // ✅ Yeni ürün kaydının id'sini al ve inventory_logs'a kaydet (unit_price ile)
       const newProduct = insertedData?.[0];
       if (newProduct) {
         const purchasePrice = Number(form.purchase_price) || 0;
+        
+        const logPayload = {
+          user_id: userId,
+          product_id: newProduct.id,
+          action_type: "Ürün Oluşturma",
+          quantity_change: newProduct.stock_quantity,
+          previous_stock: 0,
+          new_stock: newProduct.stock_quantity,
+          unit_price: purchasePrice || null,
+          note: "Yeni ürün oluşturuldu",
+          created_at: new Date().toISOString(),
+        };
+        console.log("📤 Inventory_logs'a gönderilecek veri:", logPayload);
+
         const { error: logError } = await supabase
           .from("inventory_logs")
-          .insert({
-            product_id: newProduct.id,
-            action_type: "Ürün Oluşturma",
-            quantity_change: newProduct.stock_quantity,
-            previous_stock: 0,
-            new_stock: newProduct.stock_quantity,
-            unit_price: purchasePrice || null,
-            note: "Yeni ürün oluşturuldu",
-            created_at: new Date().toISOString(),
-          });
+          .insert(logPayload);
 
         if (logError) {
-          console.warn("inventory_logs kaydında hata (kritik değil):", logError);
+          console.error("❌ inventory_logs kaydında hata:", logError);
+          console.error("Log hata detayları:", {
+            message: logError.message,
+            code: logError.code,
+            hint: logError.hint,
+          });
+          // Log hatası kritik değil, devam et
+        } else {
+          console.log("✅ Inventory_logs başarıyla eklendi");
         }
       }
       
@@ -168,6 +303,14 @@ export default function NewInventoryPage() {
       }, 1500);
     } catch (err: unknown) {
       const errorMsg = err instanceof Error ? err.message : "Kayıt sırasında bir hata oluştu.";
+      console.error("🔥 Ürün kaydetme detaylı hatası:", err);
+      
+      // RLS veya auth hataları için ekstra debug
+      if (err && typeof err === "object" && "code" in err) {
+        console.error("Supabase Hata Kodu:", (err as any).code);
+        console.error("Supabase Hata Hint:", (err as any).hint);
+      }
+      
       setError(errorMsg);
       toast.error(errorMsg);
       setSaving(false);
@@ -264,20 +407,62 @@ export default function NewInventoryPage() {
                     <label className="block text-xs font-bold text-on-surface-variant uppercase tracking-wider mb-2">
                       Kategori <span className="text-error">*</span>
                     </label>
-                    <select
-                      name="category_id"
-                      value={form.category_id}
-                      onChange={handleChange}
-                      className="w-full bg-surface-container-low border-none rounded-lg px-4 py-3 focus:ring-2 focus:ring-primary/20 focus:bg-white transition-all text-sm text-on-surface-variant outline-none"
-                      required
-                    >
-                      <option value="">{catLoading ? "Yükleniyor..." : "Kategori Seçiniz"}</option>
-                      {categories.map((cat) => (
-                        <option key={cat.id} value={cat.id}>
-                          {cat.name}
-                        </option>
-                      ))}
-                    </select>
+                    {!showNewCategoryForm ? (
+                      <>
+                        <select
+                          name="category_id"
+                          value={form.category_id}
+                          onChange={handleChange}
+                          className="w-full bg-surface-container-low border-none rounded-lg px-4 py-3 focus:ring-2 focus:ring-primary/20 focus:bg-white transition-all text-sm text-on-surface-variant outline-none"
+                          required
+                        >
+                          <option value="">{catLoading ? "Yükleniyor..." : "Kategori Seçiniz"}</option>
+                          {categories.map((cat) => (
+                            <option key={cat.id} value={cat.id}>
+                              {cat.name}
+                            </option>
+                          ))}
+                        </select>
+                        <button
+                          type="button"
+                          onClick={() => setShowNewCategoryForm(true)}
+                          className="mt-2 text-xs font-semibold text-primary hover:text-primary-container transition-colors flex items-center gap-1"
+                        >
+                          <span className="material-symbols-outlined text-sm">add_circle</span>
+                          Yeni Kategori Ekle
+                        </button>
+                      </>
+                    ) : (
+                      <div className="space-y-2">
+                        <div className="flex gap-2">
+                          <input
+                            type="text"
+                            value={newCategoryName}
+                            onChange={(e) => setNewCategoryName(e.target.value)}
+                            placeholder="Kategori adı..."
+                            className="flex-1 bg-surface-container-low border-none rounded-lg px-4 py-3 focus:ring-2 focus:ring-primary/20 focus:bg-white transition-all text-sm outline-none"
+                          />
+                          <button
+                            type="button"
+                            onClick={handleAddCategory}
+                            disabled={savingCategory}
+                            className="px-4 py-3 bg-primary text-white rounded-lg font-bold text-sm hover:bg-primary-container transition-all disabled:opacity-60"
+                          >
+                            {savingCategory ? "..." : "Ekle"}
+                          </button>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setShowNewCategoryForm(false);
+                            setNewCategoryName("");
+                          }}
+                          className="text-xs font-semibold text-on-surface-variant hover:text-on-surface transition-colors"
+                        >
+                          İptal
+                        </button>
+                      </div>
+                    )}
                   </div>
 
                   {/* Açıklama */}

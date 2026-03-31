@@ -17,7 +17,7 @@ interface Product {
   stock_quantity: number;
   critical_limit: number;
   tax_rate: number;
-  categories: { name: string } | null;
+  categories: { name: string } | { name: string }[] | null; // ✅ Dizi veya tek nesne
 }
 
 interface StockMovement {
@@ -39,6 +39,12 @@ interface InventoryLog {
   unit_price: number | null;
   note: string | null;
   created_at: string;
+}
+
+// ✅ YENİ: Tüm log verilerini client-side pagination için tut
+interface AllMovements {
+  data: StockMovement[];
+  total: number;
 }
 
 // ─── Yardımcılar ────────────────────────────────────────────────────────────
@@ -87,43 +93,57 @@ export default function ProductDetailPage() {
   const id = params?.id as string;
 
   const [product, setProduct] = useState<Product | null>(null);
-  const [movements, setMovements] = useState<StockMovement[]>([]);
+  const [allMovements, setAllMovements] = useState<AllMovements>({ data: [], total: 0 }); // ✅ TÜM VERİ BİR KEREDE
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [isStockModalOpen, setIsStockModalOpen] = useState(false);
   const [currentPage, setCurrentPage] = useState(0);
-  const [totalMovements, setTotalMovements] = useState(0);
-  const [isLoadingTable, setIsLoadingTable] = useState(false);
   const [isAnimating, setIsAnimating] = useState(false);
+  const [userId, setUserId] = useState<string | null>(null);
   const tableRef = useRef<HTMLDivElement>(null);
-  const ITEMS_PER_PAGE = 5;
+  const ITEMS_PER_PAGE = 5; // Client-side pagination için
 
-  // ✅ REAL-TIME REFRESH: Sayfa dışarıdan veri değiştiğinde refresh eder
-  const triggerTableRefresh = useCallback(async () => {
-    console.log("🔄 Real-time refresh triggered");
-    setCurrentPage(0);
-    await fetchMovements(0);
+  // ── Kullanıcı ID'sini Al ────────────────────────────────────────────────
+  useEffect(() => {
+    async function getUser() {
+      const { data: { user }, error } = await supabase.auth.getUser();
+      if (error || !user) {
+        setError("Kullanıcı oturum açmamış.");
+        return;
+      }
+      setUserId(user.id);
+    }
+    getUser();
   }, []);
 
-  // ✅ SMOOTH PAGINATION: Sayfa yenilemeden veri çeker
-  const fetchMovements = useCallback(async (page: number) => {
-    if (!id) return;
-    setIsAnimating(true);
-    setIsLoadingTable(true);
+  // ✅ TAZELENME: Verileri sunucudan çek ve client-side pagination ile göster
+  const updateProductData = useCallback(async () => {
+    if (!id || !userId) return;
 
     try {
-      const from = page * ITEMS_PER_PAGE;
-      const to = from + ITEMS_PER_PAGE - 1;
+      // 1. Ürün verilerini çek
+      const { data: prod, error: prodErr } = await supabase
+        .from("products")
+        .select("id, sku, name, purchase_price, sale_price, stock_quantity, critical_limit, tax_rate, categories(name)")
+        .eq("id", id)
+        .eq("user_id", userId)
+        .single();
 
+      if (prodErr) throw prodErr;
+      setProduct(prod as Product);
+      console.log("✅ Ürün verisi tazelendi:", prod);
+
+      // 2. TÜM inventory_logs'u çek (20-30 kaydı bir seferde)
       const { data: logs, error: logsErr, count: totalCount } = await supabase
         .from("inventory_logs")
         .select("id, product_id, action_type, quantity_change, previous_stock, new_stock, note, unit_price, created_at", { count: "exact" })
         .eq("product_id", id)
+        .eq("user_id", userId)
         .order("created_at", { ascending: false })
-        .range(from, to);
+        .limit(30); // ✅ Maksimum 30 kaydı bir kez yükle
 
       if (!logsErr && logs && logs.length > 0) {
-        const mapped: StockMovement[] = logs.map((log: InventoryLog & { unit_price?: number | null }) => ({
+        const mapped: StockMovement[] = logs.map((log: InventoryLog) => ({
           id: log.id,
           date: log.created_at,
           type: log.action_type,
@@ -131,17 +151,18 @@ export default function ProductDetailPage() {
           unit_price: log.unit_price ?? null,
           notes: log.note,
         }));
-        setMovements(mapped);
-        setTotalMovements(totalCount || 0);
-        console.log("✅ Hareket (Sayfa " + (page + 1) + ")", mapped);
+        setAllMovements({ data: mapped, total: totalCount || 0 });
+        setCurrentPage(0); // ✅ Sayfayı 0'a dön
+        console.log("✅ Inventory logs tazelendi:", mapped.length, "kayıt yüklendi");
       } else if (logsErr) {
-        console.warn("Fallback: invoice_items", logsErr);
+        console.warn("⚠️ inventory_logs sorgusu başarısız, fallback yapılıyor...", logsErr);
+        // Fallback: Eski fatura verilerinden göster
         const { data: items, count: itemCount } = await supabase
           .from("invoice_items")
           .select("id, quantity, unit_price, invoices(id, invoice_date, type, notes)", { count: "exact" })
           .eq("product_id", id)
           .order("id", { ascending: false })
-          .range(from, to);
+          .limit(30);
 
         if (items && items.length > 0) {
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -156,98 +177,47 @@ export default function ProductDetailPage() {
               notes: inv?.notes ?? null,
             };
           });
-          setMovements(mapped);
-          setTotalMovements(itemCount || 0);
+          setAllMovements({ data: mapped, total: itemCount || 0 });
+          setCurrentPage(0);
+        } else {
+          setAllMovements({ data: [], total: 0 });
         }
+      } else {
+        setAllMovements({ data: [], total: 0 });
       }
-    } catch (err: unknown) {
-      console.error("Hareket yükleme hatası:", err);
-    } finally {
-      setIsLoadingTable(false);
-      setTimeout(() => setIsAnimating(false), 300);
-    }
-  }, [id]);
 
-  useEffect(() => {
-    if (!id) return;
-
-    async function fetchData() {
-      setLoading(true);
       setError(null);
-      try {
-        // 1. Ürün + kategori
-        const { data: prod, error: prodErr } = await supabase
-          .from("products")
-          .select("id, sku, name, purchase_price, sale_price, stock_quantity, critical_limit, tax_rate, categories(name)")
-          .eq("id", id)
-          .single();
+    } catch (err: unknown) {
+      const errorMsg = err instanceof Error ? err.message : "Veriler yüklenemedi.";
+      console.error("❌ Veri tazeleme hatası:", err);
+      setError(errorMsg);
+    }
+  }, [id, userId]);
 
-        if (prodErr) throw prodErr;
-        console.log("Ürün verileri:", prod);
-        setProduct(prod as Product);
+  // ✅ MODAL KAPANDIKTAN SONRA: Sayfa anlık güncellenir
+  const handleStockUpdateSuccess = useCallback(async () => {
+    console.log("✅ Stok işlemi başarılı, veriler tazeleniyor...");
+    setIsStockModalOpen(false);
+    
+    // Sunucudan dinamik veriyi al (Supabase'den tazelenmiş stock_quantity)
+    await updateProductData();
+    
+    // Next.js cache'ini sıfırla
+    await router.refresh();
+  }, [updateProductData, router]);
 
-        // ✅ GÖREV 3: inventory_logs tablosundan paginated hareketi çek + toplam sayısını bul
-        const from = currentPage * ITEMS_PER_PAGE;
-        const to = from + ITEMS_PER_PAGE - 1;
+  // ✅ İLK YÜKLEMEDE: Ürün ve 30 kaydı bir seferde çek
+  useEffect(() => {
+    if (!id || !userId) return;
 
-        const { data: logs, error: logsErr, count: totalCount } = await supabase
-          .from("inventory_logs")
-          .select("id, product_id, action_type, quantity_change, previous_stock, new_stock, note, unit_price, created_at", { count: "exact" })
-          .eq("product_id", id)
-          .order("created_at", { ascending: false })
-          .range(from, to);
-
-        if (!logsErr && logs && logs.length > 0) {
-          // Inventory logs verilerini StockMovement formatına dönüştür
-          const mapped: StockMovement[] = logs.map((log: InventoryLog & { unit_price?: number | null }) => ({
-            id: log.id,
-            date: log.created_at,
-            type: log.action_type,
-            quantity: Math.abs(log.quantity_change),
-            unit_price: log.unit_price ?? null,
-            notes: log.note,
-          }));
-          setMovements(mapped);
-          setTotalMovements(totalCount || 0);
-          console.log("inventory_logs verileri yüklendi:", mapped, "Toplam:", totalCount);
-        } else if (logsErr) {
-          console.warn("inventory_logs yüklenmedi, eski veriler kullanılıyor:", logsErr);
-          // Fallback: Eski hareketleri çek (invoice_items)
-          const { data: items, count: itemCount } = await supabase
-            .from("invoice_items")
-            .select("id, quantity, unit_price, invoices(id, invoice_date, type, notes)", { count: "exact" })
-            .eq("product_id", id)
-            .order("id", { ascending: false })
-            .range(from, to);
-
-          if (items && items.length > 0) {
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
-            const mapped: StockMovement[] = items.map((row: any) => {
-              const inv = Array.isArray(row.invoices) ? row.invoices[0] : row.invoices;
-              return {
-                id: row.id,
-                date: inv?.invoice_date ?? new Date().toISOString(),
-                type: inv?.type ?? "sale",
-                quantity: row.quantity ?? 0,
-                unit_price: row.unit_price ?? null,
-                notes: inv?.notes ?? null,
-              };
-            });
-            setMovements(mapped);
-            setTotalMovements(itemCount || 0);
-          }
-        }
-      } catch (err: unknown) {
-        const errorMsg = err instanceof Error ? err.message : "Ürün yüklenemedi.";
-        console.error("Ürün detay sayfası hata:", err);
-        setError(errorMsg);
-      } finally {
-        setLoading(false);
-      }
+    async function initialize() {
+      setLoading(true);
+      await updateProductData();
+      setLoading(false);
     }
 
-    fetchData();
-  }, [id, currentPage]);
+    initialize();
+  }, [id, userId, updateProductData]);
 
   // ── Hesaplamalar ──────────────────────────────────────────────────────────
   const margin =
@@ -259,7 +229,13 @@ export default function ProductDetailPage() {
     ? product.stock_quantity * product.purchase_price
     : 0;
 
-  const categoryName = product?.categories?.name ?? "Kategorisiz";
+  // ✅ Kategori adını al (Array veya Single nesne olabilir)
+  const categoryName =
+    product && product.categories
+      ? Array.isArray(product.categories)
+        ? product.categories[0]?.name ?? "Kategorisiz"
+        : product.categories.name ?? "Kategorisiz"
+      : "Kategorisiz";
 
   const stockLabel =
     product
@@ -477,31 +453,22 @@ export default function ProductDetailPage() {
           </div>
         </div>
 
-        <div ref={tableRef} className={`overflow-x-auto transition-opacity duration-300 ${isAnimating ? "opacity-60" : "opacity-100"}`}>
-          <table className="w-full text-left border-collapse">
+        {/* ✅ Fixed Table Layout: Sütun genişlikleri sabit, içerik taşmaz */}
+        <div ref={tableRef} className={`overflow-x-auto transition-opacity duration-300 min-h-[400px] ${isAnimating ? "opacity-60" : "opacity-100"}`}>
+          <table className="w-full text-left border-collapse table-fixed">
             <thead>
               <tr className="bg-surface-container-low/50">
-                <th className="w-40 px-6 py-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest">Tarih</th>
-                <th className="w-40 px-6 py-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest">İşlem Türü</th>
-                <th className="w-28 px-6 py-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest">Miktar</th>
-                <th className="w-32 px-6 py-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest">Birim Fiyat</th>
-                <th className="flex-1 px-6 py-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest">Açıklama</th>
+                <th className="w-[140px] px-6 py-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest align-middle">Tarih</th>
+                <th className="w-[180px] px-6 py-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest align-middle">İşlem Türü</th>
+                <th className="w-[120px] px-6 py-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest align-middle">Miktar</th>
+                <th className="w-[130px] px-6 py-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest align-middle">Birim Fiyat</th>
+                <th className="w-auto px-6 py-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest align-middle">Açıklama</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-indigo-50/50">
-              {isLoadingTable && (
+              {allMovements.data.length === 0 ? (
                 <tr>
-                  <td colSpan={5} className="px-6 py-8 text-center">
-                    <div className="flex justify-center items-center gap-2">
-                      <div className="w-2 h-2 bg-primary rounded-full animate-pulse" />
-                      <span className="text-sm text-slate-400 font-medium">Veriler yükleniyor...</span>
-                    </div>
-                  </td>
-                </tr>
-              )}
-              {!isLoadingTable && movements.length === 0 ? (
-                <tr>
-                  <td colSpan={5} className="px-6 py-16 text-center">
+                  <td colSpan={5} className="px-6 py-16 text-center align-middle">
                     <span className="material-symbols-outlined text-slate-200 text-5xl block mb-3">
                       history
                     </span>
@@ -511,57 +478,68 @@ export default function ProductDetailPage() {
                     </p>
                   </td>
                 </tr>
-              ) : !isLoadingTable ? (
-                movements.map((m) => {
-                  const { date, time } = fmtDate(m.date);
-                  const isSale = m.type === "sale" || m.type === "Azalt";
-                  const isReturn = m.type === "return";
-                  const qtySign = isSale ? "-" : "+";
-                  const qtyColor = isSale ? "text-error" : "text-emerald-600";
+              ) : (
+                // ✅ CLIENT-SIDE PAGINATION: Tüm veriyi slice ile böl
+                allMovements.data
+                  .slice(currentPage * ITEMS_PER_PAGE, (currentPage + 1) * ITEMS_PER_PAGE)
+                  .map((m) => {
+                    const { date, time } = fmtDate(m.date);
+                    const isSale = m.type === "sale" || m.type === "Azalt";
+                    const isReturn = m.type === "return";
+                    const qtySign = isSale ? "-" : "+";
+                    const qtyColor = isSale ? "text-error" : "text-emerald-600";
 
-                  return (
-                    <tr key={m.id} className="hover:bg-indigo-50/30 transition-colors">
-                      <td className="w-40 px-6 py-5">
-                        <div className="flex flex-col">
-                          <span className="text-sm font-semibold text-on-surface">{date}</span>
-                          <span className="text-[10px] text-slate-400">{time}</span>
-                        </div>
-                      </td>
-                      <td className="w-40 px-6 py-5">
-                        <MovementBadge type={m.type} />
-                      </td>
-                      <td className="w-28 px-6 py-5">
-                        {m.type === "adjustment" ? (
-                          <span className="text-sm font-bold text-slate-600">Sabit</span>
-                        ) : (
-                          <span className={`text-sm font-bold ${!isReturn && isSale ? qtyColor : "text-emerald-600"}`}>
-                            {qtySign}{Math.abs(m.quantity)} Adet
+                    return (
+                      <tr key={m.id} className="hover:bg-indigo-50/30 transition-colors align-middle">
+                        <td className="w-[140px] px-6 py-5 align-middle">
+                          <div className="flex flex-col">
+                            <span className="text-sm font-semibold text-on-surface">{date}</span>
+                            <span className="text-[10px] text-slate-400">{time}</span>
+                          </div>
+                        </td>
+                        <td className="w-[180px] px-6 py-5 align-middle">
+                          <MovementBadge type={m.type} />
+                        </td>
+                        <td className="w-[120px] px-6 py-5 align-middle text-center">
+                          {m.type === "adjustment" ? (
+                            <span className="text-sm font-bold text-slate-600">Sabit</span>
+                          ) : (
+                            <span className={`text-sm font-bold ${!isReturn && isSale ? qtyColor : "text-emerald-600"}`}>
+                              {qtySign}{Math.abs(m.quantity)} Adet
+                            </span>
+                          )}
+                        </td>
+                        <td className="w-[130px] px-6 py-5 align-middle text-right">
+                          <span className="text-sm font-medium text-slate-600">
+                            {m.unit_price != null ? fmt(m.unit_price) : "—"}
                           </span>
-                        )}
-                      </td>
-                      <td className="w-32 px-6 py-5 text-sm font-medium text-slate-600">
-                        {m.unit_price != null ? fmt(m.unit_price) : "—"}
-                      </td>
-                      <td className="flex-1 px-6 py-5 text-sm text-slate-500 italic truncate max-w-xs" title={m.notes ?? ""}>
-                        {m.notes ?? "—"}
-                      </td>
-                    </tr>
-                  );
-                })
-              ) : null}
+                        </td>
+                        <td className="w-auto px-6 py-5 align-middle">
+                          <span className="text-sm text-slate-500 italic line-clamp-2 break-words" title={m.notes ?? ""}>
+                            {m.notes ?? "—"}
+                          </span>
+                        </td>
+                      </tr>
+                    );
+                  })
+              )}
             </tbody>
           </table>
         </div>
 
         <div className="p-6 bg-surface-container-low/30 border-t border-indigo-50 flex justify-between items-center">
           <p className="text-xs text-slate-500">
-            {totalMovements === 0
+            {allMovements.total === 0
               ? "Kayıt bulunamadı"
-              : `${movements.length} / ${totalMovements} kayıt gösteriliyor (Sayfa ${currentPage + 1})`}
+              : `${allMovements.data.slice(currentPage * ITEMS_PER_PAGE, (currentPage + 1) * ITEMS_PER_PAGE).length} / ${allMovements.total} kayıt gösteriliyor (Sayfa ${currentPage + 1})`}
           </p>
           <div className="flex gap-2">
             <button
-              onClick={() => setCurrentPage(currentPage - 1)}
+              onClick={() => {
+                setIsAnimating(true);
+                setCurrentPage(currentPage - 1);
+                setTimeout(() => setIsAnimating(false), 300);
+              }}
               disabled={currentPage === 0}
               className="px-4 py-2 text-xs font-bold rounded-lg border border-indigo-50 transition-all bg-white flex items-center gap-2 disabled:text-slate-300 disabled:cursor-not-allowed disabled:opacity-50 enabled:text-primary enabled:hover:bg-indigo-50"
             >
@@ -569,8 +547,12 @@ export default function ProductDetailPage() {
               Önceki
             </button>
             <button
-              onClick={() => setCurrentPage(currentPage + 1)}
-              disabled={(currentPage + 1) * ITEMS_PER_PAGE >= totalMovements}
+              onClick={() => {
+                setIsAnimating(true);
+                setCurrentPage(currentPage + 1);
+                setTimeout(() => setIsAnimating(false), 300);
+              }}
+              disabled={(currentPage + 1) * ITEMS_PER_PAGE >= allMovements.total}
               className="px-4 py-2 text-xs font-bold rounded-lg border border-indigo-50 transition-all bg-white flex items-center gap-2 disabled:text-slate-300 disabled:cursor-not-allowed disabled:opacity-50 enabled:text-primary enabled:hover:bg-indigo-50"
             >
               <span className="material-symbols-outlined text-sm">arrow_forward</span>
@@ -581,19 +563,18 @@ export default function ProductDetailPage() {
       </section>
 
       {/* ── Stok Ayarlama Modalı ── */}
-      {product && (
+      {product && userId && (
         <StockAdjustmentModal
           isOpen={isStockModalOpen}
           onClose={() => setIsStockModalOpen(false)}
-          onSuccess={() => {
-            // Modal kapatıldığında başka bir işlem varsa buraya ekle
-          }}
-          onTableRefresh={triggerTableRefresh}
+          onSuccess={handleStockUpdateSuccess}
+          onTableRefresh={updateProductData}
           productId={product.id}
           productName={product.name}
           currentStock={product.stock_quantity}
           salePriceAtTime={product.sale_price}
           purchasePriceAtTime={product.purchase_price}
+          userId={userId}
         />
       )}
 

@@ -58,7 +58,21 @@ export default function CariHesapSayfasi() {
 
   // ── Fetch from Supabase ──
   const fetchCariler = async () => {
-    const { data, error } = await supabase.from("cariler").select("*").order("id", { ascending: false });
+    // ✅ Giriş yapan kullanıcı bilgisini al
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) {
+      console.error("Kullanıcı oturum açmamış");
+      setLoading(false);
+      return;
+    }
+    
+    // ✅ SELECT sorgusuna .eq('user_id', user.id) filtreleme ekle
+    const { data, error } = await supabase
+      .from("cariler")
+      .select("*")
+      .eq("user_id", user.id)  // ✅ RLS policy başarılı olsun diye eklendi
+      .order("id", { ascending: false });
+    
     if (error) {
       console.error("Veri çekme hatası:", error);
     } else {

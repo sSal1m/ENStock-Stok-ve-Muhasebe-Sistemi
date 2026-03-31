@@ -41,18 +41,32 @@ export default function EditProductPage() {
   const [error, setError] = useState<string | null>(null);
   const [lastUpdate, setLastUpdate] = useState<string | null>(null);
   const [updater, setUpdater] = useState<string>("Bilinmeyen Kullanıcı"); // Opsiyonel bilgi
+  const [userId, setUserId] = useState<string | null>(null);
+
+  // ── Kullanıcı ID'sini Al ────────────────────────────────────────────────
+  useEffect(() => {
+    async function getUser() {
+      const { data: { user }, error } = await supabase.auth.getUser();
+      if (error || !user) {
+        setError("Kullanıcı oturum açmamış.");
+        return;
+      }
+      setUserId(user.id);
+    }
+    getUser();
+  }, []);
 
   // Veri yükleme
   useEffect(() => {
-    if (!id) return;
+    if (!id || !userId) return;
 
     async function loadData() {
       setLoading(true);
       setError(null);
       try {
         const [catRes, prodRes] = await Promise.all([
-          supabase.from("categories").select("id, name").order("name"),
-          supabase.from("products").select("*").eq("id", id).single(),
+          supabase.from("categories").select("id, name").eq("user_id", userId).order("name"),
+          supabase.from("products").select("*").eq("id", id).eq("user_id", userId).single(),
         ]);
 
         if (catRes.error) throw catRes.error;
@@ -90,13 +104,19 @@ export default function EditProductPage() {
     }
 
     loadData();
-  }, [id]);
+  }, [id, userId]);
 
   // Kaydetme işlemi
   const handleSave = async () => {
     if (!form.name || !form.sku) {
       setError("Ürün adı ve SKU zorunludur.");
       toast.error("Ürün adı ve SKU zorunludur.");
+      return;
+    }
+
+    if (!userId) {
+      setError("Kullanıcı oturum açmamış.");
+      toast.error("Kullanıcı oturum açmamış.");
       return;
     }
 
@@ -130,22 +150,42 @@ export default function EditProductPage() {
         updated_at: new Date().toISOString(),
       };
 
-      console.log("Supabase güncellemesi yapılıyor:", updates);
+      console.log("📝 Ürün güncellemesi yapılıyor:", updates);
+      console.log("🔐 User ID:", userId);
 
-      const { error: updateError } = await supabase
+      const { data: updateData, error: updateError } = await supabase
         .from("products")
         .update(updates)
-        .eq("id", id);
+        .eq("id", id)
+        .eq("user_id", userId)
+        .select();
 
       if (updateError) {
-        console.error("Supabase güncellememe hatası:", updateError);
+        console.error("❌ Ürün güncelleme hatası:", updateError);
+        console.error("Hata detayları:", {
+          message: updateError.message,
+          code: updateError.code,
+          hint: updateError.hint,
+        });
         throw updateError;
       }
+
+      if (!updateData || updateData.length === 0) {
+        const msg = "Ürün güncellenemedi. Lütfen erişim izinlerinizi kontrol edin.";
+        console.error("❌ " + msg);
+        setError(msg);
+        toast.error(msg);
+        setSaving(false);
+        return;
+      }
+
+      console.log("✅ Ürün başarıyla güncellendi:", updateData);
 
       // ✅ GÖREV 2: Ürün Düzenleme İşlemini Kaydet (unit_price ile)
       const { error: logError } = await supabase
         .from("inventory_logs")
         .insert({
+          user_id: userId,
           product_id: id,
           action_type: "Güncellemeler",
           quantity_change: 0,
@@ -157,8 +197,10 @@ export default function EditProductPage() {
         });
 
       if (logError) {
-        console.error("inventory_logs kaydında hata:", logError);
+        console.error("⚠️ inventory_logs kaydında hata:", logError);
         // Log hatası kritik değil, devam et
+      } else {
+        console.log("✅ Inventory log başarıyla kaydedildi");
       }
       
       // Toast bildirimi göster
@@ -167,16 +209,31 @@ export default function EditProductPage() {
         icon: "✅",
       });
 
-      // Başarılı olursa ana listeye dön
+      // ✅ GÖREV: Next.js önbelleğini temizle ve yeniden yükle
+      console.log("🔄 Next.js cache temizleniyor...");
+      router.refresh();
+
+      // Başarılı olursa ürün detay sayfasına dön
       setTimeout(() => {
-        router.push("/inventory");
+        console.log("➡️ /inventory/" + id + " sayfasına yönlendiriliyor");
+        router.push("/inventory/" + id);
       }, 1500);
     } catch (err: unknown) {
       const errorMsg = err instanceof Error ? err.message : "Bilinmeyen bir hata oluştu.";
-      console.error("Kaydetme işleminde detaylı hata:", err);
+      console.error("🔥 Kaydetme işleminde detaylı hata:", err);
+      
+      // RLS veya auth hataları için ekstra debug
+      if (err && typeof err === "object" && "code" in err) {
+        console.error("Supabase Hata Kodu:", (err as any).code);
+        console.error("Supabase Hata Hint:", (err as any).hint);
+      }
+      
       setError(errorMsg);
       toast.error(errorMsg);
       setSaving(false);
+      
+      // İşlemi durdur - sayfa hiçbir şey değişmemiş gibi kalır
+      return;
     }
   };
 

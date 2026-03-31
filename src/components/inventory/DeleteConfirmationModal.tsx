@@ -7,9 +7,10 @@ import toast from "react-hot-toast";
 interface Props {
   isOpen: boolean;
   onClose: () => void;
-  onSuccess: () => void;
+  onSuccess: (productId: string) => void;
   productId: string;
   productName: string;
+  userId?: string;
 }
 
 export default function DeleteConfirmationModal({
@@ -18,6 +19,7 @@ export default function DeleteConfirmationModal({
   onSuccess,
   productId,
   productName,
+  userId,
 }: Props) {
   const [deleting, setDeleting] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -47,25 +49,38 @@ export default function DeleteConfirmationModal({
     setError(null);
 
     try {
+      // 🔧 DEBUG: productId'nin doğru geldiğini kontrol et
+      console.log("🗑️ Siliniyor - Product ID:", productId, "User ID:", userId);
+      
+      if (!productId || !userId) {
+        throw new Error("Product ID veya User ID eksik!");
+      }
+
       const { error: deleteError } = await supabase
         .from("products")
         .delete()
-        .eq("id", productId);
+        .eq("id", productId)
+        .eq("user_id", userId);
 
-      if (deleteError) throw deleteError;
+      if (deleteError) {
+        console.error("❌ Silme Hatası:", deleteError);
+        throw deleteError;
+      }
 
+      console.log("✅ Veritabanından silme başarılı");
       toast.success(`"${productName}" başarıyla silindi!`, {
         duration: 3000,
         icon: "🗑️",
       });
 
-      onSuccess();
+      onSuccess(productId);
       onClose();
     } catch (err: unknown) {
       const errorMessage =
         err instanceof Error ? err.message : "Bilinmeyen bir hata oluştu.";
+      console.error("❌ Silme işlemi hatası:", errorMessage);
       setError(errorMessage);
-      toast.error(errorMessage, { duration: 3000 });
+      toast.error(`Hata: ${errorMessage}`, { duration: 4000 });
       setDeleting(false);
     }
   }

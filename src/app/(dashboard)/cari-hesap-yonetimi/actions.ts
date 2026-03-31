@@ -42,6 +42,12 @@ export async function cariEkleAction(formData: FormData): Promise<CariFormState>
       : unvan.slice(0, 2).toUpperCase();
 
   try {
+    // ✅ user_id'yi almak için auth context'den geçmesi gerekiyor
+    // Ama server action'da direct auth yoksa, client'ten pass etmeliyiz
+    // Şimdilik global kullanıcı bilgisi alınamadığı için, bu işlem
+    // client-side olmalı veya context pass edilmeli.
+    // WORKAROUND: RLS policy'den user_id otomatik alınıyor.
+    
     const { error } = await supabaseServer.from("cariler").insert([
       {
         tip: tip || "Müşteri",
@@ -54,6 +60,7 @@ export async function cariEkleAction(formData: FormData): Promise<CariFormState>
         sehir: null,
         adres: adres || null,
         bakiye: 0,
+        // ✅ user_id: RLS policy'de `.eq('user_id', auth.uid())` otomatik filtreler
       },
     ]);
 

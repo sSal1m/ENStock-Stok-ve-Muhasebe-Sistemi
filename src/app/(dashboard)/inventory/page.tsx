@@ -18,7 +18,7 @@ interface Product {
   sale_price: number;
   stock_quantity: number;
   critical_limit: number;
-  categories: { name: string }[] | null;
+  categories: { name: string }[] | { name: string } | null;
 }
 
 interface Category {
@@ -94,34 +94,60 @@ export default function InventoryPage() {
   const [stockFilter, setStockFilter] = useState("all");
 
   const [loading, setLoading] = useState(true);
+  const [isAnimating, setIsAnimating] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [isCategoryModalOpen, setIsCategoryModalOpen] = useState(false);
   const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<{ id: string; name: string } | null>(null);
+  const [userId, setUserId] = useState<string | null>(null);
   const router = useRouter();
+
+  // ── Kullanıcı ID'sini Al ────────────────────────────────────────────────
+  useEffect(() => {
+    async function getUser() {
+      const { data: { user }, error } = await supabase.auth.getUser();
+      if (error || !user) {
+        setError("Kullanıcı oturum açmamış.");
+        return;
+      }
+      setUserId(user.id);
+    }
+    getUser();
+  }, []);
 
   // ── Veri Çekme ──────────────────────────────────────────────────────────
   const fetchAll = useCallback(async () => {
+    if (!userId) return;
     setLoading(true);
     setError(null);
+    setIsAnimating(false);
     try {
-      // 1. Kategorileri çek
+      // 1. Kategorileri çek (sadece bu kullanıcının)
       const { data: categoryData, error: categoryError } = await supabase
         .from("categories")
         .select("id, name")
+        .eq("user_id", userId)
         .order("name");
 
       if (categoryError) throw categoryError;
       setCategories((categoryData ?? []) as Category[]);
 
-      // 2. Ürünler + kategori join
+      // 2. ✅ Ürünler + kategori join (sadece bu kullanıcının)
       const { data: productData, error: productError } = await supabase
         .from("products")
         .select("id, sku, name, purchase_price, sale_price, stock_quantity, critical_limit, categories(name)")
+        .eq("user_id", userId)
         .order("name");
 
       if (productError) throw productError;
       const prods = (productData ?? []) as Product[];
+      
+      // 🔧 DEBUG: Veri yapısını kontrol et
+      if (prods.length > 0) {
+        console.log("📊 Gelen Veri (İlk Ürün):", prods[0]);
+        console.log("📊 Categories Tipi:", typeof prods[0].categories);
+        console.log("📊 Categories İçeriği:", prods[0].categories);
+      }
 
       // 3. İnsights: kritik limit altındaki ürünler
       const criticals = prods.filter((p) => p.stock_quantity <= p.critical_limit);
@@ -132,10 +158,11 @@ export default function InventoryPage() {
         0
       );
 
-      // 5. Fatura sayısı
+      // 5. Fatura sayısı (sadece bu kullanıcının)
       const { count: invoiceCount } = await supabase
         .from("invoices")
-        .select("id", { count: "exact", head: true });
+        .select("id", { count: "exact", head: true })
+        .eq("user_id", userId);
 
       setProducts(prods);
       setFiltered(prods);
@@ -146,6 +173,7 @@ export default function InventoryPage() {
         totalStockValue,
         invoiceCount: invoiceCount ?? 0,
       });
+      setError(null);
     } catch (err: unknown) {
       const errorMsg = err instanceof Error ? err.message : "Bilinmeyen bir hata oluştu.";
       setError(errorMsg);
@@ -153,7 +181,7 @@ export default function InventoryPage() {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [userId]);
 
   useEffect(() => {
     fetchAll();
@@ -174,12 +202,20 @@ export default function InventoryPage() {
     // Kategori filtresi — kategorileri ID ile kontrol et
     if (categoryFilter !== "all") {
       result = result.filter((p) => {
-        // Supabase'ten gelen categories bir object (dikkat: array DEĞİL)
         const selectedCategory = categories.find((c) => c.id === categoryFilter);
         if (!selectedCategory) return false;
         
-        // categories nested object olduğu için doğrudan karşılaştır
-        return p.categories?.name === selectedCategory.name;
+        // ✅ inventory page'de categories array, object veya null olabilir
+        let categoryName: string | null = null;
+        if (p.categories) {
+          if (Array.isArray(p.categories)) {
+            categoryName = p.categories[0]?.name || null;
+          } else {
+            categoryName = (p.categories as { name: string }).name || null;
+          }
+        }
+        
+        return categoryName === selectedCategory.name;
       });
     }
 
@@ -426,7 +462,16 @@ export default function InventoryPage() {
                 filtered.map((item) => {
                   const level = getStockLevel(item.stock_quantity, item.critical_limit);
                   const percent = getStockPercent(item.stock_quantity, item.critical_limit);
-                  const categoryName = item.categories?.name ?? "—";
+                  
+                  // 🔧 Kategori adını al - hem array hem object formatını destekle
+                  let categoryName = "Kategorisiz";
+                  if (item.categories) {
+                    if (Array.isArray(item.categories)) {
+                      categoryName = item.categories[0]?.name || "Kategorisiz";
+                    } else {
+                      categoryName = (item.categories as { name: string }).name || "Kategorisiz";
+                    }
+                  }
 
                   return (
                     <tr key={item.id} className="hover:bg-indigo-50/20 transition-colors group">
@@ -622,10 +667,14 @@ export default function InventoryPage() {
       <CategoryModal
         isOpen={isCategoryModalOpen}
         onClose={() => setIsCategoryModalOpen(false)}
-        onSuccess={() => {
+        onSuccess={async () => {
+          setIsAnimating(true);
           toast.success("Kategori başarıyla eklendi!", { duration: 3000 });
-          fetchAll();
+          await fetchAll();
+          await router.refresh();
+          setIsAnimating(false);
         }}
+        userId={userId || ""}
       />
 
       {/* ── Silme Onay Modalı ── */}
@@ -636,13 +685,33 @@ export default function InventoryPage() {
             setIsDeleteModalOpen(false);
             setDeleteTarget(null);
           }}
-          onSuccess={() => {
+          onSuccess={async (deletedProductId: string) => {
+            // 🔧 Local state'i hemen güncelle (optimistic update)
+            console.log("🔄 Local state güncelleniyor, Deleted ID:", deletedProductId);
+            setProducts(prev => {
+              const updated = prev.filter(p => p.id !== deletedProductId);
+              console.log("📊 Yeni ürün sayısı:", updated.length);
+              return updated;
+            });
+            
             setIsDeleteModalOpen(false);
             setDeleteTarget(null);
-            fetchAll();
+            setIsAnimating(true);
+            
+            // Sunucudan taze veriyi çek
+            console.log("🔄 Sunucudan veri çekiliyor...");
+            await fetchAll();
+            
+            // Next.js cache'ini sıfırla
+            console.log("🔄 Next.js cache sıfırlanıyor...");
+            await router.refresh();
+            
+            setIsAnimating(false);
+            console.log("✅ Silme işlemi tamamlandı");
           }}
           productId={deleteTarget.id}
           productName={deleteTarget.name}
+          userId={userId || ""}
         />
       )}
 

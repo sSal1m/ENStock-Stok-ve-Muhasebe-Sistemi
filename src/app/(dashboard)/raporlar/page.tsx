@@ -211,17 +211,7 @@ export default function RaporlarSayfasi() {
   }
 
   return (
-    <div className="flex min-h-screen font-[Manrope,sans-serif]">
-      {/* ══ SIDEBAR ══ */}
-      <Sidebar />
-
-      {/* ══ MAIN ══ */}
-      <div className="flex flex-1 flex-col md:ml-64 min-h-screen bg-[#faf8ff]">
-        {/* Top Header */}
-        <TopHeader />
-
-        {/* ── CONTENT ── */}
-        <main className="flex-1 px-8 py-10">
+    <main className="flex-1 px-8 py-10 bg-[#faf8ff]">
           <div className="mx-auto max-w-7xl space-y-7">
             {/* ── Title ── */}
             <div>
@@ -473,72 +463,5 @@ export default function RaporlarSayfasi() {
             </section>
           </div>
         </main>
-      </div>
-    </div>
-  );
-}
-
-/* ═══════════════════════════════════════════
-   UI COMPONENTS (STATIC)
-   ═══════════════════════════════════════════ */
-
-function Sidebar() {
-  return (
-    <aside className="fixed inset-y-0 left-0 z-30 hidden w-64 flex-col bg-[#f1f5f9] border-r border-slate-200/60 md:flex">
-      <div className="flex items-center gap-3 px-6 pt-7 pb-6">
-        <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-[#4b41e1] shadow-lg shadow-[#4b41e1]/30">
-          <span className="material-symbols-outlined text-white text-[22px]" style={{ fontVariationSettings: "'FILL' 1" }}>account_balance</span>
-        </div>
-        <div>
-          <h2 className="text-[15px] font-extrabold leading-tight text-slate-800">Sovereign Ledger</h2>
-          <p className="text-[11px] font-medium text-slate-400">Yönetici Paneli</p>
-        </div>
-      </div>
-      <div className="mx-5 h-px bg-slate-200/80" />
-      <nav className="flex-1 space-y-1 px-4 pt-5">
-        {NAV_ITEMS.map((n) => (
-          <a key={n.label} href={n.href}
-            className={`group flex items-center gap-3 rounded-xl px-4 py-3 text-[13px] font-semibold transition-all duration-200 ${n.active ? "bg-[#4b41e1] text-white shadow-md shadow-[#4b41e1]/25" : "text-slate-500 hover:bg-white/60 hover:text-slate-800"}`}>
-            <span className="material-symbols-outlined text-[20px]" style={n.active ? { fontVariationSettings: "'FILL' 1" } : undefined}>{n.icon}</span>
-            {n.label}
-          </a>
-        ))}
-      </nav>
-      <div className="px-4 pb-5 space-y-1">
-        <div className="mx-1 mb-3 h-px bg-slate-200/80" />
-        <a href="#" className="flex items-center gap-3 rounded-xl px-4 py-3 text-[13px] font-semibold text-slate-500 hover:bg-white/60 transition-all">
-          <span className="material-symbols-outlined text-[20px]">settings</span>Ayarlar
-        </a>
-        <a href="#" className="flex items-center gap-3 rounded-xl px-4 py-3 text-[13px] font-semibold text-slate-500 hover:bg-white/60 hover:text-red-600 transition-all">
-          <span className="material-symbols-outlined text-[20px]">logout</span>Çıkış Yap
-        </a>
-      </div>
-    </aside>
-  );
-}
-
-function TopHeader() {
-  return (
-    <header className="sticky top-0 z-20 flex items-center justify-between border-b border-slate-200/50 bg-white/70 backdrop-blur-xl backdrop-saturate-150 px-8 py-3.5">
-      <div className="relative">
-        <span className="material-symbols-outlined absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400 text-[20px]">search</span>
-        <input type="text" placeholder="Hızlı ara..." className="w-72 rounded-full border border-slate-200 bg-[#f8f9ff] py-2.5 pl-11 pr-4 text-sm text-slate-700 placeholder:text-slate-400 focus:border-[#4b41e1] focus:outline-none focus:ring-2 focus:ring-[#4b41e1]/20 transition-all" />
-      </div>
-      <div className="flex items-center gap-3">
-        <button className="relative flex h-10 w-10 items-center justify-center rounded-full hover:bg-slate-100 transition-colors">
-          <span className="material-symbols-outlined text-slate-500 text-[22px]">notifications</span>
-          <span className="absolute right-2 top-2 h-2 w-2 rounded-full bg-[#ba1a1a] ring-2 ring-white" />
-        </button>
-        <div className="h-8 w-px bg-slate-200" />
-        <div className="flex items-center gap-3">
-          <div className="h-9 w-9 rounded-full bg-gradient-to-br from-[#4b41e1] to-[#7c6cf0] flex items-center justify-center text-white text-xs font-bold shadow-md shadow-[#4b41e1]/20">AY</div>
-          <div className="hidden sm:block">
-            <p className="text-sm font-bold text-slate-800 leading-tight">Ahmet Yılmaz</p>
-            <p className="text-[11px] font-medium text-slate-400">Yönetici</p>
-          </div>
-          <span className="material-symbols-outlined text-slate-400 text-[18px]">expand_more</span>
-        </div>
-      </div>
-    </header>
   );
 }

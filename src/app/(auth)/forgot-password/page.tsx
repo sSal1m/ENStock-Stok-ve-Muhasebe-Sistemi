@@ -1,7 +1,53 @@
-import React from 'react';
+'use client';
+
+import React, { useState } from 'react';
 import Link from 'next/link';
+import { createClient } from '@supabase/supabase-js';
+import toast from 'react-hot-toast';
 
 export default function ForgotPasswordPage() {
+  const [supabase] = React.useState(() =>
+    createClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+    )
+  );
+
+  const [email, setEmail] = useState('');
+  const [isLoading, setIsLoading] = useState(false);
+  const [isSuccess, setIsSuccess] = useState(false);
+
+  const handlePasswordReset = async (e: React.FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+
+    if (!email.trim()) {
+      toast.error('E-posta adresi girin');
+      return;
+    }
+
+    setIsLoading(true);
+
+    try {
+      const { error } = await supabase.auth.resetPasswordForEmail(email, {
+        redirectTo: `${window.location.origin}/auth/callback?next=/reset-password`,
+      });
+
+      if (error) {
+        toast.error(`Hata: ${error.message}`);
+        setIsLoading(false);
+        return;
+      }
+
+      // Success - show confirmation message
+      setIsSuccess(true);
+      toast.success('Sıfırlama bağlantısı gönderildi!');
+    } catch (error) {
+      console.error('Password reset error:', error);
+      toast.error('Şifre sıfırlama işleminde hata oluştu');
+      setIsLoading(false);
+    }
+  };
+
   return (
     <div className="bg-background font-body text-on-surface antialiased">
       {/* TopNavBar */}
@@ -70,34 +116,55 @@ export default function ForgotPasswordPage() {
                   Şifrenizi sıfırlamanız için size bir e-posta göndereceğiz. Lütfen sistemde kayıtlı e-posta adresinizi girin.
                 </p>
               </header>
-              
-              <form action="#" className="space-y-6" method="POST">
-                {/* Email Field */}
-                <div className="space-y-2">
-                  <label htmlFor="email" className="block text-xs font-bold uppercase tracking-wider text-on-surface-variant font-label">
-                    E-posta Adresi
-                  </label>
-                  <div className="relative group">
-                    <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none text-outline">
-                      <span className="material-symbols-outlined text-lg">mail</span>
+
+              {/* Success Message */}
+              {isSuccess && (
+                <div className="mb-8 p-4 bg-green-50 border border-green-200 rounded-lg">
+                  <div className="flex items-center gap-3">
+                    <span className="material-symbols-outlined text-green-600">check_circle</span>
+                    <div>
+                      <p className="font-semibold text-green-800 text-sm">Başarılı!</p>
+                      <p className="text-green-700 text-sm">E-posta adresinizi kontrol edin</p>
                     </div>
-                    <input 
-                      type="email" 
-                      id="email" 
-                      name="email" 
-                      placeholder="ad@sirketiniz.com" 
-                      required 
-                      className="block w-full pl-11 pr-4 py-3.5 bg-surface-container-low border-0 rounded-lg text-on-surface placeholder:text-outline/60 focus:ring-2 focus:ring-primary/20 focus:bg-surface-container-lowest transition-all duration-200 outline-none" 
-                    />
                   </div>
                 </div>
-                
-                {/* Submit Button */}
-                <button type="submit" className="w-full signature-gradient text-on-primary font-headline font-bold py-4 rounded-lg shadow-lg hover:shadow-indigo-500/20 active:scale-[0.98] transition-all flex items-center justify-center gap-2 group">
-                  <span>Sıfırlama Bağlantısı Gönder</span>
-                  <span className="material-symbols-outlined text-xl group-hover:translate-x-1 transition-transform">arrow_forward</span>
-                </button>
-              </form>
+              )}
+              
+              {!isSuccess && (
+                <form onSubmit={handlePasswordReset} className="space-y-6">
+                  {/* Email Field */}
+                  <div className="space-y-2">
+                    <label htmlFor="email" className="block text-xs font-bold uppercase tracking-wider text-on-surface-variant font-label">
+                      E-posta Adresi
+                    </label>
+                    <div className="relative group">
+                      <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none text-outline">
+                        <span className="material-symbols-outlined text-lg">mail</span>
+                      </div>
+                      <input 
+                        type="email" 
+                        id="email" 
+                        name="email" 
+                        placeholder="ad@sirketiniz.com" 
+                        value={email}
+                        onChange={(e) => setEmail(e.target.value)}
+                        required 
+                        className="block w-full pl-11 pr-4 py-3.5 bg-surface-container-low border-0 rounded-lg text-on-surface placeholder:text-outline/60 focus:ring-2 focus:ring-primary/20 focus:bg-surface-container-lowest transition-all duration-200 outline-none" 
+                      />
+                    </div>
+                  </div>
+                  
+                  {/* Submit Button */}
+                  <button 
+                    type="submit"
+                    disabled={isLoading}
+                    className="w-full signature-gradient text-on-primary font-headline font-bold py-4 rounded-lg shadow-lg hover:shadow-indigo-500/20 active:scale-[0.98] transition-all flex items-center justify-center gap-2 group disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:shadow-lg"
+                  >
+                    <span>{isLoading ? 'Gönderiliyor...' : 'Sıfırlama Bağlantısı Gönder'}</span>
+                    {!isLoading && <span className="material-symbols-outlined text-xl group-hover:translate-x-1 transition-transform">arrow_forward</span>}
+                  </button>
+                </form>
+              )}
               
               {/* Navigation Back */}
               <div className="mt-8 pt-8 border-t border-outline-variant/10 text-center">

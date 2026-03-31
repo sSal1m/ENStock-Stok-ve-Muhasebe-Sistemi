@@ -7,13 +7,14 @@ import { supabase } from "@/lib/supabaseClient";
 interface Props {
   isOpen: boolean;
   onClose: () => void;
-  onSuccess: () => void;
+  onSuccess: () => Promise<void>; // ✅ async function
   productId: string;
   productName: string;
   currentStock: number;
   salePriceAtTime?: number;
   purchasePriceAtTime?: number;
   onTableRefresh?: () => Promise<void>;
+  userId?: string;
 }
 
 export default function StockAdjustmentModal({
@@ -26,6 +27,7 @@ export default function StockAdjustmentModal({
   salePriceAtTime = 0,
   purchasePriceAtTime = 0,
   onTableRefresh,
+  userId,
 }: Props) {
   const [operationType, setOperationType] = useState<"add" | "subtract">("add");
   const [quantity, setQuantity] = useState("");
@@ -86,16 +88,41 @@ export default function StockAdjustmentModal({
           ? currentStock + qty
           : currentStock - qty;
 
-      // Supabase'de ürünü güncelle
-      const { error: updateError } = await supabase
+      console.log("📝 Stok güncelleme işlemi başlatılıyor");
+      console.log("📊 Mevcut stok:", currentStock, "→ Yeni stok:", newStockQuantity);
+      console.log("🔐 User ID:", userId, "Product ID:", productId);
+
+      // ✅ Supabase'de ürünü güncelle - güncellemenin başarılı olduğunu kontrol et
+      const { data: updateData, error: updateError } = await supabase
         .from("products")
         .update({
           stock_quantity: newStockQuantity,
           updated_at: new Date().toISOString(),
         })
-        .eq("id", productId);
+        .eq("id", productId)
+        .eq("user_id", userId || "")
+        .select();
 
-      if (updateError) throw updateError;
+      if (updateError) {
+        console.error("❌ Ürün güncelleme hatası:", updateError);
+        console.error("Hata detayları:", {
+          message: updateError.message,
+          code: updateError.code,
+          hint: updateError.hint,
+        });
+        throw updateError;
+      }
+
+      if (!updateData || updateData.length === 0) {
+        const msg = "Stok güncellenemedi. Erişim izinlerinizi kontrol edin.";
+        console.error("❌ " + msg);
+        setError(msg);
+        toast.error(msg);
+        setSaving(false);
+        return;
+      }
+
+      console.log("✅ Ürün güncellemesi başarılı:", updateData);
 
       // ✅ GÖREV 2: Stok Hareketini Kaydet (unit_price ile)
       const previousStock = currentStock;
@@ -105,22 +132,33 @@ export default function StockAdjustmentModal({
       // İşlem anındaki birim fiyat (satış veya alış fiyatı)
       const unitPrice = operationType === "add" ? purchasePriceAtTime : salePriceAtTime;
 
+      const logPayload = {
+        user_id: userId,
+        product_id: productId,
+        action_type: actionType,
+        quantity_change: quantityChange,
+        previous_stock: previousStock,
+        new_stock: newStockQuantity,
+        unit_price: unitPrice || null,
+        note: notes || null,
+        created_at: new Date().toISOString(),
+      };
+      console.log("📤 Inventory_logs'a gönderilecek veri:", logPayload);
+
       const { error: logError } = await supabase
         .from("inventory_logs")
-        .insert({
-          product_id: productId,
-          action_type: actionType,
-          quantity_change: quantityChange,
-          previous_stock: previousStock,
-          new_stock: newStockQuantity,
-          unit_price: unitPrice || null,
-          note: notes || null,
-          created_at: new Date().toISOString(),
-        });
+        .insert(logPayload);
 
       if (logError) {
-        console.error("inventory_logs kaydında hata:", logError);
+        console.error("⚠️ inventory_logs kaydında hata:", logError);
+        console.error("Log hata detayları:", {
+          message: logError.message,
+          code: logError.code,
+          hint: logError.hint,
+        });
         // Ürün zaten güncellendiği için, log hatası kritik değil ama konsola yaz
+      } else {
+        console.log("✅ Inventory_logs başarıyla kaydedildi");
       }
 
       const action =
@@ -136,21 +174,38 @@ export default function StockAdjustmentModal({
         }
       );
 
-      // ✅ GÖREV 3: Tablo verilerini anında güncelle
+      // ✅ GÖREV 3: Tablo verilerini anında güncelle ve sayfayı yenile
       if (onTableRefresh) {
         console.log("🔄 Hareket tablosu yenileniyor...");
-        await onTableRefresh();
+        try {
+          await onTableRefresh();
+          console.log("✅ Hareket tablosu başarıyla yenilendi");
+        } catch (refreshErr) {
+          console.error("⚠️ Tablo yenileme hatası:", refreshErr);
+          // Tablo yenileme başarısız olsa da işlemi başarılı say
+        }
       }
 
-      onSuccess();
+      // ✅ onSuccess callback'i await et (handleStockUpdateSuccess async function'dır)
+      await onSuccess();
       onClose();
     } catch (err: unknown) {
       const errorMessage =
         err instanceof Error ? err.message : "Bilinmeyen bir hata oluştu.";
+      console.error("🔥 Stok ayarlama hatası:", err);
+      
+      // RLS veya auth hataları için ekstra debug
+      if (err && typeof err === "object" && "code" in err) {
+        console.error("Supabase Hata Kodu:", (err as any).code);
+        console.error("Supabase Hata Hint:", (err as any).hint);
+      }
+      
       setError(errorMessage);
       toast.error(errorMessage, { duration: 3000 });
       setSaving(false);
-      console.error("Stok ayarlama hatası:", err);
+      
+      // İşlemi durdur - sayfa hiçbir şey değişmemiş gibi kalır
+      return;
     }
   }
 

@@ -19,6 +19,8 @@ export default function ProfilePage() {
     companyName: string;
     taxId: string;
     businessSector: string;
+    address: string;
+    logoUrl: string | null;
   } | null>(null);
 
   const [isLoading, setIsLoading] = useState(true);
@@ -67,28 +69,48 @@ export default function ProfilePage() {
           .eq("id", user.id)
           .single();
 
-        if (profileError) {
-          console.error("Profile fetch error:", profileError);
-          setProfile({
-            id: user.id,
-            email: user.email || "",
-            fullName: user.user_metadata?.full_name || "",
-            avatarUrl: user.user_metadata?.avatar_url || null,
-            companyName: "Henüz Belirtilmemiş",
-            taxId: "—",
-            businessSector: "Diğer",
-          });
-        } else {
-          setProfile({
-            id: user.id,
-            email: user.email || "",
-            fullName: profileData.full_name || "",
-            avatarUrl: profileData.avatar_url || null,
-            companyName: profileData.company_name || "Sovereign Holdings Ltd.",
-            taxId: profileData.tax_id || "GB 938 4210 02",
-            businessSector: profileData.business_sector || "Doğrulanmış İşletme",
-          });
+        let baseProfileData = {
+          id: user.id,
+          email: user.email || "",
+          fullName: user.user_metadata?.full_name || "",
+          avatarUrl: user.user_metadata?.avatar_url || null,
+          companyName: "Henüz Belirtilmemiş",
+          taxId: "—",
+          businessSector: "Diğer",
+          address: "Henüz Belirtilmemiş",
+          logoUrl: null as string | null,
+        };
+
+        if (!profileError && profileData) {
+          baseProfileData = {
+            ...baseProfileData,
+            fullName: profileData.full_name || baseProfileData.fullName,
+            avatarUrl: profileData.avatar_url || baseProfileData.avatarUrl,
+            companyName: profileData.company_name || baseProfileData.companyName,
+            taxId: profileData.tax_id || baseProfileData.taxId,
+            businessSector: profileData.business_sector || baseProfileData.businessSector,
+          };
         }
+
+        // Merge with local business settings (for missing Supabase columns)
+        const localBusinessRaw = localStorage.getItem(`business_settings_${user.id}`);
+        if (localBusinessRaw) {
+          try {
+            const localData = JSON.parse(localBusinessRaw);
+            baseProfileData = {
+              ...baseProfileData,
+              companyName: localData.companyName || baseProfileData.companyName,
+              taxId: localData.taxId || baseProfileData.taxId,
+              businessSector: localData.businessSector || baseProfileData.businessSector,
+              address: localData.address || baseProfileData.address,
+              logoUrl: localData.logoUrl || baseProfileData.logoUrl,
+            };
+          } catch (e) {
+            console.error("Local data parsing error:", e);
+          }
+        }
+
+        setProfile(baseProfileData);
 
         const storedPrefs = localStorage.getItem("user_preferences");
         if (storedPrefs) {
@@ -417,8 +439,17 @@ export default function ProfilePage() {
           <div className="space-y-8">
             <div className="bg-surface-container-lowest p-6 rounded-xl border border-outline-variant/5">
               <div className="flex items-center gap-4 mb-4">
-                <div className="w-14 h-14 bg-indigo-50 rounded-lg flex items-center justify-center border border-indigo-100">
-                  <span className="material-symbols-outlined text-primary text-3xl">corporate_fare</span>
+                <div className="w-14 h-14 bg-indigo-50 rounded-lg flex items-center justify-center border border-indigo-100 relative overflow-hidden">
+                  {profile?.logoUrl ? (
+                    <Image
+                      src={profile.logoUrl}
+                      alt="Business Logo"
+                      fill
+                      style={{ objectFit: "cover" }}
+                    />
+                  ) : (
+                    <span className="material-symbols-outlined text-primary text-3xl">corporate_fare</span>
+                  )}
                 </div>
                 <div>
                   <h3 className="font-bold text-lg text-on-surface">{profile?.companyName}</h3>
@@ -432,7 +463,7 @@ export default function ProfilePage() {
                 </div>
                 <div className="flex justify-between items-start">
                   <span className="text-[11px] uppercase tracking-wider font-bold text-on-surface-variant">Kayıtlı Adres</span>
-                  <span className="text-sm font-medium text-right max-w-[180px] text-on-surface">88 Canary Wharf, Level 42, London E14 5AA</span>
+                  <span className="text-sm font-medium text-right max-w-[180px] text-on-surface">{profile?.address}</span>
                 </div>
               </div>
             </div>

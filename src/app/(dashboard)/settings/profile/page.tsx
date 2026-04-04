@@ -1,11 +1,285 @@
 "use client";
 
-import React from "react";
+import React, { useState, useEffect, useRef } from "react";
 import Image from "next/image";
+import { useRouter } from "next/navigation";
+import { supabase } from "@/lib/supabaseClient";
+import toast from "react-hot-toast";
 
 export default function ProfilePage() {
+  const router = useRouter();
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // --- Profile States ---
+  const [profile, setProfile] = useState<{
+    id: string;
+    email: string;
+    fullName: string;
+    avatarUrl: string | null;
+    companyName: string;
+    taxId: string;
+    businessSector: string;
+  } | null>(null);
+
+  const [isLoading, setIsLoading] = useState(true);
+  const [isSaving, setIsSaving] = useState(false);
+  const [isAvatarUploading, setIsAvatarUploading] = useState(false);
+  const [avatarTimestamp, setAvatarTimestamp] = useState(Date.now());
+
+  // --- Password States ---
+  const [passwordForm, setPasswordForm] = useState({
+    currentPassword: "",
+    newPassword: "",
+    confirmPassword: "",
+  });
+  const [isPasswordUpdating, setIsPasswordUpdating] = useState(false);
+
+  // --- Preferences States ---
+  const [preferences, setPreferences] = useState({
+    darkMode: false,
+    liveSync: true,
+  });
+
+  // --- Dark Mode Effect ---
+  useEffect(() => {
+    if (preferences.darkMode) {
+      document.documentElement.classList.add("dark");
+    } else {
+      document.documentElement.classList.remove("dark");
+    }
+  }, [preferences.darkMode]);
+
+  // --- Initial Fetch ---
+  useEffect(() => {
+    async function fetchUserData() {
+      setIsLoading(true);
+      try {
+        const { data: { user }, error: authError } = await supabase.auth.getUser();
+
+        if (authError || !user) {
+          router.push("/login");
+          return;
+        }
+
+        const { data: profileData, error: profileError } = await supabase
+          .from("profiles")
+          .select("*")
+          .eq("id", user.id)
+          .single();
+
+        if (profileError) {
+          console.error("Profile fetch error:", profileError);
+          setProfile({
+            id: user.id,
+            email: user.email || "",
+            fullName: user.user_metadata?.full_name || "",
+            avatarUrl: user.user_metadata?.avatar_url || null,
+            companyName: "Henüz Belirtilmemiş",
+            taxId: "—",
+            businessSector: "Diğer",
+          });
+        } else {
+          setProfile({
+            id: user.id,
+            email: user.email || "",
+            fullName: profileData.full_name || "",
+            avatarUrl: profileData.avatar_url || null,
+            companyName: profileData.company_name || "Sovereign Holdings Ltd.",
+            taxId: profileData.tax_id || "GB 938 4210 02",
+            businessSector: profileData.business_sector || "Doğrulanmış İşletme",
+          });
+        }
+
+        const storedPrefs = localStorage.getItem("user_preferences");
+        if (storedPrefs) {
+          setPreferences(JSON.parse(storedPrefs));
+        }
+      } catch (err) {
+        console.error("Critical fetch error:", err);
+        toast.error("Profil verileri yüklenirken bir hata oluştu.");
+      } finally {
+        setIsLoading(false);
+      }
+    }
+
+    fetchUserData();
+  }, [router]);
+
+  // --- Handlers & Actions ---
+
+  const handleSaveProfile = async () => {
+    if (!profile) return;
+    setIsSaving(true);
+    try {
+      const { error } = await supabase
+        .from("profiles")
+        .update({
+          full_name: profile.fullName,
+        })
+        .eq("id", profile.id);
+
+      if (error) throw error;
+
+      await supabase.auth.updateUser({
+        data: { full_name: profile.fullName }
+      });
+
+      toast.success("Profil başarıyla güncellendi.");
+    } catch (err: any) {
+      toast.error(`Güncelleme hatası: ${err.message}`);
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const handleAvatarClick = () => {
+    fileInputRef.current?.click();
+  };
+
+  const handleAvatarUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file || !profile) return;
+
+    if (file.size > 2 * 1024 * 1024) {
+      toast.error("Dosya boyutu 2MB'den büyük olamaz.");
+      return;
+    }
+
+    setIsAvatarUploading(true);
+    const toastId = toast.loading("Fotoğraf yükleniyor...");
+    try {
+      const fileExt = file.name.split(".").pop();
+      const fileName = `${profile.id}-${Math.random()}.${fileExt}`;
+      const filePath = `avatars/${fileName}`;
+
+      const { error: uploadError } = await supabase.storage
+        .from("avatars")
+        .upload(filePath, file);
+
+      if (uploadError) throw uploadError;
+
+      const { data: { publicUrl } } = supabase.storage
+        .from("avatars")
+        .getPublicUrl(filePath);
+
+      const { error: updateError } = await supabase
+        .from("profiles")
+        .update({ avatar_url: publicUrl })
+        .eq("id", profile.id);
+
+      if (updateError) throw updateError;
+
+      setProfile(prev => prev ? { ...prev, avatarUrl: publicUrl } : null);
+      setAvatarTimestamp(Date.now());
+      toast.success("Fotoğraf güncellendi.", { id: toastId });
+    } catch (err: any) {
+      toast.error(`Yükleme hatası: ${err.message}`, { id: toastId });
+    } finally {
+      setIsAvatarUploading(false);
+    }
+  };
+
+  const handlePasswordUpdate = async () => {
+    if (passwordForm.newPassword !== passwordForm.confirmPassword) {
+      toast.error("Şifreler uyuşmuyor.");
+      return;
+    }
+    if (passwordForm.newPassword.length < 6) {
+      toast.error("Şifre en az 6 karakter olmalıdır.");
+      return;
+    }
+
+    setIsPasswordUpdating(true);
+    try {
+      const { error } = await supabase.auth.updateUser({
+        password: passwordForm.newPassword,
+      });
+
+      if (error) throw error;
+
+      toast.success("Şifreniz başarıyla güncellendi.");
+      setPasswordForm({ currentPassword: "", newPassword: "", confirmPassword: "" });
+    } catch (err: any) {
+      toast.error(`Şifre hatası: ${err.message}`);
+    } finally {
+      setIsPasswordUpdating(false);
+    }
+  };
+
+  const handleExportXML = () => {
+    if (!profile) return;
+    const xmlContent = `<?xml version="1.0" encoding="UTF-8"?>
+<SovereignLedgerExport>
+  <User>
+    <Id>${profile.id}</Id>
+    <Name>${profile.fullName}</Name>
+    <Email>${profile.email}</Email>
+  </User>
+  <Business>
+    <CompanyName>${profile.companyName}</CompanyName>
+    <TaxId>${profile.taxId}</TaxId>
+  </Business>
+  <ExportDate>${new Date().toISOString()}</ExportDate>
+</SovereignLedgerExport>`;
+
+    const blob = new Blob([xmlContent], { type: "application/xml" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `config_export_${new Date().getTime()}.xml`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+    toast.success("Mimari yapılandırma XML olarak indirildi.");
+  };
+
+  const togglePreference = (key: "darkMode" | "liveSync") => {
+    const newPrefs = { ...preferences, [key]: !preferences[key] };
+    setPreferences(newPrefs);
+    localStorage.setItem("user_preferences", JSON.stringify(newPrefs));
+    toast.success(key === "darkMode" ? (newPrefs.darkMode ? "Gece modu aktif" : "Gündüz modu aktif") : "Senkronizasyon güncellendi");
+  };
+
+  if (isLoading) {
+    return (
+      <div className="flex items-center justify-center h-[70vh]">
+        <div className="animate-pulse flex flex-col items-center">
+          <div className="w-12 h-12 border-4 border-primary/20 border-t-primary rounded-full animate-spin mb-4"></div>
+          <p className="text-on-surface-variant font-bold text-sm uppercase tracking-widest">Veriler Hazırlanıyor</p>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="grid grid-cols-12 gap-8">
+      {/* Dynamic Styling Hook for Dark Mode (Scoped Override) */}
+      <style jsx global>{`
+        .dark {
+          --color-background: #0f111a;
+          --color-surface: #0f111a;
+          --color-surface-dim: #05060a;
+          --color-surface-bright: #1a1d2d;
+          --color-surface-variant: #2d3142;
+          --color-surface-container-lowest: #141724;
+          --color-surface-container-low: #1c2033;
+          --color-surface-container: #242942;
+          --color-surface-container-high: #2c3251;
+          --color-surface-container-highest: #343b60;
+          --color-on-surface: #eef0ff;
+          --color-on-surface-variant: #bfc4d9;
+          --color-outline: #6e738c;
+          --color-outline-variant: #44495e;
+          --color-on-background: #eef0ff;
+        }
+        .dark .bg-surface-container-low { background-color: var(--color-surface-container-low); }
+        .dark .bg-surface-container-lowest { background-color: var(--color-surface-container-lowest); }
+        .dark .bg-surface-container-high { background-color: var(--color-surface-container-high); }
+        .dark .text-on-surface { color: var(--color-on-surface); }
+        .dark .text-on-surface-variant { color: var(--color-on-surface-variant); }
+      `}</style>
+
       {/* Left Column: User Profile */}
       <div className="col-span-12 lg:col-span-7 space-y-8">
         {/* Profile Information Card */}
@@ -16,15 +290,33 @@ export default function ProfilePage() {
           </div>
           <div className="flex flex-col md:flex-row gap-10 items-start">
             <div className="relative group">
-              <div className="w-32 h-32 rounded-full bg-surface-container-low flex items-center justify-center overflow-hidden border-4 border-surface ring-1 ring-outline-variant/20 relative">
+              <input 
+                type="file" 
+                ref={fileInputRef} 
+                onChange={handleAvatarUpload} 
+                className="hidden" 
+                accept="image/*" 
+              />
+              <div 
+                onClick={handleAvatarClick}
+                className="w-32 h-32 rounded-full bg-surface-container-low flex items-center justify-center overflow-hidden border-4 border-surface ring-1 ring-outline-variant/20 relative cursor-pointer"
+              >
                 <Image
-                  src="https://lh3.googleusercontent.com/aida-public/AB6AXuBY5E2U5beAf0HPxnaZY_3SyyRPUzvnCyIBK8R7co4UYzbP8LSzDQTFYaWAjCrWObJ8b8an_PNCxkbdT39Lj-JVfjvS2Fj7hG2tLorvbgm8FWpmecUaQcfKyPK5RmWc4WQm22snPKPqESke94N3ANzD_ghrflBmp4Uu8JyNsOumn9J2tQOUOJ2K0ByOZChQ2-WhrXGeWwyNHxoNccGXrcTJE4Wab5TSUy3z3WoK2c_up-8q-jkCY5Xuf5Yw1dFITHkM_Zc-pJ04TlI"
+                  src={profile?.avatarUrl ? `${profile.avatarUrl}?t=${avatarTimestamp}` : "https://lh3.googleusercontent.com/aida-public/AB6AXuBY5E2U5beAf0HPxnaZY_3SyyRPUzvnCyIBK8R7co4UYzbP8LSzDQTFYaWAjCrWObJ8b8an_PNCxkbdT39Lj-JVfjvS2Fj7hG2tLorvbgm8FWpmecUaQcfKyPK5RmWc4WQm22snPKPqESke94N3ANzD_ghrflBmp4Uu8JyNsOumn9J2tQOUOJ2K0ByOZChQ2-WhrXGeWwyNHxoNccGXrcTJE4Wab5TSUy3z3WoK2c_up-8q-jkCY5Xuf5Yw1dFITHkM_Zc-pJ04TlI"}
                   alt="Avatar"
                   fill
                   style={{ objectFit: "cover" }}
-                  className="w-full h-full object-cover"
+                  className={`w-full h-full object-cover transition-opacity ${isAvatarUploading ? "opacity-30" : "opacity-100"}`}
                 />
-                <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity cursor-pointer">
+                
+                {/* Avatar Loading Spinner */}
+                {isAvatarUploading && (
+                  <div className="absolute inset-0 flex items-center justify-center">
+                    <div className="w-8 h-8 border-4 border-primary/20 border-t-primary rounded-full animate-spin"></div>
+                  </div>
+                )}
+
+                <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity">
                   <span className="material-symbols-outlined text-white">photo_camera</span>
                 </div>
               </div>
@@ -34,18 +326,32 @@ export default function ProfilePage() {
               <div className="grid grid-cols-1 gap-6">
                 <div className="space-y-1.5">
                   <label className="text-[11px] uppercase tracking-wider font-bold text-on-surface-variant ml-1">Ad Soyad</label>
-                  <input className="w-full px-4 py-3 rounded-lg bg-surface-container-low border-none focus:bg-surface-container-lowest focus:ring-2 focus:ring-primary/20 transition-all font-medium text-on-surface outline-none" type="text" defaultValue="Alexander Sovereign" />
+                  <input 
+                    className="w-full px-4 py-3 rounded-lg bg-surface-container-low border-none focus:bg-surface-container-lowest focus:ring-2 focus:ring-primary/20 transition-all font-medium text-on-surface outline-none" 
+                    type="text" 
+                    value={profile?.fullName || ""} 
+                    onChange={(e) => setProfile(prev => prev ? { ...prev, fullName: e.target.value } : null)}
+                  />
                 </div>
                 <div className="space-y-1.5">
                   <label className="text-[11px] uppercase tracking-wider font-bold text-on-surface-variant ml-1">E-posta Adresi</label>
-                  <input className="w-full px-4 py-3 rounded-lg bg-surface-container-low border-none focus:bg-surface-container-lowest focus:ring-2 focus:ring-primary/20 transition-all font-medium text-on-surface outline-none" type="email" defaultValue="alexander@sovereign-ledger.com" />
+                  <input 
+                    className="w-full px-4 py-3 rounded-lg bg-surface-container-low/50 border-none transition-all font-medium text-on-surface/50 outline-none cursor-not-allowed" 
+                    type="email" 
+                    value={profile?.email || ""} 
+                    readOnly 
+                  />
                 </div>
               </div>
             </div>
           </div>
           <div className="mt-10 flex justify-end">
-            <button className="px-8 py-3 bg-gradient-to-br from-primary to-primary-container text-white font-bold rounded-lg shadow-lg shadow-primary/20 hover:scale-[1.02] active:scale-95 transition-all text-sm">
-              Profili Kaydet
+            <button 
+              onClick={handleSaveProfile}
+              disabled={isSaving}
+              className="px-8 py-3 bg-gradient-to-br from-primary to-primary-container text-white font-bold rounded-lg shadow-lg shadow-primary/20 hover:scale-[1.02] active:scale-95 transition-all text-sm disabled:opacity-50"
+            >
+              {isSaving ? "Kaydediliyor..." : "Profili Kaydet"}
             </button>
           </div>
         </section>
@@ -59,21 +365,41 @@ export default function ProfilePage() {
           <div className="space-y-6 max-w-md">
             <div className="space-y-1.5">
               <label className="text-[11px] uppercase tracking-wider font-bold text-on-surface-variant ml-1">Mevcut Şifre</label>
-              <input className="w-full px-4 py-3 rounded-lg bg-surface-container-low border-none focus:bg-surface-container-lowest focus:ring-2 focus:ring-primary/20 transition-all font-medium text-on-surface outline-none" placeholder="••••••••••••" type="password" />
+              <input 
+                className="w-full px-4 py-3 rounded-lg bg-surface-container-low border-none focus:bg-surface-container-lowest focus:ring-2 focus:ring-primary/20 transition-all font-medium text-on-surface outline-none" 
+                placeholder="••••••••••••" 
+                type="password" 
+                value={passwordForm.currentPassword}
+                onChange={(e) => setPasswordForm(p => ({ ...p, currentPassword: e.target.value }))}
+              />
             </div>
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-1.5">
                 <label className="text-[11px] uppercase tracking-wider font-bold text-on-surface-variant ml-1">Yeni Şifre</label>
-                <input className="w-full px-4 py-3 rounded-lg bg-surface-container-low border-none focus:bg-surface-container-lowest focus:ring-2 focus:ring-primary/20 transition-all font-medium text-on-surface outline-none" type="password" />
+                <input 
+                  className="w-full px-4 py-3 rounded-lg bg-surface-container-low border-none focus:bg-surface-container-lowest focus:ring-2 focus:ring-primary/20 transition-all font-medium text-on-surface outline-none" 
+                  type="password" 
+                  value={passwordForm.newPassword}
+                  onChange={(e) => setPasswordForm(p => ({ ...p, newPassword: e.target.value }))}
+                />
               </div>
               <div className="space-y-1.5">
                 <label className="text-[11px] uppercase tracking-wider font-bold text-on-surface-variant ml-1">Yeni Şifreyi Onayla</label>
-                <input className="w-full px-4 py-3 rounded-lg bg-surface-container-low border-none focus:bg-surface-container-lowest focus:ring-2 focus:ring-primary/20 transition-all font-medium text-on-surface outline-none" type="password" />
+                <input 
+                  className="w-full px-4 py-3 rounded-lg bg-surface-container-low border-none focus:bg-surface-container-lowest focus:ring-2 focus:ring-primary/20 transition-all font-medium text-on-surface outline-none" 
+                  type="password" 
+                  value={passwordForm.confirmPassword}
+                  onChange={(e) => setPasswordForm(p => ({ ...p, confirmPassword: e.target.value }))}
+                />
               </div>
             </div>
             <div className="pt-4">
-              <button className="px-6 py-2.5 bg-secondary text-white font-bold rounded-lg hover:bg-on-secondary-container transition-colors text-xs uppercase tracking-widest">
-                Güvenliği Güncelle
+              <button 
+                onClick={handlePasswordUpdate}
+                disabled={isPasswordUpdating}
+                className="px-6 py-2.5 bg-secondary text-white font-bold rounded-lg hover:bg-on-secondary-container transition-colors text-xs uppercase tracking-widest disabled:opacity-50"
+              >
+                {isPasswordUpdating ? "GÜNCELLENİYOR..." : "Güvenliği Güncelle"}
               </button>
             </div>
           </div>
@@ -95,14 +421,14 @@ export default function ProfilePage() {
                   <span className="material-symbols-outlined text-primary text-3xl">corporate_fare</span>
                 </div>
                 <div>
-                  <h3 className="font-bold text-lg text-on-surface">Sovereign Holdings Ltd.</h3>
-                  <span className="px-2 py-0.5 bg-tertiary-container/10 text-tertiary text-[10px] font-bold uppercase rounded tracking-tighter">Doğrulanmış İşletme</span>
+                  <h3 className="font-bold text-lg text-on-surface">{profile?.companyName}</h3>
+                  <span className="px-2 py-0.5 bg-tertiary-container/10 text-tertiary text-[10px] font-bold uppercase rounded tracking-tighter">{profile?.businessSector || "Doğrulanmış İşletme"}</span>
                 </div>
               </div>
               <div className="space-y-3 pt-4 border-t border-outline-variant/10">
                 <div className="flex justify-between items-center">
                   <span className="text-[11px] uppercase tracking-wider font-bold text-on-surface-variant">Vergi Kimlik No</span>
-                  <span className="text-sm font-medium text-on-surface">GB 938 4210 02</span>
+                  <span className="text-sm font-medium text-on-surface">{profile?.taxId}</span>
                 </div>
                 <div className="flex justify-between items-start">
                   <span className="text-[11px] uppercase tracking-wider font-bold text-on-surface-variant">Kayıtlı Adres</span>
@@ -114,7 +440,10 @@ export default function ProfilePage() {
             <div className="p-6 bg-gradient-to-br from-indigo-900 to-slate-900 rounded-xl text-white shadow-xl">
               <h4 className="font-headline font-bold mb-2">Defter Yapılandırmasını Dışa Aktar</h4>
               <p className="text-indigo-200 text-xs mb-6 leading-relaxed">Yedekleme veya ikincil paketlere taşıma için mevcut mimari ayarlarınızı indirin.</p>
-              <button className="w-full py-3 bg-white/10 backdrop-blur-md border border-white/20 rounded-lg text-xs font-bold uppercase tracking-widest hover:bg-white/20 transition-all flex items-center justify-center gap-2">
+              <button 
+                onClick={handleExportXML}
+                className="w-full py-3 bg-white/10 backdrop-blur-md border border-white/20 rounded-lg text-xs font-bold uppercase tracking-widest hover:bg-white/20 transition-all flex items-center justify-center gap-2"
+              >
                 <span className="material-symbols-outlined text-sm">download</span>
                 XML Şemasını İndir
               </button>
@@ -129,22 +458,28 @@ export default function ProfilePage() {
             <h2 className="text-xl font-bold font-headline text-on-surface">Arayüz Kuralları</h2>
           </div>
           <div className="space-y-4">
-            <div className="flex items-center justify-between p-3 hover:bg-surface-container-low rounded-lg transition-colors cursor-pointer">
+            <div 
+              onClick={() => togglePreference("darkMode")}
+              className="flex items-center justify-between p-3 hover:bg-surface-container-low rounded-lg transition-colors cursor-pointer"
+            >
               <div className="flex items-center gap-3">
                 <span className="material-symbols-outlined text-on-surface-variant">dark_mode</span>
                 <span className="text-sm font-medium text-on-surface">Gece Modu</span>
               </div>
-              <div className="w-10 h-5 bg-outline-variant rounded-full relative">
-                <div className="absolute left-1 top-1 w-3 h-3 bg-white rounded-full"></div>
+              <div className={`w-10 h-5 rounded-full relative transition-colors ${preferences.darkMode ? "bg-primary" : "bg-outline-variant"}`}>
+                <div className={`absolute top-1 w-3 h-3 bg-white rounded-full transition-all ${preferences.darkMode ? "right-1" : "left-1"}`}></div>
               </div>
             </div>
-            <div className="flex items-center justify-between p-3 hover:bg-surface-container-low rounded-lg transition-colors cursor-pointer">
+            <div 
+              onClick={() => togglePreference("liveSync")}
+              className="flex items-center justify-between p-3 hover:bg-surface-container-low rounded-lg transition-colors cursor-pointer"
+            >
               <div className="flex items-center gap-3">
                 <span className="material-symbols-outlined text-on-surface-variant">notifications_active</span>
                 <span className="text-sm font-medium text-on-surface">Canlı Senkronizasyon</span>
               </div>
-              <div className="w-10 h-5 bg-primary rounded-full relative">
-                <div className="absolute right-1 top-1 w-3 h-3 bg-white rounded-full"></div>
+              <div className={`w-10 h-5 rounded-full relative transition-colors ${preferences.liveSync ? "bg-primary" : "bg-outline-variant"}`}>
+                <div className={`absolute top-1 w-3 h-3 bg-white rounded-full transition-all ${preferences.liveSync ? "right-1" : "left-1"}`}></div>
               </div>
             </div>
           </div>

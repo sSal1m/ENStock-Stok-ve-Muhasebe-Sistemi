@@ -1,10 +1,56 @@
 "use client";
 
-import React from "react";
+import React, { useState } from "react";
 import Image from "next/image";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
+import { supabase } from "@/lib/supabaseClient";
+import toast from "react-hot-toast";
 
 export default function InviteUserPage() {
+  const router = useRouter();
+  const [formData, setFormData] = useState({
+    full_name: "",
+    email: "",
+    role: "accounting"
+  });
+  const [isSubmitting, setIsSubmitting] = useState(false);
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!formData.full_name || !formData.email) {
+      toast.error("Lütfen tüm alanları doldurun.");
+      return;
+    }
+
+    setIsSubmitting(true);
+    const toastId = toast.loading("Davet gönderiliyor...");
+
+    try {
+      // In a real app, this would use auth.inviteUserByEmail via an Edge Function.
+      // For this implementation, we add a row to 'profiles' to simulate the team member.
+      const { error } = await supabase
+        .from("profiles")
+        .insert([{
+          id: crypto.randomUUID(), // Simulated ID for demo purposes
+          full_name: formData.full_name,
+          role: formData.role,
+          company_name: "Sovereign Ledger Team", // Default for new team members
+          business_sector: "Financial Services",
+          created_at: new Date().toISOString()
+        }]);
+
+      if (error) throw error;
+
+      toast.success(`${formData.full_name} için davet başarıyla gönderildi!`, { id: toastId });
+      router.push("/users");
+    } catch (err: any) {
+      toast.error("Hata oluştu: " + err.message, { id: toastId });
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
   return (
     <div className="max-w-5xl mx-auto w-full">
       {/* Breadcrumbs */}
@@ -22,7 +68,7 @@ export default function InviteUserPage() {
             <p className="text-on-surface-variant leading-relaxed font-body">Yeni çalışma arkadaşınızın bilgilerini girin ve Sovereign Ledger ekosistemine dahil olması için bir davet gönderin.</p>
           </div>
           <div className="bg-surface-container-lowest p-8 rounded-xl shadow-sm border border-outline-variant/10">
-            <form className="space-y-6">
+            <form className="space-y-6" onSubmit={handleSubmit}>
               {/* Name Field */}
               <div className="space-y-2">
                 <label className="block text-xs font-bold uppercase tracking-wider text-outline font-label" htmlFor="full_name">Ad Soyad</label>
@@ -33,6 +79,9 @@ export default function InviteUserPage() {
                     id="full_name"
                     placeholder="Örn: Mehmet Öz"
                     type="text"
+                    required
+                    value={formData.full_name}
+                    onChange={(e) => setFormData({ ...formData, full_name: e.target.value })}
                   />
                 </div>
               </div>
@@ -46,6 +95,9 @@ export default function InviteUserPage() {
                     id="email"
                     placeholder="mehmet.oz@sirket.com"
                     type="email"
+                    required
+                    value={formData.email}
+                    onChange={(e) => setFormData({ ...formData, email: e.target.value })}
                   />
                 </div>
               </div>
@@ -57,6 +109,8 @@ export default function InviteUserPage() {
                   <select
                     className="w-full pl-12 pr-10 py-3 bg-surface-container-low border-none focus:ring-2 focus:ring-primary/20 rounded-lg text-on-surface appearance-none transition-all font-body outline-none"
                     id="role"
+                    value={formData.role}
+                    onChange={(e) => setFormData({ ...formData, role: e.target.value })}
                   >
                     <option value="accounting">Muhasebe</option>
                     <option value="admin">Yönetici</option>
@@ -68,9 +122,13 @@ export default function InviteUserPage() {
               </div>
               {/* Submit Button */}
               <div className="pt-4">
-                <button className="w-full bg-gradient-to-br from-primary to-primary-container text-white py-4 px-6 rounded-lg font-bold text-sm shadow-lg shadow-primary/20 hover:scale-[1.01] active:scale-[0.98] transition-all flex items-center justify-center gap-2 font-body" type="submit">
-                  <span className="material-symbols-outlined">send</span>
-                  Davet Gönder
+                <button 
+                  className="w-full bg-gradient-to-br from-primary to-primary-container text-white py-4 px-6 rounded-lg font-bold text-sm shadow-lg shadow-primary/20 hover:scale-[1.01] active:scale-[0.98] transition-all flex items-center justify-center gap-2 font-body disabled:opacity-50" 
+                  type="submit"
+                  disabled={isSubmitting}
+                >
+                  <span className="material-symbols-outlined">{isSubmitting ? "sync" : "send"}</span>
+                  {isSubmitting ? "Gönderiliyor..." : "Davet Gönder"}
                 </button>
               </div>
             </form>

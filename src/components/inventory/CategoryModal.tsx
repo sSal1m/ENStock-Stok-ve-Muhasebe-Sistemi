@@ -7,9 +7,10 @@ interface Props {
   isOpen: boolean;
   onClose: () => void;
   onSuccess: () => void;
+  userId?: string;  // ✅ RLS policy başarılı olsun diye eklendi
 }
 
-export default function CategoryModal({ isOpen, onClose, onSuccess }: Props) {
+export default function CategoryModal({ isOpen, onClose, onSuccess, userId }: Props) {  // ✅ userId eklendi
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
   const [saving, setSaving] = useState(false);
@@ -43,7 +44,7 @@ export default function CategoryModal({ isOpen, onClose, onSuccess }: Props) {
 
     const { error: insertError } = await supabase
       .from("categories")
-      .insert({ name: name.trim(), description: description.trim() || null });
+      .insert({ user_id: userId, name: name.trim(), description: description.trim() || null });  // ✅ user_id eklendi
 
     if (insertError) {
       setError(insertError.message);

@@ -21,7 +21,8 @@ const pathTitleMap: Record<string, string> = {
   '/dashboard': 'Genel Bakış',
   '/sales': 'Satış Yönetimi',
   '/contacts': 'Cari Hesap Rehberi',
-  '/contacts/[id]': 'Cari Detayı',
+  '/contacts/[id]': 'Cari Hesap Detayı',
+  '/invoices': 'Faturalar',
   '/invoices/new': 'Yeni Fatura',
   '/users': 'Kullanıcı Yönetimi',
   '/users/new': 'Yeni Kullanıcı Ekle',
@@ -29,7 +30,7 @@ const pathTitleMap: Record<string, string> = {
   '/settings': 'Hesap Ayarları',
   '/settings/profile': 'Profil Ayarları',
   '/settings/business': 'İşletme Ayarları',
-  '/reports': 'Raporlar',
+  '/reports': 'Genel Raporlar',
   '/reports/income-expense': 'Gelir-Gider Raporu',
 };
 

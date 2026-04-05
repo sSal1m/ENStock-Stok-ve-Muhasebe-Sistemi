@@ -1,4 +1,49 @@
+"use client";
+
+import { useEffect, useState } from "react";
+import { supabase } from "@/lib/supabaseClient";
+
+interface UserProfile {
+  full_name: string | null;
+  company_name: string | null;
+}
+
 export default function Navbar() {
+  const [profile, setProfile] = useState<UserProfile>({
+    full_name: null,
+    company_name: null,
+  });
+  const [loading, setLoading] = useState(true);
+
+  // ── Kullanıcı Profil Bilgilerini Çek ────────────────────────────────────
+  useEffect(() => {
+    async function fetchProfile() {
+      setLoading(true);
+      const { data: { user }, error: userError } = await supabase.auth.getUser();
+      
+      if (userError || !user) {
+        setLoading(false);
+        return;
+      }
+
+      const { data, error } = await supabase
+        .from("profiles")
+        .select("full_name, company_name")
+        .eq("user_id", user.id)
+        .single();
+
+      if (!error && data) {
+        setProfile({
+          full_name: data.full_name || "Kullanıcı",
+          company_name: data.company_name || "Şirket",
+        });
+      }
+      setLoading(false);
+    }
+
+    fetchProfile();
+  }, []);
+
   return (
     <header className="w-full h-16 sticky top-0 z-40 bg-white shadow-sm flex justify-between items-center px-6 text-sm font-medium border-b border-indigo-50/10">
       {/* Sol: Mobil Logo & Hızlı Bağlantılar */}
@@ -41,8 +86,12 @@ export default function Navbar() {
         {/* Kullanıcı Profili */}
         <div className="flex items-center gap-3">
           <div className="text-right hidden sm:block">
-            <p className="text-xs font-bold text-indigo-900">Ahmet Yılmaz</p>
-            <p className="text-[10px] text-slate-500">Global Lojistik A.Ş.</p>
+            <p className="text-xs font-bold text-indigo-900">
+              {loading ? "..." : (profile.full_name || "Kullanıcı")}
+            </p>
+            <p className="text-[10px] text-slate-500">
+              {loading ? "..." : (profile.company_name || "Şirket")}
+            </p>
           </div>
           <img
             alt="Kullanıcı Profili"

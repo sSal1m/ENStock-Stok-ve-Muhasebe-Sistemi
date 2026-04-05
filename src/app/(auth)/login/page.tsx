@@ -1,7 +1,54 @@
-import React from 'react';
+'use client';
+
+import React, { useState } from 'react';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
+import { createClient } from '@supabase/supabase-js';
 
 export default function LoginPage() {
+  const router = useRouter();
+  const [supabase] = React.useState(() =>
+    createClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+    )
+  );
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [error, setError] = useState<string | null>(null);
+  const [loading, setLoading] = useState(false);
+
+  const handleLogin = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setError(null);
+    setLoading(true);
+
+    try {
+      const { error: authError } = await supabase.auth.signInWithPassword({
+        email,
+        password,
+      });
+
+      if (authError) {
+        if (authError.message.includes('Invalid login credentials')) {
+          setError('Hata: Bilgilerinizi kontrol edin');
+        } else if (authError.message.includes('User not found')) {
+          setError('Hata: E-posta adresi bulunamadı');
+        } else {
+          setError(`Hata: ${authError.message}`);
+        }
+        setLoading(false);
+        return;
+      }
+
+      // Successful login - redirect to dashboard
+      router.push('/dashboard');
+    } catch (err) {
+      setError('Hata: Bilgilerinizi kontrol edin');
+      setLoading(false);
+    }
+  };
+
   return (
     <main className="min-h-screen flex flex-col md:flex-row overflow-hidden font-body bg-surface text-on-surface antialiased selection:bg-primary-fixed-dim">
       {/* Left Column: Indigo Gradient Brand Section */}
@@ -36,7 +83,13 @@ export default function LoginPage() {
             <p className="text-on-surface-variant mt-2 font-medium">Kurumsal panelinize ve finansal raporlarınıza erişin.</p>
           </header>
 
-          <form className="space-y-6">
+          {error && (
+            <div className="mb-6 p-4 bg-error/10 border border-error rounded-lg">
+              <p className="text-error font-medium text-sm">{error}</p>
+            </div>
+          )}
+
+          <form className="space-y-6" onSubmit={handleLogin}>
             <div className="space-y-2">
               <label htmlFor="email" className="block text-xs uppercase tracking-wider font-label text-on-surface-variant font-bold">E-posta Adresi</label>
               <div className="relative group">
@@ -44,6 +97,9 @@ export default function LoginPage() {
                   type="email" 
                   id="email" 
                   placeholder="ad@sirket.com" 
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  required
                   className="w-full bg-surface-container-low border-none rounded-lg px-4 py-3 text-on-surface placeholder:text-outline focus:ring-2 focus:ring-surface-tint/20 focus:bg-surface-container-lowest transition-all duration-200 outline-none" 
                 />
               </div>
@@ -59,6 +115,9 @@ export default function LoginPage() {
                   type="password" 
                   id="password" 
                   placeholder="••••••••" 
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  required
                   className="w-full bg-surface-container-low border-none rounded-lg px-4 py-3 text-on-surface placeholder:text-outline focus:ring-2 focus:ring-surface-tint/20 focus:bg-surface-container-lowest transition-all duration-200 outline-none" 
                 />
               </div>
@@ -77,9 +136,10 @@ export default function LoginPage() {
 
             <button 
               type="submit" 
-              className="w-full bg-gradient-to-r from-primary to-primary-container text-on-primary py-4 px-6 rounded-lg font-bold font-headline shadow-lg shadow-primary/10 hover:shadow-xl hover:shadow-primary/20 active:scale-[0.98] transition-all duration-300"
+              disabled={loading}
+              className="w-full bg-gradient-to-r from-primary to-primary-container text-on-primary py-4 px-6 rounded-lg font-bold font-headline shadow-lg shadow-primary/10 hover:shadow-xl hover:shadow-primary/20 active:scale-[0.98] transition-all duration-300 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:shadow-lg"
             >
-              Giriş Yap
+              {loading ? 'Giriş Yapılıyor...' : 'Giriş Yap'}
             </button>
           </form>
 

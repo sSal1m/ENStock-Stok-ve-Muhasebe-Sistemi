@@ -13,7 +13,7 @@ const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
 const supabaseServer = createClient(supabaseUrl, supabaseServiceKey);
 
 /* ═══════════════════════════════════════════
-   Server Action — Yeni Cari Ekle (INSERT)
+   Server Action — Yeni Kişi/Cari Ekle (INSERT)
    ═══════════════════════════════════════════ */
 
 export interface CariFormState {
@@ -22,11 +22,12 @@ export interface CariFormState {
 }
 
 export async function cariEkleAction(formData: FormData): Promise<CariFormState> {
-  const tip = formData.get("tip") as string;
+  const tip = (formData.get("tip") as string)?.trim();
   const unvan = (formData.get("unvan") as string)?.trim();
   const vergiNo = (formData.get("vergi_no") as string)?.trim();
   const vergiDairesi = (formData.get("vergi_dairesi") as string)?.trim();
   const telefon = (formData.get("telefon") as string)?.trim();
+  const email = (formData.get("email") as string)?.trim();
   const adres = (formData.get("adres") as string)?.trim();
 
   // Validation
@@ -34,12 +35,8 @@ export async function cariEkleAction(formData: FormData): Promise<CariFormState>
     return { success: false, message: "Firma/Şahıs adı en az 2 karakter olmalıdır." };
   }
 
-  // Generate initials (kisaltma)
-  const words = unvan.split(/\s+/);
-  const kisaltma =
-    words.length >= 2
-      ? (words[0][0] + words[1][0]).toUpperCase()
-      : unvan.slice(0, 2).toUpperCase();
+  // Enum Mapping - support both Turkish and English names
+  const type = (tip === "Tedarikçi" || tip === "supplier") ? "supplier" : "customer";
 
   try {
     // ✅ Kullanıcının ID'sini FormData üzerinden al
@@ -51,13 +48,14 @@ export async function cariEkleAction(formData: FormData): Promise<CariFormState>
 
     const { error } = await supabaseServer.from("contacts").insert([
       {
-        type: tip === "Tedarikçi" ? "supplier" : "customer",
+        type,
         name: unvan,
         tax_number: vergiNo || null,
         tax_office: vergiDairesi || null,
         phone: telefon || null,
-        email: (formData.get("eposta") as string)?.trim() || null,
+        email: email || null,
         address: adres || null,
+        current_balance: 0,
         user_id: userId
       },
     ]);
@@ -76,4 +74,3 @@ export async function cariEkleAction(formData: FormData): Promise<CariFormState>
     return { success: false, message: "Beklenmeyen bir sunucu hatası oluştu." };
   }
 }
-

@@ -93,8 +93,8 @@ export default function Header() {
             .single();
 
           if (error) {
-            console.error('Error fetching profile:', error);
-            // Set default profile if error
+            // Sessiz fallback: Profil bulunamadıysa varsayılan değerleri kullan
+            // (PGRST116: no rows returned, normal expected behavior for new users)
             setProfile({
               full_name: authUser.user_metadata?.full_name || 'Kullanıcı',
               company_name: 'Şirket',

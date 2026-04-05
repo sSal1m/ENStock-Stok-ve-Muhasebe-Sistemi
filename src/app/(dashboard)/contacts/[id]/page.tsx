@@ -355,7 +355,8 @@ export default function ContactDetailPage() {
               </tr>
             </thead>
             <tbody className="divide-y divide-indigo-50/50">
-              {filtered.map((tx) => {
+              {/* TODO: Connect to invoices table - currently using mock data as fallback */}
+              {(filtered && Array.isArray(filtered) ? filtered : []).map((tx) => {
                 const { icon, color } = turIcon(tx.tur_tipi);
                 return (
                   <tr key={tx.id} className="group hover:bg-slate-50/50 transition-colors">
@@ -382,9 +383,14 @@ export default function ContactDetailPage() {
                   </tr>
                 );
               })}
-              {filtered.length === 0 && (
+              {(!filtered || filtered.length === 0) && (
                 <tr>
-                  <td colSpan={5} className="px-8 py-20 text-center text-slate-400 font-bold">Kayıtlı işlem bulunamadı.</td>
+                  <td colSpan={5} className="px-8 py-20 text-center text-slate-400 font-bold">
+                    {islemler.length === 0 
+                      ? "Bu cari hesaba ait işlem bulunmamaktadır."
+                      : "Seçilen filtre için işlem bulunamadı."
+                    }
+                  </td>
                 </tr>
               )}
             </tbody>

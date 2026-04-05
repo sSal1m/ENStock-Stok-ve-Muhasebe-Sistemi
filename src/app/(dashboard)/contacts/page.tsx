@@ -3,6 +3,7 @@
 import { useState, useEffect, useRef, useTransition } from "react";
 import { supabase } from "@/lib/supabaseClient";
 import { cariEkleAction } from "./actions";
+import toast from "react-hot-toast";
 import Link from "next/link";
 
 /* ═══════════════════════════════════════════
@@ -44,7 +45,6 @@ export default function ContactsPage() {
   const [contacts, setContacts] = useState<Contact[]>([]);
   const [loading, setLoading] = useState(true);
   const [isPending, startTransition] = useTransition();
-  const [formMsg, setFormMsg] = useState<{ ok: boolean; text: string } | null>(null);
   const formRef = useRef<HTMLFormElement>(null);
 
   // ── Fetch from Supabase ──
@@ -96,14 +96,32 @@ export default function ContactsPage() {
     fd.set("tip", cariTuru);
 
     startTransition(async () => {
+      // ✅ Get current user before submission
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) {
+        toast.error("Oturum açma gerekli. Lütfen giriş yapın.");
+        return;
+      }
+      fd.set("user_id", user.id);
+
       const result = await cariEkleAction(fd);
-      setFormMsg({ ok: result.success, text: result.message });
+      
       if (result.success) {
+        // ✅ Başarı durumu: Toast göster + state güncelle + form temizle
+        toast.success(result.message);
+        
+        // Yeni cariyi state'e ekle (sayfa yenilemeden)
+        if (result.data) {
+          setContacts((prev) => [result.data as Contact, ...prev]);
+        }
+        
+        // Formu temizle
         formRef.current?.reset();
         setCariTuru("Müşteri");
-        await fetchContacts(); 
+      } else {
+        // ❌ Hata durumu: Toast göster
+        toast.error(result.message);
       }
-      setTimeout(() => setFormMsg(null), 4000);
     });
   };
 
@@ -376,11 +394,6 @@ export default function ContactsPage() {
             </div>
             
             <div className="mt-6 flex items-center justify-between">
-              {formMsg && (
-                <p className={`text-sm font-bold ${formMsg.ok ? "text-emerald-600" : "text-error"}`}>
-                  {formMsg.ok ? "✓ Başarıyla eklendi" : `✕ ${formMsg.text}`}
-                </p>
-              )}
               <button
                 type="submit"
                 disabled={isPending}

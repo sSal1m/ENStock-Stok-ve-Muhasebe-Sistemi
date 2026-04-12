@@ -136,16 +136,34 @@ export default function ContactDetailPage() {
 
         setCari(cariData as ContactRecord);
 
-        const { data: islemData, error: islemError } = await supabase
-          .from("islemler")
-          .select("*")
-          .eq("cari_id", cariId)
-          .order("tarih", { ascending: false });
+        // Fetch invoices for this contact
+        const { data: invoiceData, error: invoiceError } = await supabase
+          .from("invoices")
+          .select("id, invoice_number, type, issue_date, total_amount, status")
+          .eq("contact_id", cariId)
+          .order("issue_date", { ascending: false });
 
-        if (islemError) {
+        if (invoiceError) {
+          console.error("Faturalar alınamadı:", invoiceError);
           setIslemler(MOCK_ISLEMLER.map((i) => ({ ...i, cari_id: cariId })));
         } else {
-          setIslemler((islemData as Islem[]) || []);
+          // Map invoices to Islem format
+          const mappedIslemler: Islem[] = (invoiceData || []).map((inv: any) => ({
+            id: Math.random(),
+            cari_id: cariId,
+            tarih: new Date(inv.issue_date).toLocaleDateString("tr-TR", {
+              day: "2-digit",
+              month: "short",
+              year: "numeric",
+            }),
+            fatura_no: inv.invoice_number || "FTR-???",
+            islem_turu: inv.type === "sale" ? "Satış Faturası" : "Alış Faturası",
+            tur_tipi: inv.type === "sale" ? "satis" : "alis",
+            toplam: Number(inv.total_amount) || 0,
+            durum: inv.status === "paid" ? "Ödendi" : inv.status === "pending" ? "Bekliyor" : "Gecikmiş",
+          }));
+          
+          setIslemler(mappedIslemler);
         }
       } catch (err) {
         console.error("Fetch error:", err);
@@ -196,7 +214,7 @@ export default function ContactDetailPage() {
   }
 
   return (
-    <div className="space-y-8">
+    <div className="w-full p-8 max-w-[1600px] mx-auto bg-transparent min-h-screen">
       {/* ── BREADCRUMBS & HEADER ── */}
       <div className="flex flex-col md:flex-row md:items-end justify-between gap-6">
         <div>

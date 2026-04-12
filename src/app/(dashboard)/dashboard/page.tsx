@@ -207,7 +207,7 @@ export default function DashboardPage() {
   }
 
   return (
-    <div className="space-y-8 pb-24 md:pb-0">
+    <div className="p-6 lg:p-10 space-y-8">
       {/* Welcome Header */}
       <div className="flex flex-col md:flex-row md:items-end justify-between gap-4">
         <div>
@@ -233,77 +233,55 @@ export default function DashboardPage() {
       </div>
 
       {/* Stats Grid */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
         {/* Total Products Card */}
-        <div className="bg-surface-container-lowest p-6 rounded-2xl shadow-sm hover:shadow-md transition-shadow relative overflow-hidden group">
-          <div className="absolute top-0 left-0 w-1 h-full bg-primary opacity-0 group-hover:opacity-100 transition-opacity"></div>
+        <div className="bg-white p-6 rounded-2xl shadow-sm border border-indigo-50/50">
           <div className="flex justify-between items-start mb-4">
-            <div className="p-2 bg-primary-fixed text-primary rounded-lg">
-              <span className="material-symbols-outlined">inventory_2</span>
+            <div className="p-3 bg-indigo-50 text-indigo-600 rounded-lg">
+              <span className="material-symbols-outlined text-2xl">inventory</span>
             </div>
-            <span className="text-xs font-bold text-green-600 bg-green-50 px-2 py-1 rounded">
-              +12%
-            </span>
           </div>
-          <p className="text-xs font-bold text-slate-500 uppercase tracking-widest">
-            Toplam Ürün
-          </p>
-          <h3 className="text-2xl font-extrabold mt-1 text-slate-900">
+          <p className="text-sm font-semibold text-slate-500">Toplam Ürün</p>
+          <h3 className="text-2xl font-black text-indigo-900">
             {kpiData.totalProducts.toLocaleString('tr-TR')}
           </h3>
         </div>
 
         {/* Critical Stock Card */}
-        <div className="bg-surface-container-lowest p-6 rounded-2xl shadow-sm hover:shadow-md transition-shadow relative overflow-hidden group">
-          <div className="absolute top-0 left-0 w-1 h-full bg-red-500 opacity-0 group-hover:opacity-100 transition-opacity"></div>
+        <div className="bg-white p-6 rounded-2xl shadow-sm border border-indigo-50/50">
           <div className="flex justify-between items-start mb-4">
-            <div className="p-2 bg-error-container text-error rounded-lg">
-              <span className="material-symbols-outlined">warning</span>
+            <div className="p-3 bg-error-container/30 text-error rounded-lg">
+              <span className="material-symbols-outlined text-2xl">warning</span>
             </div>
-            <span className="text-xs font-bold text-red-600 bg-red-50 px-2 py-1 rounded">
-              Dikkat
-            </span>
           </div>
-          <p className="text-xs font-bold text-slate-500 uppercase tracking-widest">
-            Kritik Stok Ürünleri
-          </p>
-          <h3 className="text-2xl font-extrabold mt-1 text-slate-900">
+          <p className="text-sm font-semibold text-slate-500">Kritik Stok Ürünleri</p>
+          <h3 className="text-2xl font-black text-error">
             {kpiData.criticalStockItems}
           </h3>
         </div>
 
         {/* Today's Revenue Card */}
-        <div className="bg-surface-container-lowest p-6 rounded-2xl shadow-sm hover:shadow-md transition-shadow relative overflow-hidden group">
-          <div className="absolute top-0 left-0 w-1 h-full bg-primary opacity-0 group-hover:opacity-100 transition-opacity"></div>
+        <div className="bg-white p-6 rounded-2xl shadow-sm border border-indigo-50/50">
           <div className="flex justify-between items-start mb-4">
-            <div className="p-2 bg-secondary-container text-secondary rounded-lg">
-              <span className="material-symbols-outlined">payments</span>
+            <div className="p-3 bg-emerald-50 text-emerald-600 rounded-lg">
+              <span className="material-symbols-outlined text-2xl">trending_up</span>
             </div>
-            <span className="text-xs font-bold text-green-600 bg-green-50 px-2 py-1 rounded">
-              Bugün
-            </span>
           </div>
-          <p className="text-xs font-bold text-slate-500 uppercase tracking-widest">
-            Günlük Satış Cirosu
-          </p>
-          <h3 className="text-2xl font-extrabold mt-1 text-slate-900">
+          <p className="text-sm font-semibold text-slate-500">Günlük Satış Cirosu</p>
+          <h3 className="text-2xl font-black text-emerald-600">
             ₺{kpiData.todayRevenue.toLocaleString('tr-TR', { minimumFractionDigits: 2 })}
           </h3>
         </div>
 
         {/* Recent Transactions Card */}
-        <div className="bg-surface-container-lowest p-6 rounded-2xl shadow-sm hover:shadow-md transition-shadow relative overflow-hidden group">
-          <div className="absolute top-0 left-0 w-1 h-full bg-primary opacity-0 group-hover:opacity-100 transition-opacity"></div>
+        <div className="bg-white p-6 rounded-2xl shadow-sm border border-indigo-50/50">
           <div className="flex justify-between items-start mb-4">
-            <div className="p-2 bg-tertiary-fixed text-tertiary rounded-lg">
-              <span className="material-symbols-outlined">history</span>
+            <div className="p-3 bg-primary/10 text-primary rounded-lg">
+              <span className="material-symbols-outlined text-2xl">history</span>
             </div>
-            <span className="text-xs font-bold text-slate-400">Son 24h</span>
           </div>
-          <p className="text-xs font-bold text-slate-500 uppercase tracking-widest">
-            Son İşlemler
-          </p>
-          <h3 className="text-2xl font-extrabold mt-1 text-slate-900">
+          <p className="text-sm font-semibold text-slate-500">Son İşlemler</p>
+          <h3 className="text-2xl font-black text-primary">
             {activities.length}
           </h3>
         </div>

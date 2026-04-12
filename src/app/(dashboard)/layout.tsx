@@ -64,10 +64,8 @@ export default function DashboardLayout({
         <Header />
 
         {/* Page Content */}
-        <main className="flex-1 overflow-y-auto bg-surface">
-          <div className="p-6">
-            {children}
-          </div>
+        <main className="flex-1 overflow-y-auto bg-white">
+          {children}
         </main>
       </div>
     </div>

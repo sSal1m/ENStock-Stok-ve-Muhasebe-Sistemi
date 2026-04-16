@@ -45,7 +45,7 @@ export default function CreateInvoiceForm({ userId }: { userId: string }) {
   
   const [toasts, setToasts] = useState<Toast[]>([]);
   const [invoiceType, setInvoiceType] = useState<"sales" | "purchase">("sales");
-  const [invoiceNumber, setInvoiceNumber] = useState<number | null>(null);
+  const [invoiceNumber, setInvoiceNumber] = useState<string>("");
   const [selectedContact, setSelectedContact] = useState<Contact | null>(null);
   const [contactSearch, setContactSearch] = useState("");
   const [contactSuggestions, setContactSuggestions] = useState<Contact[]>([]);
@@ -67,11 +67,13 @@ export default function CreateInvoiceForm({ userId }: { userId: string }) {
   // Initialize invoice number
   useEffect(() => {
     const initInvoiceNumber = async () => {
-      const nextNum = await getNextInvoiceNumber(userId, invoiceType);
-      setInvoiceNumber(nextNum);
+      if (!editInvoiceId) {
+        const nextNum = await getNextInvoiceNumber(userId, invoiceType);
+        setInvoiceNumber(`FTR-${new Date().getFullYear()}-${nextNum.toString().padStart(3, "0")}`);
+      }
     };
     initInvoiceNumber();
-  }, [userId, invoiceType]);
+  }, [userId, invoiceType, editInvoiceId]);
 
   // ✅ Load draft invoice data if editing
   useEffect(() => {
@@ -320,6 +322,7 @@ export default function CreateInvoiceForm({ userId }: { userId: string }) {
         })),
         status: "draft",  // ✅ Draft olarak kaydet
         invoice_id: editInvoiceId || undefined,  // ✅ Update varsa ID
+        invoice_number: invoiceNumber, // ✅ Manuel atanan fatura numarası
       });
 
       if (response.success) {
@@ -372,6 +375,7 @@ export default function CreateInvoiceForm({ userId }: { userId: string }) {
         })),
         status: "pending",  // ✅ Kesilmiş fatura olarak kaydet
         invoice_id: editInvoiceId || undefined,  // ✅ Update varsa ID
+        invoice_number: invoiceNumber, // ✅ Manuel atanan fatura numarası
       });
 
       if (response.success) {
@@ -573,10 +577,11 @@ export default function CreateInvoiceForm({ userId }: { userId: string }) {
                   Fatura No
                 </label>
                 <input
-                  className="w-full bg-slate-50 border border-slate-300 rounded-lg py-3 px-4 text-base font-bold text-slate-700"
-                  readOnly
+                  className="w-full bg-slate-50 border border-slate-300 rounded-lg py-3 px-4 text-base font-bold text-slate-700 select-none cursor-not-allowed"
                   type="text"
-                  value={invoiceNumber ? `FTR-${new Date().getFullYear()}-${invoiceNumber.toString().padStart(3, "0")}` : "..."}
+                  readOnly
+                  value={invoiceNumber || "..."}
+                  placeholder="Otomatik Atanacak"
                 />
               </div>
               <div>
@@ -693,8 +698,9 @@ export default function CreateInvoiceForm({ userId }: { userId: string }) {
                           }`}
                           type="number"
                           min="0"
-                          value={item.quantity}
-                          onChange={(e) => updateLineItem(item.id, "quantity", parseInt(e.target.value) || 0)}
+                          value={item.quantity === 0 ? "" : item.quantity}
+                          placeholder="0"
+                          onChange={(e) => updateLineItem(item.id, "quantity", e.target.value === "" ? 0 : parseInt(e.target.value))}
                         />
                       </div>
                     </td>
@@ -704,8 +710,9 @@ export default function CreateInvoiceForm({ userId }: { userId: string }) {
                         type="number"
                         step="0.01"
                         min="0"
-                        value={item.unit_price}
-                        onChange={(e) => updateLineItem(item.id, "unit_price", parseFloat(e.target.value) || 0)}
+                        value={item.unit_price === 0 ? "" : item.unit_price}
+                        placeholder="0.00"
+                        onChange={(e) => updateLineItem(item.id, "unit_price", e.target.value === "" ? 0 : parseFloat(e.target.value))}
                       />
                     </td>
                     <td className="px-6 py-6">

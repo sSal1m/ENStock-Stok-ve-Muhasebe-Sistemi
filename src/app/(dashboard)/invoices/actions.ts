@@ -27,6 +27,7 @@ export interface CreateInvoiceRequest {
   line_items: InvoiceLineItem[];
   status?: "draft" | "pending";  // ✅ draft veya pending statüsng statüsü
   invoice_id?: string;  // ✅ NEW: draft faturayı update etmek için
+  invoice_number?: string; // ✅ Manuel fatura numarası için
 }
 
 export interface InvoiceActionState {
@@ -126,24 +127,35 @@ export async function searchProducts(userId: string, query: string, invoiceType:
 
 export async function getNextInvoiceNumber(userId: string, invoiceType: "sales" | "purchase") {
   try {
-    // Try to get the last invoice number by counting invoices of this type for this user
-    const { data: countData, error: countError } = await supabaseServer
+    // Veritabanındaki en son eklenen faturayı alarak numarasını bul (count yerine daha güvenli)
+    const { data: lastInvoiceData, error: lastInvoiceError } = await supabaseServer
       .from("invoices")
-      .select("id", { count: "exact" })
-      .eq("user_id", userId);
+      .select("invoice_number")
+      .eq("user_id", userId)
+      .order("created_at", { ascending: false })
+      .limit(1);
 
-    if (countError) {
-      console.error("Error counting invoices:", countError);
-      // Fallback: just use a timestamp-based number
+    if (lastInvoiceError) {
+      console.error("Error fetching last invoice number:", lastInvoiceError);
       return Math.floor(Date.now() % 1000000);
     }
 
-    // Next invoice number is count + 1
-    const nextNumber = (countData?.length || 0) + 1;
-    return nextNumber;
+    if (!lastInvoiceData || lastInvoiceData.length === 0) {
+      return 1; // İlk fatura
+    }
+
+    const lastNumberStr = lastInvoiceData[0].invoice_number;
+    if (!lastNumberStr) return 1;
+
+    // Örn: FTR-2026-005 ise, sondaki 005'i yakala
+    const match = lastNumberStr.match(/-(\d+)$/);
+    if (match && match[1]) {
+      return parseInt(match[1], 10) + 1;
+    }
+
+    return 1;
   } catch (err) {
     console.error("Unexpected error in getNextInvoiceNumber:", err);
-    // Fallback: use timestamp
     return Math.floor(Date.now() % 1000000);
   }
 }
@@ -154,7 +166,25 @@ export async function getNextInvoiceNumber(userId: string, invoiceType: "sales" 
    ═══════════════════════════════════════════ */
 
 export async function createInvoiceAction(request: CreateInvoiceRequest): Promise<InvoiceActionState> {
-  const { user_id, contact_id, invoice_type, issue_date, notes, line_items, status = "draft", invoice_id } = request;
+  const { user_id, contact_id, invoice_type, issue_date, notes, line_items, status = "draft", invoice_id, invoice_number: reqInvoiceNumber } = request;
+
+  // 1) auth.getUser() kontrolü (Kullanıcının sisteme gerçekten login olup olmadığını ve token'ı doğrulamak için)
+  // Not: supabaseServer service_role ile oluşturulduğundan, auth context'i taşıması için ek ayarlarınız olabilir.
+  // Bu yüzden null gelirse diye güvenlik kontrolü ekliyoruz:
+  const { data: authData, error: authError } = await supabaseServer.auth.getUser();
+  if (authError || !authData?.user) {
+    console.warn("⚠️ auth.getUser() null veya hatalı döndü:", authError?.message);
+    // return { success: false, message: "Oturum süreniz dolmuş veya yetkisiz işlem." }; 
+    // YORUM: Projenizde service_role kullanımı sebebiyle burası bloklamasın diye warn bıraktık. Eğer isterseniz return satırının yorumunu kaldırın.
+  }
+
+  // 2) Console log ile gönderilen verilerin basılması
+  console.log('Gönderilen Veri:', { 
+    user_id, 
+    created_by: user_id, 
+    contact_id,
+    invoice_type 
+  });
 
   // Validation
   if (!user_id || !contact_id || !invoice_type || !issue_date || !line_items || line_items.length === 0) {
@@ -210,6 +240,29 @@ export async function createInvoiceAction(request: CreateInvoiceRequest): Promis
     let newInvoice;
     let invoiceIdToUse: string;
 
+    // ═══════════════════════════════════════════
+    // Fatura Numarası Atama ve Çakışma Kontrolü
+    // ═══════════════════════════════════════════
+    let finalInvoiceNumber = reqInvoiceNumber;
+    if (!finalInvoiceNumber || finalInvoiceNumber.trim() === "") {
+       const nextNum = await getNextInvoiceNumber(user_id, invoice_type);
+       finalInvoiceNumber = `FTR-${new Date(issue_date).getFullYear()}-${nextNum.toString().padStart(3, "0")}`;
+    }
+
+    // Uniqueness validation
+    let conflictQuery = supabaseServer.from("invoices").select("id").eq("invoice_number", finalInvoiceNumber);
+    if (invoice_id) {
+       conflictQuery = conflictQuery.neq("id", invoice_id);
+    }
+    const { data: existingRecords } = await conflictQuery.limit(1);
+    if (existingRecords && existingRecords.length > 0) {
+       return {
+          success: false,
+          message: "Bu numara zaten kullanımda",
+          errors: { invoice_number: "Seçtiğiniz fatura numarası başka bir faturada kullanılmış" }
+       };
+    }
+
     if (invoice_id) {
       // ✅ Update existing draft invoice
       const { data: updatedInvoice, error: updateError } = await supabaseServer
@@ -217,6 +270,7 @@ export async function createInvoiceAction(request: CreateInvoiceRequest): Promis
         .update({
           contact_id,
           type: dbInvoiceType,
+          invoice_number: finalInvoiceNumber,
           issue_date,
           subtotal,
           tax_total: vatTotal,
@@ -229,6 +283,12 @@ export async function createInvoiceAction(request: CreateInvoiceRequest): Promis
         .single();
 
       if (updateError || !updatedInvoice) {
+        if (updateError?.message?.includes('Bu varlık size ait değil')) {
+          return {
+            success: false,
+            message: "Bu varlık size ait değil"
+          };
+        }
         console.error("❌ [STEP 1-UPDATE] Fatura güncellenirken hata:", {
           message: updateError?.message,
           code: updateError?.code,
@@ -255,22 +315,15 @@ export async function createInvoiceAction(request: CreateInvoiceRequest): Promis
 
     } else {
       // ✅ Create new invoice
-      const invoiceNumber = await getNextInvoiceNumber(user_id, invoice_type);
-      if (!invoiceNumber) {
-        return {
-          success: false,
-          message: "Fatura numarası oluşturulamadı",
-        };
-      }
-
       const { data: createdInvoice, error: invoiceError } = await supabaseServer
         .from("invoices")
         .insert([
           {
             user_id,
+            created_by: user_id,
             contact_id,
             type: dbInvoiceType,
-            invoice_number: invoiceNumber,
+            invoice_number: finalInvoiceNumber,
             issue_date,
             subtotal,
             tax_total: vatTotal,
@@ -283,6 +336,12 @@ export async function createInvoiceAction(request: CreateInvoiceRequest): Promis
         .single();
 
       if (invoiceError || !createdInvoice) {
+        if (invoiceError?.message?.includes('Bu varlık size ait değil')) {
+          return {
+            success: false,
+            message: "Bu varlık size ait değil"
+          };
+        }
         console.error("❌ [STEP 1-CREATE] Fatura kaydı oluştururken hata:", {
           message: invoiceError?.message,
           code: invoiceError?.code,
@@ -322,6 +381,18 @@ export async function createInvoiceAction(request: CreateInvoiceRequest): Promis
       .insert(invoiceItemsToInsert);
 
     if (itemsError) {
+      // Only rollback if creating new invoice
+      if (!invoice_id) {
+        await supabaseServer.from("invoices").delete().eq("id", invoiceIdToUse);
+      }
+      
+      if (itemsError?.message?.includes('Bu varlık size ait değil')) {
+        return {
+          success: false,
+          message: "Bu varlık size ait değil"
+        };
+      }
+      
       console.error("❌ [STEP 2] Fatura satırları oluştururken hata:", {
         message: itemsError?.message,
         code: itemsError?.code,
@@ -329,10 +400,6 @@ export async function createInvoiceAction(request: CreateInvoiceRequest): Promis
         invoiceId: invoiceIdToUse,
         itemCount: invoiceItemsToInsert.length,
       });
-      // Only rollback if creating new invoice
-      if (!invoice_id) {
-        await supabaseServer.from("invoices").delete().eq("id", invoiceIdToUse);
-      }
       return {
         success: false,
         message: "Fatura satırları oluşturulamadı. Lütfen ürünleri kontrol edin.",
@@ -560,6 +627,14 @@ export async function createInvoiceAction(request: CreateInvoiceRequest): Promis
     };
   } catch (err) {
     const errorMessage = err instanceof Error ? err.message : "Unknown error";
+    
+    if (errorMessage.includes('Bu varlık size ait değil')) {
+      return {
+        success: false,
+        message: "Bu varlık size ait değil"
+      };
+    }
+
     const errorStack = (err instanceof Error ? err.stack : "") || "";
     console.error("❌ [MAIN] Unexpected error in createInvoiceAction:", {
       message: errorMessage,

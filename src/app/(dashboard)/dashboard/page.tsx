@@ -72,8 +72,8 @@ export default function DashboardPage() {
             .from('inventory_logs')
             .select(`
               id,
-              operation_type,
-              quantity,
+              action_type,
+              quantity_change,
               created_at,
               products (
                 name
@@ -106,10 +106,10 @@ export default function DashboardPage() {
             .map((log: any) => ({
               id: log.id,
               product_name: log.products?.name || log.product_name || 'Ürün',
-              operation_type: log.operation_type || 'unknown',
-              quantity: log.quantity || 0,
+              operation_type: log.action_type || 'unknown',
+              quantity: log.quantity_change || 0,
               created_at: log.created_at || new Date().toISOString(),
-              status: getActivityStatus(log.operation_type),
+              status: getActivityStatus(log.action_type),
             }));
         }
 

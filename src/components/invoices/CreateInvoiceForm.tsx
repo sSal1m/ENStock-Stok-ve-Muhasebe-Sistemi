@@ -21,6 +21,9 @@ interface Product {
   stock_quantity: number;
   sale_price: number;
   purchase_price: number;
+  currency: string;
+  sale_price_in_currency: number;
+  purchase_price_in_currency: number;
 }
 
 interface LineItem extends InvoiceLineItem {
@@ -64,15 +67,27 @@ export default function CreateInvoiceForm({ userId }: { userId: string }) {
   const [isLoading, setIsLoading] = useState(false);
   const [isInitialLoading, setIsInitialLoading] = useState(!!editInvoiceId); // ✅ Taslak yükleme durumu
 
-  // Initialize invoice number
+  const [rates, setRates] = useState<any>(null);
+  const [currency, setCurrency] = useState("TRY");
+
+  // Initialize invoice number & Fetch Rates
   useEffect(() => {
-    const initInvoiceNumber = async () => {
+    const initData = async () => {
+      // Fetch Rates
+      try {
+        const res = await fetch("/api/currency");
+        const data = await res.json();
+        if (data.rates) setRates(data.rates);
+      } catch (err) {
+        console.error("Kurlar alınamadı:", err);
+      }
+
       if (!editInvoiceId) {
         const nextNum = await getNextInvoiceNumber(userId, invoiceType);
         setInvoiceNumber(`FTR-${new Date().getFullYear()}-${nextNum.toString().padStart(3, "0")}`);
       }
     };
-    initInvoiceNumber();
+    initData();
   }, [userId, invoiceType, editInvoiceId]);
 
   // ✅ Load draft invoice data if editing
@@ -103,6 +118,7 @@ export default function CreateInvoiceForm({ userId }: { userId: string }) {
         setIssueDate(invoiceData.issue_date);
         setNotes(invoiceData.notes || "");
         setInvoiceNumber(invoiceData.invoice_number);
+        if (invoiceData.currency) setCurrency(invoiceData.currency);
 
         // Fetch and set contact
         const { data: contactData, error: contactError } = await supabase
@@ -208,16 +224,32 @@ export default function CreateInvoiceForm({ userId }: { userId: string }) {
 
   // Select product
   const handleSelectProduct = (lineItemId: string, product: Product) => {
-    const unitPrice = invoiceType === "sales" ? product.sale_price : product.purchase_price;
+    let unitPrice = invoiceType === "sales" ? product.sale_price : product.purchase_price;
+    
+    // 💱 Döviz dönüşümümantığı
+    if (currency !== "TRY" && rates) {
+       // Eğer ürün zaten o dövizdeyse direkt oradaki fiyatı al
+       if (product.currency === currency) {
+          unitPrice = invoiceType === "sales" ? product.sale_price_in_currency : product.purchase_price_in_currency;
+       } else {
+          // Değilse TRY fiyatını güncel kura böl
+          const sellingRate = rates[currency]?.selling || 1;
+          unitPrice = unitPrice / sellingRate;
+       }
+    } else if (currency === "TRY") {
+       // Fatura TRY ise her zaman TRY fiyatını al
+       unitPrice = invoiceType === "sales" ? product.sale_price : product.purchase_price;
+    }
+
     setLineItems((prev) =>
       prev.map((item) =>
         item.id === lineItemId
           ? {
-              ...item,
-              product_id: product.id,
-              product_name: product.name,
-              unit_price: unitPrice,
-              stock_quantity: product.stock_quantity,
+               ...item,
+               product_id: product.id,
+               product_name: product.name,
+               unit_price: unitPrice,
+               stock_quantity: product.stock_quantity,
             }
           : item
       )
@@ -323,6 +355,8 @@ export default function CreateInvoiceForm({ userId }: { userId: string }) {
         status: "draft",  // ✅ Draft olarak kaydet
         invoice_id: editInvoiceId || undefined,  // ✅ Update varsa ID
         invoice_number: invoiceNumber, // ✅ Manuel atanan fatura numarası
+        currency: currency, // ✅ NEW
+        exchange_rate: currency === "TRY" ? 1 : rates?.[currency]?.selling || 1, // ✅ NEW
       });
 
       if (response.success) {
@@ -376,6 +410,8 @@ export default function CreateInvoiceForm({ userId }: { userId: string }) {
         status: "pending",  // ✅ Kesilmiş fatura olarak kaydet
         invoice_id: editInvoiceId || undefined,  // ✅ Update varsa ID
         invoice_number: invoiceNumber, // ✅ Manuel atanan fatura numarası
+        currency: currency, // ✅ NEW
+        exchange_rate: currency === "TRY" ? 1 : rates?.[currency]?.selling || 1, // ✅ NEW
       });
 
       if (response.success) {
@@ -586,6 +622,21 @@ export default function CreateInvoiceForm({ userId }: { userId: string }) {
               </div>
               <div>
                 <label className="block text-xs font-semibold text-slate-600 uppercase tracking-wide mb-2">
+                  Döviz Birimi
+                </label>
+                <select
+                  className="w-full bg-slate-50 border border-slate-300 rounded-lg py-3 px-4 text-base font-bold text-primary focus:ring-purple-500 focus:border-purple-500"
+                  value={currency}
+                  onChange={(e) => setCurrency(e.target.value)}
+                >
+                  <option value="TRY">TRY (₺)</option>
+                  <option value="USD">USD ($)</option>
+                  <option value="EUR">EUR (€)</option>
+                  <option value="GBP">GBP (£)</option>
+                </select>
+              </div>
+              <div>
+                <label className="block text-xs font-semibold text-slate-600 uppercase tracking-wide mb-2">
                   Düzenleme Tarihi
                 </label>
                 <div className="relative">
@@ -728,7 +779,7 @@ export default function CreateInvoiceForm({ userId }: { userId: string }) {
                     </td>
                     <td className="px-6 py-6 text-right">
                       <span className={`text-base font-bold ${hasStockWarning ? "text-red-600" : "text-slate-900"}`}>
-                        {lineTotal.toFixed(2)} ₺
+                        {lineTotal.toFixed(2)} {currency === "USD" ? "$" : currency === "EUR" ? "€" : currency === "GBP" ? "£" : "₺"}
                       </span>
                       {hasStockWarning && (
                         <p className="text-xs text-red-600 font-bold flex items-center gap-1 justify-end mt-2">

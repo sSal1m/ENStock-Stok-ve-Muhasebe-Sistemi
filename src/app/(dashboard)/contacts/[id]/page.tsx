@@ -57,10 +57,8 @@ const MOCK_ISLEMLER: Islem[] = [
    ═══════════════════════════════════════════ */
 
 const fmt = (v: number, curr: string = "TRY") => {
-  const symbol = curr === \"USD\" ? \"$\" : curr === \"EUR\" ? \"€\" : curr === \"GBP\" ? \"£\" : curr === \"TRY\" ? \"₺\" : curr;
-  return (
-    symbol + v.toLocaleString(\"tr-TR\", { minimumFractionDigits: 2, maximumFractionDigits: 2 })
-  );
+  const symbol = curr === "USD" ? "$" : curr === "EUR" ? "€" : curr === "GBP" ? "£" : "₺";
+  return symbol + v.toLocaleString("tr-TR", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 };
 
 const durumStyle = (d: Islem["durum"]) => {

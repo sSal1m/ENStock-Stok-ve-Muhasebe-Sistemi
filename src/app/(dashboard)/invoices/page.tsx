@@ -6,13 +6,15 @@ import Link from "next/link";
 
 interface Invoice {
   id: string;
-  invoice_number: number;
+  invoice_number: string;
   type: "sale" | "purchase";
   issue_date: string;
   total_amount: number;
   tax_total: number;
   status: string;
   contact_id: string;
+  currency: string;
+  exchange_rate: number;
 }
 
 interface Contact {
@@ -20,12 +22,10 @@ interface Contact {
   name: string;
 }
 
-const fmt = (val: number) =>
-  new Intl.NumberFormat("tr-TR", {
-    style: "currency",
-    currency: "TRY",
-    minimumFractionDigits: 2,
-  }).format(val);
+const fmt = (val: number, curr: string) => {
+  const symbol = curr === "USD" ? "$" : curr === "EUR" ? "€" : curr === "GBP" ? "£" : "₺";
+  return symbol + val.toLocaleString("tr-TR", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+};
 
 export default function InvoicesPage() {
   const [invoices, setInvoices] = useState<Invoice[]>([]);
@@ -33,6 +33,8 @@ export default function InvoicesPage() {
   const [loading, setLoading] = useState(true);
   const [filterType, setFilterType] = useState<"all" | "sales" | "purchase">("all");
   const [searchTerm, setSearchTerm] = useState("");
+  const [viewCurrency, setViewCurrency] = useState("TRY");
+  const [rates, setRates] = useState<any>(null);
 
   const fetchInvoices = async () => {
     const { data: { user } } = await supabase.auth.getUser();
@@ -75,7 +77,17 @@ export default function InvoicesPage() {
   };
 
   useEffect(() => {
-    fetchInvoices();
+    const initData = async () => {
+      fetchInvoices();
+      try {
+        const res = await fetch("/api/currency");
+        const data = await res.json();
+        if (data.rates) setRates(data.rates);
+      } catch (err) {
+        console.error("Kurlar alınamadı:", err);
+      }
+    };
+    initData();
   }, []);
 
   const filtered = invoices.filter((invoice) => {
@@ -86,8 +98,23 @@ export default function InvoicesPage() {
     return typeMatch && searchMatch;
   });
 
-  const totalAmount = filtered.reduce((sum, inv) => sum + inv.total_amount, 0);
-  const vatAmount = filtered.reduce((sum, inv) => sum + inv.tax_total, 0);
+  const convert = (invoice: Invoice) => {
+    if (viewCurrency === "TRY") {
+      // Fatura zaten TRY bazlı kaydediliyor (total_amount her zaman TRY karşılığıdır logic'imizde)
+      return invoice.total_amount;
+    }
+    if (!rates) return invoice.total_amount;
+    return invoice.total_amount / (rates[viewCurrency]?.selling || 1);
+  };
+
+  const convertTax = (invoice: Invoice) => {
+    if (viewCurrency === "TRY") return invoice.tax_total;
+    if (!rates) return invoice.tax_total;
+    return invoice.tax_total / (rates[viewCurrency]?.selling || 1);
+  };
+
+  const totalAmount = filtered.reduce((sum, inv) => sum + convert(inv), 0);
+  const vatAmount = filtered.reduce((sum, inv) => sum + convertTax(inv), 0);
 
   return (
     <div className="w-full p-8 max-w-[1600px] mx-auto bg-slate-50 min-h-screen">
@@ -103,13 +130,30 @@ export default function InvoicesPage() {
               Tüm faturalarınızı yönetin ve takip edin
             </p>
           </div>
-          <Link
-            href="/invoices/new"
-            className="flex items-center gap-2 px-8 py-3.5 rounded-lg font-semibold text-sm text-white bg-gradient-to-r from-purple-600 to-purple-700 shadow-lg shadow-purple-200 hover:shadow-xl hover:shadow-purple-300 active:scale-[0.98] transition-all"
-          >
-            <span className="material-symbols-outlined">add_circle</span>
-            Yeni Fatura
-          </Link>
+          <div className="flex flex-wrap items-center gap-3">
+             {/* Döviz Görünüm Seçici */}
+             <div className="flex items-center gap-2 bg-white border-2 border-purple-100 rounded-xl px-4 py-2.5 shadow-sm">
+                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-tighter">Görünüm:</span>
+                <select
+                  value={viewCurrency}
+                  onChange={(e) => setViewCurrency(e.target.value)}
+                  className="bg-transparent border-none text-sm font-black text-purple-600 outline-none focus:ring-0 cursor-pointer"
+                >
+                  <option value="TRY">TRY (₺)</option>
+                  <option value="USD">USD ($)</option>
+                  <option value="EUR">EUR (€)</option>
+                  <option value="GBP">GBP (£)</option>
+                </select>
+              </div>
+
+            <Link
+              href="/invoices/new"
+              className="flex items-center gap-2 px-8 py-3.5 rounded-lg font-semibold text-sm text-white bg-gradient-to-r from-purple-600 to-purple-700 shadow-lg shadow-purple-200 hover:shadow-xl hover:shadow-purple-300 active:scale-[0.98] transition-all"
+            >
+              <span className="material-symbols-outlined">add_circle</span>
+              Yeni Fatura
+            </Link>
+          </div>
         </div>
 
         {/* Filter Bar */}
@@ -173,7 +217,7 @@ export default function InvoicesPage() {
                 <p className="text-xs font-semibold text-orange-600 uppercase tracking-wide mb-2">
                   Toplam KDV
                 </p>
-                <p className="font-bold text-2xl text-orange-700">{fmt(vatAmount)}</p>
+                <p className="font-bold text-2xl text-orange-700">{fmt(vatAmount, viewCurrency)}</p>
               </div>
               <div className="w-12 h-12 bg-orange-200/50 rounded-lg flex items-center justify-center">
                 <span className="material-symbols-outlined text-xl text-orange-600">receipt_long</span>
@@ -187,7 +231,7 @@ export default function InvoicesPage() {
                 <p className="text-xs font-semibold text-green-600 uppercase tracking-wide mb-2">
                   Toplam Tutar
                 </p>
-                <p className="font-bold text-2xl text-green-700">{fmt(totalAmount)}</p>
+                <p className="font-bold text-2xl text-green-700">{fmt(totalAmount, viewCurrency)}</p>
               </div>
               <div className="w-12 h-12 bg-green-200/50 rounded-lg flex items-center justify-center">
                 <span className="material-symbols-outlined text-xl text-green-600">payments</span>
@@ -278,7 +322,7 @@ export default function InvoicesPage() {
                       </p>
                     </td>
                     <td className="px-6 py-4 text-right">
-                      <p className="text-sm font-semibold text-slate-900">{fmt(invoice.total_amount)}</p>
+                      <p className="text-sm font-semibold text-slate-900">{fmt(convert(invoice), viewCurrency)}</p>
                     </td>
                     <td className="px-6 py-4">
                       <span

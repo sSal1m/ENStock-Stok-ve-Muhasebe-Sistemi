@@ -25,9 +25,11 @@ export interface CreateInvoiceRequest {
   issue_date: string;
   notes?: string;
   line_items: InvoiceLineItem[];
-  status?: "draft" | "pending";  // ✅ draft veya pending statüsng statüsü
+  status?: "draft" | "pending";  // ✅ draft veya pending statüsü
   invoice_id?: string;  // ✅ NEW: draft faturayı update etmek için
   invoice_number?: string; // ✅ Manuel fatura numarası için
+  currency?: string; // ✅ NEW: Para birimi (TRY, USD, EUR vb.)
+  exchange_rate?: number; // ✅ NEW: Kur değeri
 }
 
 export interface InvoiceActionState {
@@ -108,7 +110,7 @@ export async function searchProducts(userId: string, query: string, invoiceType:
 
   const { data, error } = await supabaseServer
     .from("products")
-    .select("id, name, sku, stock_quantity, sale_price, purchase_price")
+    .select("id, name, sku, stock_quantity, sale_price, purchase_price, currency, sale_price_in_currency, purchase_price_in_currency")
     .eq("user_id", userId)
     .or(`name.ilike.%${query}%,sku.ilike.%${query}%`)
     .limit(10);
@@ -166,7 +168,11 @@ export async function getNextInvoiceNumber(userId: string, invoiceType: "sales" 
    ═══════════════════════════════════════════ */
 
 export async function createInvoiceAction(request: CreateInvoiceRequest): Promise<InvoiceActionState> {
-  const { user_id, contact_id, invoice_type, issue_date, notes, line_items, status = "draft", invoice_id, invoice_number: reqInvoiceNumber } = request;
+  const { 
+    user_id, contact_id, invoice_type, issue_date, notes, line_items, 
+    status = "draft", invoice_id, invoice_number: reqInvoiceNumber,
+    currency = "TRY", exchange_rate = 1 
+  } = request;
 
   // 1) auth.getUser() kontrolü (Kullanıcının sisteme gerçekten login olup olmadığını ve token'ı doğrulamak için)
   // Not: supabaseServer service_role ile oluşturulduğundan, auth context'i taşıması için ek ayarlarınız olabilir.
@@ -277,6 +283,8 @@ export async function createInvoiceAction(request: CreateInvoiceRequest): Promis
           total_amount: totalAmount,
           notes: notes || null,
           status: status,
+          currency,
+          exchange_rate,
         })
         .eq("id", invoice_id)
         .select()
@@ -330,6 +338,8 @@ export async function createInvoiceAction(request: CreateInvoiceRequest): Promis
             total_amount: totalAmount,
             notes: notes || null,
             status: status,
+            currency,
+            exchange_rate,
           },
         ])
         .select()

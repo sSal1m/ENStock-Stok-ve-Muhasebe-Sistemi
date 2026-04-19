@@ -5,9 +5,13 @@ import { useParams, useRouter } from "next/navigation";
 import toast, { Toaster } from "react-hot-toast";
 import { supabase } from "@/lib/supabaseClient";
 import StockAdjustmentModal from "@/components/inventory/StockAdjustmentModal";
+import { useCurrencyConverter } from "@/hooks/useCurrencyConverter";
 
 // ─── Tipler ────────────────────────────────────────────────────────────────
-
+interface Product {
+  id: string;
+  sku: string;
+  name: string;
   purchase_price: number;
   sale_price: number;
   currency: string;
@@ -48,12 +52,7 @@ interface AllMovements {
 
 // ─── Yardımcılar ────────────────────────────────────────────────────────────
 
-function fmt(val: number, currency: string = "TRY"): string {
-  const symbol = currency === "USD" ? "$" : currency === "EUR" ? "€" : currency === "GBP" ? "£" : currency === "TRY" ? "₺" : currency;
-  return (
-    symbol + val.toLocaleString("tr-TR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })
-  );
-}
+// fmt function is now handled by the hook
 
 function fmtDate(iso: string): { date: string; time: string } {
   const d = new Date(iso);
@@ -104,24 +103,7 @@ export default function ProductDetailPage() {
   const ITEMS_PER_PAGE = 5; // Client-side pagination için
 
   // Döviz Durumu
-  const [viewCurrency, setViewCurrency] = useState("TRY");
-  const [rates, setRates] = useState<any>(null);
-
-  // ── Döviz Kurlarını Çek ────────────────────────────────────────────────
-  useEffect(() => {
-    async function fetchRates() {
-      try {
-        const res = await fetch("/api/currency");
-        const data = await res.json();
-        if (data.rates) {
-          setRates(data.rates);
-        }
-      } catch (err) {
-        console.error("Kurlar yüklenemedi:", err);
-      }
-    }
-    fetchRates();
-  }, []);
+  const { rates, viewCurrency, setViewCurrency, convert, format: fmt } = useCurrencyConverter();
 
   // ── Kullanıcı ID'sini Al ────────────────────────────────────────────────
   useEffect(() => {
@@ -240,10 +222,7 @@ export default function ProductDetailPage() {
 
   // ── Hesaplamalar ──────────────────────────────────────────────────────────
   // Çevrim Yardımcısı
-  const convert = (val: number) => {
-    if (viewCurrency === "TRY" || !rates) return val;
-    return val / (rates[viewCurrency]?.selling || 1);
-  };
+  // Convert function moved to hook
 
   const margin =
     product && product.purchase_price > 0

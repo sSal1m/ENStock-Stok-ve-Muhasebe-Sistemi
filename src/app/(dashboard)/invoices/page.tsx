@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { supabase } from "@/lib/supabaseClient";
+import { useCurrencyConverter } from "@/hooks/useCurrencyConverter";
 import Link from "next/link";
 
 interface Invoice {
@@ -14,7 +15,6 @@ interface Invoice {
   status: string;
   contact_id: string;
   currency: string;
-  exchange_rate: number;
 }
 
 interface Contact {
@@ -22,19 +22,13 @@ interface Contact {
   name: string;
 }
 
-const fmt = (val: number, curr: string) => {
-  const symbol = curr === "USD" ? "$" : curr === "EUR" ? "€" : curr === "GBP" ? "£" : "₺";
-  return symbol + val.toLocaleString("tr-TR", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-};
-
 export default function InvoicesPage() {
+  const { viewCurrency, setViewCurrency, convert, format } = useCurrencyConverter();
   const [invoices, setInvoices] = useState<Invoice[]>([]);
   const [contacts, setContacts] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(true);
   const [filterType, setFilterType] = useState<"all" | "sales" | "purchase">("all");
   const [searchTerm, setSearchTerm] = useState("");
-  const [viewCurrency, setViewCurrency] = useState("TRY");
-  const [rates, setRates] = useState<any>(null);
 
   const fetchInvoices = async () => {
     const { data: { user } } = await supabase.auth.getUser();
@@ -77,17 +71,7 @@ export default function InvoicesPage() {
   };
 
   useEffect(() => {
-    const initData = async () => {
-      fetchInvoices();
-      try {
-        const res = await fetch("/api/currency");
-        const data = await res.json();
-        if (data.rates) setRates(data.rates);
-      } catch (err) {
-        console.error("Kurlar alınamadı:", err);
-      }
-    };
-    initData();
+    fetchInvoices();
   }, []);
 
   const filtered = invoices.filter((invoice) => {
@@ -98,23 +82,12 @@ export default function InvoicesPage() {
     return typeMatch && searchMatch;
   });
 
-  const convert = (invoice: Invoice) => {
-    if (viewCurrency === "TRY") {
-      // Fatura zaten TRY bazlı kaydediliyor (total_amount her zaman TRY karşılığıdır logic'imizde)
-      return invoice.total_amount;
-    }
-    if (!rates) return invoice.total_amount;
-    return invoice.total_amount / (rates[viewCurrency]?.selling || 1);
+  const calculateInView = (amountTry: number) => {
+    return convert(amountTry); // Hook'un convert fonksiyonunu kullanıyoruz (TRY -> viewCurrency)
   };
 
-  const convertTax = (invoice: Invoice) => {
-    if (viewCurrency === "TRY") return invoice.tax_total;
-    if (!rates) return invoice.tax_total;
-    return invoice.tax_total / (rates[viewCurrency]?.selling || 1);
-  };
-
-  const totalAmount = filtered.reduce((sum, inv) => sum + convert(inv), 0);
-  const vatAmount = filtered.reduce((sum, inv) => sum + convertTax(inv), 0);
+  const totalAmount = filtered.reduce((sum, inv) => sum + calculateInView(inv.total_amount), 0);
+  const vatAmount = filtered.reduce((sum, inv) => sum + calculateInView(inv.tax_total), 0);
 
   return (
     <div className="w-full p-8 max-w-[1600px] mx-auto bg-slate-50 min-h-screen">
@@ -217,7 +190,7 @@ export default function InvoicesPage() {
                 <p className="text-xs font-semibold text-orange-600 uppercase tracking-wide mb-2">
                   Toplam KDV
                 </p>
-                <p className="font-bold text-2xl text-orange-700">{fmt(vatAmount, viewCurrency)}</p>
+                <p className="font-bold text-2xl text-orange-700">{format(vatAmount)}</p>
               </div>
               <div className="w-12 h-12 bg-orange-200/50 rounded-lg flex items-center justify-center">
                 <span className="material-symbols-outlined text-xl text-orange-600">receipt_long</span>
@@ -231,7 +204,7 @@ export default function InvoicesPage() {
                 <p className="text-xs font-semibold text-green-600 uppercase tracking-wide mb-2">
                   Toplam Tutar
                 </p>
-                <p className="font-bold text-2xl text-green-700">{fmt(totalAmount, viewCurrency)}</p>
+                <p className="font-bold text-2xl text-green-700">{format(totalAmount)}</p>
               </div>
               <div className="w-12 h-12 bg-green-200/50 rounded-lg flex items-center justify-center">
                 <span className="material-symbols-outlined text-xl text-green-600">payments</span>
@@ -322,7 +295,7 @@ export default function InvoicesPage() {
                       </p>
                     </td>
                     <td className="px-6 py-4 text-right">
-                      <p className="text-sm font-semibold text-slate-900">{fmt(convert(invoice), viewCurrency)}</p>
+                      <p className="text-sm font-semibold text-slate-900">{format(calculateInView(invoice.total_amount))}</p>
                     </td>
                     <td className="px-6 py-4">
                       <span

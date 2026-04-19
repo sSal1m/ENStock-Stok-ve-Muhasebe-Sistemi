@@ -5,6 +5,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { createInvoiceAction, searchContacts, searchProducts, getNextInvoiceNumber, type InvoiceLineItem } from "@/app/(dashboard)/invoices/actions";
 import { supabase } from "@/lib/supabaseClient";
 import Toast from "@/components/invoices/Toast";
+import { useCurrencyConverter } from "@/hooks/useCurrencyConverter";
 
 interface Contact {
   id: string;
@@ -67,20 +68,23 @@ export default function CreateInvoiceForm({ userId }: { userId: string }) {
   const [isLoading, setIsLoading] = useState(false);
   const [isInitialLoading, setIsInitialLoading] = useState(!!editInvoiceId); // ✅ Taslak yükleme durumu
 
-  const [rates, setRates] = useState<any>(null);
-  const [currency, setCurrency] = useState("TRY");
+  const { rates, viewCurrency: currency, setViewCurrency: setCurrency, convertFull, format, convert } = useCurrencyConverter();
+  const prevCurrencyRef = useRef(currency);
 
-  // Initialize invoice number & Fetch Rates
+  // 💱 Para birimi değiştiğinde listedeki fiyatları otomatik dönüştür
+  useEffect(() => {
+    if (prevCurrencyRef.current !== currency && rates && lineItems.length > 0) {
+      setLineItems(prev => prev.map(item => ({
+        ...item,
+        unit_price: convertFull(item.unit_price, prevCurrencyRef.current, currency)
+      })));
+    }
+    prevCurrencyRef.current = currency;
+  }, [currency, rates, convertFull]);
+
+  // Initialize invoice number
   useEffect(() => {
     const initData = async () => {
-      // Fetch Rates
-      try {
-        const res = await fetch("/api/currency");
-        const data = await res.json();
-        if (data.rates) setRates(data.rates);
-      } catch (err) {
-        console.error("Kurlar alınamadı:", err);
-      }
 
       if (!editInvoiceId) {
         const nextNum = await getNextInvoiceNumber(userId, invoiceType);
@@ -226,19 +230,13 @@ export default function CreateInvoiceForm({ userId }: { userId: string }) {
   const handleSelectProduct = (lineItemId: string, product: Product) => {
     let unitPrice = invoiceType === "sales" ? product.sale_price : product.purchase_price;
     
-    // 💱 Döviz dönüşümümantığı
+    // 💱 Döviz dönüşümü (Hook üzerinden)
     if (currency !== "TRY" && rates) {
-       // Eğer ürün zaten o dövizdeyse direkt oradaki fiyatı al
        if (product.currency === currency) {
           unitPrice = invoiceType === "sales" ? product.sale_price_in_currency : product.purchase_price_in_currency;
        } else {
-          // Değilse TRY fiyatını güncel kura böl
-          const sellingRate = rates[currency]?.selling || 1;
-          unitPrice = unitPrice / sellingRate;
+          unitPrice = convertFull(unitPrice, "TRY", currency);
        }
-    } else if (currency === "TRY") {
-       // Fatura TRY ise her zaman TRY fiyatını al
-       unitPrice = invoiceType === "sales" ? product.sale_price : product.purchase_price;
     }
 
     setLineItems((prev) =>
@@ -660,7 +658,7 @@ export default function CreateInvoiceForm({ userId }: { userId: string }) {
                 <th className="px-6 py-5 text-xs font-semibold uppercase text-slate-700 tracking-wide">Hizmet / Ürün</th>
                 <th className="px-6 py-5 text-xs font-semibold uppercase text-slate-700 tracking-wide w-28">Miktar</th>
                 <th className="px-6 py-5 text-xs font-semibold uppercase text-slate-700 tracking-wide w-32">
-                  Birim Fiyat (₺)
+                  Birim Fiyat ({currency === "TRY" ? "₺" : currency})
                 </th>
                 <th className="px-6 py-5 text-xs font-semibold uppercase text-slate-700 tracking-wide w-24">KDV %</th>
                 <th className="px-6 py-5 text-xs font-semibold uppercase text-slate-700 tracking-wide w-32 text-right">
@@ -779,7 +777,7 @@ export default function CreateInvoiceForm({ userId }: { userId: string }) {
                     </td>
                     <td className="px-6 py-6 text-right">
                       <span className={`text-base font-bold ${hasStockWarning ? "text-red-600" : "text-slate-900"}`}>
-                        {lineTotal.toFixed(2)} {currency === "USD" ? "$" : currency === "EUR" ? "€" : currency === "GBP" ? "£" : "₺"}
+                        {format(lineTotal, currency)}
                       </span>
                       {hasStockWarning && (
                         <p className="text-xs text-red-600 font-bold flex items-center gap-1 justify-end mt-2">
@@ -828,15 +826,21 @@ export default function CreateInvoiceForm({ userId }: { userId: string }) {
             <div className="bg-white rounded-2xl p-8 space-y-4 shadow-sm border border-slate-200">
               <div className="flex justify-between items-center text-sm">
                 <span className="text-slate-600 font-semibold">Ara Toplam</span>
-                <span className="font-bold text-slate-900 text-base">{totals.subtotal.toFixed(2)} ₺</span>
+                <span className="font-bold text-slate-900 text-base">
+                  {format(totals.subtotal, currency)}
+                </span>
               </div>
               <div className="flex justify-between items-center text-sm">
                 <span className="text-slate-600 font-semibold">KDV Toplamı</span>
-                <span className="font-bold text-slate-900 text-base">{totals.vatTotal.toFixed(2)} ₺</span>
+                <span className="font-bold text-slate-900 text-base">
+                  {format(totals.vatTotal, currency)}
+                </span>
               </div>
               <div className="pt-4 border-t border-slate-200 flex justify-between items-center">
                 <span className="font-bold text-slate-900">Genel Toplam</span>
-                <span className="font-extrabold text-3xl bg-gradient-to-r from-purple-600 to-purple-500 bg-clip-text text-transparent">{totals.total.toFixed(2)} ₺</span>
+                <span className="font-extrabold text-3xl bg-gradient-to-r from-purple-600 to-purple-500 bg-clip-text text-transparent">
+                  {format(totals.total, currency)}
+                </span>
               </div>
             </div>
             <div className="flex gap-4">

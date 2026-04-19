@@ -4,6 +4,7 @@ import { useEffect, useState, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import toast, { Toaster } from "react-hot-toast";
 import { supabase } from "@/lib/supabaseClient";
+import { useCurrencyConverter } from "@/hooks/useCurrencyConverter";
 
 // ─── Tipler ────────────────────────────────────────────────────────────────
 
@@ -63,23 +64,7 @@ export default function NewInventoryPage() {
   const [showNewCategoryForm, setShowNewCategoryForm] = useState(false);
   const [newCategoryName, setNewCategoryName] = useState("");
   const [savingCategory, setSavingCategory] = useState(false);
-  const [rates, setRates] = useState<any>(null);
-
-  // ── Döviz Kurlarını Çek ────────────────────────────────────────────────
-  useEffect(() => {
-    async function fetchRates() {
-      try {
-        const res = await fetch("/api/currency");
-        const data = await res.json();
-        if (data.rates) {
-          setRates(data.rates);
-        }
-      } catch (err) {
-        console.error("Kurlar yüklenemedi:", err);
-      }
-    }
-    fetchRates();
-  }, []);
+  const { rates, convertFull } = useCurrencyConverter();
 
   // ── Kullanıcı ID'sini Al ────────────────────────────────────────────────
   useEffect(() => {
@@ -205,10 +190,9 @@ export default function NewInventoryPage() {
   const salePrice = toNum(form.sale_price);
   const purchasePrice = toNum(form.purchase_price);
   
-  // Döviz Çevrimi (Görsel Yardım için)
-  const rate = rates && form.currency !== "TRY" ? rates[form.currency]?.selling || 1 : 1;
-  const purchasePriceTRY = purchasePrice * rate;
-  const salePriceTRY = salePrice * rate;
+  // Döviz Çevrimi (Görsel Yardım için - Hook üzerinden)
+  const purchasePriceTRY = convertFull(purchasePrice, form.currency, "TRY");
+  const salePriceTRY = convertFull(salePrice, form.currency, "TRY");
 
   const vatAmount = salePrice * (form.tax_rate / 100);
   const priceWithVat = salePrice + vatAmount;

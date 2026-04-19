@@ -4,6 +4,7 @@ import { useState, useEffect } from "react";
 import { useParams } from "next/navigation";
 import Link from "next/link";
 import { supabase } from "@/lib/supabaseClient";
+import { useCurrencyConverter } from "@/hooks/useCurrencyConverter";
 
 /* ═══════════════════════════════════════════
    TYPES
@@ -56,10 +57,7 @@ const MOCK_ISLEMLER: Islem[] = [
    HELPERS
    ═══════════════════════════════════════════ */
 
-const fmt = (v: number, curr: string = "TRY") => {
-  const symbol = curr === "USD" ? "$" : curr === "EUR" ? "€" : curr === "GBP" ? "£" : "₺";
-  return symbol + v.toLocaleString("tr-TR", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-};
+// fmt function is now handled by the hook
 
 const durumStyle = (d: Islem["durum"]) => {
   switch (d) {
@@ -116,25 +114,7 @@ export default function ContactDetailPage() {
   const [notFound, setNotFound] = useState(false);
   const [activeTab, setActiveTab] = useState<Tab>("Tüm İşlemler");
 
-  // Döviz Durumu
-  const [viewCurrency, setViewCurrency] = useState("TRY");
-  const [rates, setRates] = useState<any>(null);
-
-  // ── Döviz Kurlarını Çek ────────────────────────────────────────────────
-  useEffect(() => {
-    async function fetchRates() {
-      try {
-        const res = await fetch("/api/currency");
-        const data = await res.json();
-        if (data.rates) {
-          setRates(data.rates);
-        }
-      } catch (err) {
-        console.error("Kurlar yüklenemedi:", err);
-      }
-    }
-    fetchRates();
-  }, []);
+  const { rates, viewCurrency, setViewCurrency, convert, format: fmt } = useCurrencyConverter();
 
   // ── Fetch cari record ──
   useEffect(() => {
@@ -203,10 +183,7 @@ export default function ContactDetailPage() {
       ? islemler
       : islemler.filter((i) => tabKategori(i.tur_tipi) === activeTab);
 
-  const convert = (val: number) => {
-    if (viewCurrency === "TRY" || !rates) return val;
-    return val / (rates[viewCurrency]?.selling || 1);
-  };
+  // convert function is now handled by the hook
 
   const bakiye = cari?.current_balance ?? 0;
   const isBorclu = bakiye < 0;

@@ -7,6 +7,7 @@ import { supabase } from "@/lib/supabaseClient";
 import CategoryModal from "@/components/inventory/CategoryModal";
 import DeleteConfirmationModal from "@/components/inventory/DeleteConfirmationModal";
 import Link from "next/link";
+import { useCurrencyConverter } from "@/hooks/useCurrencyConverter";
 
 // ─── Tipler ────────────────────────────────────────────────────────────────
 
@@ -62,13 +63,7 @@ function getStockPercent(qty: number, limit: number): number {
   return Math.min(Math.round((qty / max) * 100), 100);
 }
 
-function formatPrice(val: number, currency: string = "TRY"): string {
-  const symbol = currency === "USD" ? "$" : currency === "EUR" ? "€" : currency === "GBP" ? "£" : currency === "TRY" ? "₺" : currency;
-  return (
-    symbol +
-    val.toLocaleString("tr-TR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })
-  );
-}
+// formatPrice function is now handled by the hook
 
 // ─── Yükleme Skeleton ───────────────────────────────────────────────────────
 
@@ -106,24 +101,7 @@ export default function InventoryPage() {
   const [userId, setUserId] = useState<string | null>(null);
   
   // Dashboard Döviz Durumu
-  const [viewCurrency, setViewCurrency] = useState("TRY");
-  const [rates, setRates] = useState<any>(null);
-
-  // ── Döviz Kurlarını Çek ────────────────────────────────────────────────
-  useEffect(() => {
-    async function fetchRates() {
-      try {
-        const res = await fetch("/api/currency");
-        const data = await res.json();
-        if (data.rates) {
-          setRates(data.rates);
-        }
-      } catch (err) {
-        console.error("Kurlar yüklenemedi:", err);
-      }
-    }
-    fetchRates();
-  }, []);
+  const { rates, viewCurrency, setViewCurrency, convert, format: formatPrice } = useCurrencyConverter();
   const router = useRouter();
 
   // ── Kullanıcı ID'sini Al ────────────────────────────────────────────────
@@ -364,12 +342,7 @@ export default function InventoryPage() {
             {loading ? (
               <span className="inline-block w-28 h-7 bg-slate-100 rounded animate-pulse" />
             ) : (
-              formatPrice(
-                viewCurrency === "TRY" || !rates 
-                  ? (stats?.totalStockValue ?? 0) 
-                  : (stats?.totalStockValue ?? 0) / (rates[viewCurrency]?.selling || 1),
-                viewCurrency
-              )
+              formatPrice(convert(stats?.totalStockValue ?? 0))
             )}
           </h3>
         </div>
@@ -560,14 +533,13 @@ export default function InventoryPage() {
                         <p className="font-bold text-on-surface">
                           {item.currency !== "TRY" ? (
                             <>
-                              {item.currency === "USD" ? "$" : item.currency === "EUR" ? "€" : item.currency === "GBP" ? "£" : item.currency}
-                              {item.sale_price_in_currency?.toLocaleString("tr-TR", { minimumFractionDigits: 2 })}
+                              {formatPrice(item.sale_price_in_currency, item.currency)}
                               <span className="block text-[10px] text-slate-400 font-medium">
-                                ({formatPrice(item.sale_price)})
+                                ({formatPrice(item.sale_price, "TRY")})
                               </span>
                             </>
                           ) : (
-                            formatPrice(item.sale_price)
+                            formatPrice(item.sale_price, "TRY")
                           )}
                         </p>
                       </td>

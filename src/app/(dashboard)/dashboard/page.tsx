@@ -2,8 +2,10 @@
 
 import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import { supabase } from '@/lib/supabaseClient';
 import toast from 'react-hot-toast';
+import { useCurrencyConverter } from '@/hooks/useCurrencyConverter';
 
 interface KPIData {
   totalProducts: number;
@@ -28,6 +30,7 @@ interface ChartDataPoint {
 }
 
 export default function DashboardPage() {
+  const router = useRouter();
   const [kpiData, setKpiData] = useState<KPIData>({
     totalProducts: 0,
     criticalStockItems: 0,
@@ -37,39 +40,18 @@ export default function DashboardPage() {
   const [activities, setActivities] = useState<ActivityLog[]>([]);
   const [chartData, setChartData] = useState<ChartDataPoint[]>([]);
   const [loading, setLoading] = useState(true);
-  const [user, setUser] = useState<any>(null);
-  const [viewCurrency, setViewCurrency] = useState("TRY");
-  const [rates, setRates] = useState<any>(null);
-
-  // ── Döviz Kurlarını Çek ────────────────────────────────────────────────
-  useEffect(() => {
-    async function fetchRates() {
-      try {
-        const res = await fetch("/api/currency");
-        const data = await res.json();
-        if (data.rates) {
-          setRates(data.rates);
-        }
-      } catch (err) {
-        console.error("Kurlar yüklenemedi:", err);
-      }
-    }
-    fetchRates();
-  }, []);
+  const { rates, viewCurrency, setViewCurrency, convert, format: fmt } = useCurrencyConverter();
 
   useEffect(() => {
     const fetchData = async () => {
       try {
         setLoading(true);
 
-        const {
-          data: { user: authUser },
-        } = await supabase.auth.getUser();
+        const { data: { user: authUser } } = await supabase.auth.getUser();
         if (!authUser) {
-          toast.error('Oturum açmanız gereklidir');
+          router.push("/login");
           return;
         }
-        setUser(authUser);
 
         const [
           productsRes,
@@ -213,15 +195,7 @@ export default function DashboardPage() {
     return 'GECİKMİŞ';
   };
 
-  const convert = (val: number) => {
-    if (viewCurrency === "TRY" || !rates) return val;
-    return val / (rates[viewCurrency]?.selling || 1);
-  };
-
-  const fmt = (val: number, curr: string) => {
-    const symbol = curr === "USD" ? "$" : curr === "EUR" ? "€" : curr === "GBP" ? "£" : curr === "TRY" ? "₺" : curr;
-    return symbol + val.toLocaleString('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-  };
+  // Helper functions moved to hook
 
   if (loading) {
     return (

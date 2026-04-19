@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import toast, { Toaster } from "react-hot-toast";
 import { supabase } from "@/lib/supabaseClient";
+import { useCurrencyConverter } from "@/hooks/useCurrencyConverter";
 
 interface Category {
   id: string;
@@ -44,23 +45,7 @@ export default function EditProductPage() {
   const [lastUpdate, setLastUpdate] = useState<string | null>(null);
   const [updater, setUpdater] = useState<string>("Bilinmeyen Kullanıcı"); // Opsiyonel bilgi
   const [userId, setUserId] = useState<string | null>(null);
-  const [rates, setRates] = useState<any>(null);
-
-  // ── Döviz Kurlarını Çek ────────────────────────────────────────────────
-  useEffect(() => {
-    async function fetchRates() {
-      try {
-        const res = await fetch("/api/currency");
-        const data = await res.json();
-        if (data.rates) {
-          setRates(data.rates);
-        }
-      } catch (err) {
-        console.error("Kurlar yüklenemedi:", err);
-      }
-    }
-    fetchRates();
-  }, []);
+  const { rates, convertFull } = useCurrencyConverter();
 
   // ── Kullanıcı ID'sini Al ────────────────────────────────────────────────
   useEffect(() => {
@@ -159,10 +144,9 @@ export default function EditProductPage() {
         return;
       }
 
-      // TRY Karşılıkları Hesapla
-      const rate = rates && form.currency !== "TRY" ? rates[form.currency]?.selling || 1 : 1;
-      const purchasePriceTRY = purchasePrice * rate;
-      const salePriceTRY = salePrice * rate;
+      // TRY Karşılıkları Hesapla (Hook üzerinden)
+      const purchasePriceTRY = convertFull(purchasePrice, form.currency, "TRY");
+      const salePriceTRY = convertFull(salePrice, form.currency, "TRY");
 
       const updates = {
         name: form.name.trim(),
@@ -404,11 +388,9 @@ export default function EditProductPage() {
                   />
                   <span className="absolute right-4 top-1/2 -translate-y-1/2 text-xs font-bold text-outline">{form.currency}</span>
                 </div>
-                {form.currency !== "TRY" && rates && (
                   <p className="text-[10px] text-emerald-600 font-bold ml-1">
-                    ≈ {(parseFloat(form.purchase_price) * (rates[form.currency]?.selling || 1)).toLocaleString("tr-TR", { minimumFractionDigits: 2 })} TRY
+                    ≈ {convertFull(parseFloat(form.purchase_price) || 0, form.currency, "TRY").toLocaleString("tr-TR", { minimumFractionDigits: 2 })} TRY
                   </p>
-                )}
               </div>
               
               {/* Satış Fiyatı */}
@@ -427,11 +409,9 @@ export default function EditProductPage() {
                   />
                   <span className="absolute right-4 top-1/2 -translate-y-1/2 text-xs font-bold text-outline">{form.currency}</span>
                 </div>
-                {form.currency !== "TRY" && rates && (
                   <p className="text-[10px] text-emerald-600 font-bold ml-1">
-                    ≈ {(parseFloat(form.sale_price) * (rates[form.currency]?.selling || 1)).toLocaleString("tr-TR", { minimumFractionDigits: 2 })} TRY
+                    ≈ {convertFull(parseFloat(form.sale_price) || 0, form.currency, "TRY").toLocaleString("tr-TR", { minimumFractionDigits: 2 })} TRY
                   </p>
-                )}
               </div>
 
               {/* Döviz Birimi */}

@@ -27,10 +27,10 @@ interface Contact {
    HELPERS
    ═══════════════════════════════════════════ */
 
-const fmt = (val: number) =>
+const fmt = (val: number, currency: string = "TRY") =>
   new Intl.NumberFormat("tr-TR", {
     style: "currency",
-    currency: "TRY",
+    currency: currency,
     minimumFractionDigits: 2,
   }).format(val);
 
@@ -46,6 +46,26 @@ export default function ContactsPage() {
   const [loading, setLoading] = useState(true);
   const [isPending, startTransition] = useTransition();
   const formRef = useRef<HTMLFormElement>(null);
+
+  // Döviz Durumu
+  const [viewCurrency, setViewCurrency] = useState("TRY");
+  const [rates, setRates] = useState<any>(null);
+
+  // ── Döviz Kurlarını Çek ────────────────────────────────────────────────
+  useEffect(() => {
+    async function fetchRates() {
+      try {
+        const res = await fetch("/api/currency");
+        const data = await res.json();
+        if (data.rates) {
+          setRates(data.rates);
+        }
+      } catch (err) {
+        console.error("Kurlar yüklenemedi:", err);
+      }
+    }
+    fetchRates();
+  }, []);
 
   // ── Fetch from Supabase ──
   const fetchContacts = async () => {
@@ -84,6 +104,12 @@ export default function ContactsPage() {
       .includes(search.toLocaleLowerCase("tr"));
     return tabOk && searchOk;
   });
+
+  const convert = (val: number) => {
+    if (viewCurrency === "TRY" || !rates) return val;
+    const rate = rates[viewCurrency]?.selling || 1;
+    return val / rate;
+  };
 
   const alacak = contacts.filter((c) => c.current_balance > 0).reduce((s, c) => s + c.current_balance, 0);
   const borc = contacts.filter((c) => c.current_balance < 0).reduce((s, c) => s + Math.abs(c.current_balance), 0);
@@ -142,8 +168,21 @@ export default function ContactsPage() {
             Müşteri ve tedarikçi hesaplarınızı tek panelden yönetin.
           </p>
         </div>
-        <div className="flex items-center gap-3">
-          <div className="relative">
+          <div className="flex items-center gap-3">
+            <div className="flex items-center gap-2 bg-white border border-indigo-100 rounded-xl px-3 py-1.5 shadow-sm">
+              <span className="text-[10px] font-bold text-slate-400 uppercase tracking-tighter">Görünüm:</span>
+              <select
+                value={viewCurrency}
+                onChange={(e) => setViewCurrency(e.target.value)}
+                className="bg-transparent border-none text-sm font-black text-primary outline-none focus:ring-0 cursor-pointer"
+              >
+                <option value="TRY">TRY (₺)</option>
+                <option value="USD">USD ($)</option>
+                <option value="EUR">EUR (€)</option>
+                <option value="GBP">GBP (£)</option>
+              </select>
+            </div>
+            <div className="relative">
             <span className="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 text-[18px]">search</span>
             <input
               id="cari-search"
@@ -176,7 +215,7 @@ export default function ContactsPage() {
         <div className="bg-white p-6 rounded-2xl shadow-sm border border-indigo-50/50">
           <p className="text-xs font-bold uppercase tracking-widest text-slate-400">Toplam Alacak</p>
           <div className="mt-2 flex items-end gap-3">
-            <p className="text-2xl font-extrabold text-emerald-600 tabular-nums leading-none">{fmt(alacak)}</p>
+            <p className="text-2xl font-extrabold text-emerald-600 tabular-nums leading-none">{fmt(convert(alacak), viewCurrency)}</p>
             <span className="mb-0.5 inline-flex items-center gap-0.5 text-[11px] font-bold text-emerald-500">
               <span className="material-symbols-outlined text-[14px]">arrow_upward</span>
               +12.5%
@@ -188,7 +227,7 @@ export default function ContactsPage() {
         <div className="bg-white p-6 rounded-2xl shadow-sm border border-indigo-50/50">
           <p className="text-xs font-bold uppercase tracking-widest text-slate-400">Toplam Borç</p>
           <div className="mt-2 flex items-end gap-3">
-            <p className="text-2xl font-extrabold text-error tabular-nums leading-none">{fmt(borc)}</p>
+            <p className="text-2xl font-extrabold text-error tabular-nums leading-none">{fmt(convert(borc), viewCurrency)}</p>
             <span className="mb-0.5 inline-flex items-center gap-0.5 text-[11px] font-bold text-error">
               <span className="material-symbols-outlined text-[14px]">arrow_downward</span>
               -4.2%
@@ -296,7 +335,7 @@ export default function ContactsPage() {
                           : "bg-error-container/20 text-error"
                       }`}
                     >
-                      {fmt(c.current_balance)}
+                      {fmt(convert(c.current_balance), viewCurrency)}
                     </span>
                   </td>
                   <td className="px-8 py-4 text-right">

@@ -16,6 +16,9 @@ interface Product {
   name: string;
   purchase_price: number;
   sale_price: number;
+  currency: string;
+  purchase_price_in_currency: number;
+  sale_price_in_currency: number;
   stock_quantity: number;
   critical_limit: number;
   categories: { name: string }[] | { name: string } | null;
@@ -59,9 +62,10 @@ function getStockPercent(qty: number, limit: number): number {
   return Math.min(Math.round((qty / max) * 100), 100);
 }
 
-function formatPrice(val: number): string {
+function formatPrice(val: number, currency: string = "TRY"): string {
+  const symbol = currency === "USD" ? "$" : currency === "EUR" ? "€" : currency === "GBP" ? "£" : currency === "TRY" ? "₺" : currency;
   return (
-    "₺" +
+    symbol +
     val.toLocaleString("tr-TR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })
   );
 }
@@ -100,6 +104,26 @@ export default function InventoryPage() {
   const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<{ id: string; name: string } | null>(null);
   const [userId, setUserId] = useState<string | null>(null);
+  
+  // Dashboard Döviz Durumu
+  const [viewCurrency, setViewCurrency] = useState("TRY");
+  const [rates, setRates] = useState<any>(null);
+
+  // ── Döviz Kurlarını Çek ────────────────────────────────────────────────
+  useEffect(() => {
+    async function fetchRates() {
+      try {
+        const res = await fetch("/api/currency");
+        const data = await res.json();
+        if (data.rates) {
+          setRates(data.rates);
+        }
+      } catch (err) {
+        console.error("Kurlar yüklenemedi:", err);
+      }
+    }
+    fetchRates();
+  }, []);
   const router = useRouter();
 
   // ── Kullanıcı ID'sini Al ────────────────────────────────────────────────
@@ -135,7 +159,7 @@ export default function InventoryPage() {
       // 2. ✅ Ürünler + kategori join (sadece bu kullanıcının)
       const { data: productData, error: productError } = await supabase
         .from("products")
-        .select("id, sku, name, purchase_price, sale_price, stock_quantity, critical_limit, categories(name)")
+        .select("id, sku, name, purchase_price, sale_price, currency, purchase_price_in_currency, sale_price_in_currency, stock_quantity, critical_limit, categories(name)")
         .eq("user_id", userId)
         .order("name");
 
@@ -340,7 +364,12 @@ export default function InventoryPage() {
             {loading ? (
               <span className="inline-block w-28 h-7 bg-slate-100 rounded animate-pulse" />
             ) : (
-              formatPrice(stats?.totalStockValue ?? 0)
+              formatPrice(
+                viewCurrency === "TRY" || !rates 
+                  ? (stats?.totalStockValue ?? 0) 
+                  : (stats?.totalStockValue ?? 0) / (rates[viewCurrency]?.selling || 1),
+                viewCurrency
+              )
             )}
           </h3>
         </div>
@@ -408,6 +437,19 @@ export default function InventoryPage() {
             </div>
           </div>
           <div className="flex items-center gap-2 w-full lg:w-auto justify-end">
+            <div className="flex items-center gap-2 bg-white border border-indigo-100 rounded-xl px-3 py-1.5 shadow-sm">
+              <span className="text-[10px] font-bold text-slate-400 uppercase tracking-tighter">Görünüm:</span>
+              <select
+                value={viewCurrency}
+                onChange={(e) => setViewCurrency(e.target.value)}
+                className="bg-transparent border-none text-sm font-black text-primary outline-none focus:ring-0 cursor-pointer"
+              >
+                <option value="TRY">TRY (₺)</option>
+                <option value="USD">USD ($)</option>
+                <option value="EUR">EUR (€)</option>
+                <option value="GBP">GBP (£)</option>
+              </select>
+            </div>
             <button className="p-2.5 text-slate-500 hover:bg-slate-50 rounded-xl border border-indigo-50 transition-colors">
               <span className="material-symbols-outlined">filter_list</span>
             </button>
@@ -515,7 +557,19 @@ export default function InventoryPage() {
 
                       {/* Birim Fiyat */}
                       <td className="px-6 py-4 text-right">
-                        <p className="font-bold text-on-surface">{formatPrice(item.sale_price)}</p>
+                        <p className="font-bold text-on-surface">
+                          {item.currency !== "TRY" ? (
+                            <>
+                              {item.currency === "USD" ? "$" : item.currency === "EUR" ? "€" : item.currency === "GBP" ? "£" : item.currency}
+                              {item.sale_price_in_currency?.toLocaleString("tr-TR", { minimumFractionDigits: 2 })}
+                              <span className="block text-[10px] text-slate-400 font-medium">
+                                ({formatPrice(item.sale_price)})
+                              </span>
+                            </>
+                          ) : (
+                            formatPrice(item.sale_price)
+                          )}
+                        </p>
                       </td>
 
                       {/* İşlemler */}

@@ -18,6 +18,7 @@ interface ProductForm {
   sale_price: string;
   stock_quantity: string;
   critical_limit: string;
+  currency: string;
 }
 
 export default function EditProductPage() {
@@ -33,6 +34,7 @@ export default function EditProductPage() {
     sale_price: "",
     stock_quantity: "",
     critical_limit: "",
+    currency: "TRY",
   });
 
   const [categories, setCategories] = useState<Category[]>([]);
@@ -42,6 +44,23 @@ export default function EditProductPage() {
   const [lastUpdate, setLastUpdate] = useState<string | null>(null);
   const [updater, setUpdater] = useState<string>("Bilinmeyen Kullanıcı"); // Opsiyonel bilgi
   const [userId, setUserId] = useState<string | null>(null);
+  const [rates, setRates] = useState<any>(null);
+
+  // ── Döviz Kurlarını Çek ────────────────────────────────────────────────
+  useEffect(() => {
+    async function fetchRates() {
+      try {
+        const res = await fetch("/api/currency");
+        const data = await res.json();
+        if (data.rates) {
+          setRates(data.rates);
+        }
+      } catch (err) {
+        console.error("Kurlar yüklenemedi:", err);
+      }
+    }
+    fetchRates();
+  }, []);
 
   // ── Kullanıcı ID'sini Al ────────────────────────────────────────────────
   useEffect(() => {
@@ -79,10 +98,11 @@ export default function EditProductPage() {
           name: p.name || "",
           sku: p.sku || "",
           category_id: p.category_id || "",
-          purchase_price: p.purchase_price?.toString() || "0",
-          sale_price: p.sale_price?.toString() || "0",
+          purchase_price: (p.purchase_price_in_currency || p.purchase_price)?.toString() || "0",
+          sale_price: (p.sale_price_in_currency || p.sale_price)?.toString() || "0",
           stock_quantity: p.stock_quantity?.toString() || "0",
           critical_limit: p.critical_limit?.toString() || "0",
+          currency: p.currency || "TRY",
         });
 
         const dateRaw = p.updated_at || p.created_at;
@@ -139,12 +159,20 @@ export default function EditProductPage() {
         return;
       }
 
+      // TRY Karşılıkları Hesapla
+      const rate = rates && form.currency !== "TRY" ? rates[form.currency]?.selling || 1 : 1;
+      const purchasePriceTRY = purchasePrice * rate;
+      const salePriceTRY = salePrice * rate;
+
       const updates = {
         name: form.name.trim(),
         sku: form.sku.trim(),
         category_id: form.category_id || null,
-        purchase_price: purchasePrice,
-        sale_price: salePrice,
+        currency: form.currency,
+        purchase_price_in_currency: purchasePrice,
+        sale_price_in_currency: salePrice,
+        purchase_price: purchasePriceTRY,
+        sale_price: salePriceTRY,
         stock_quantity: Math.floor(stockQty),
         critical_limit: Math.floor(criticalLmt),
         updated_at: new Date().toISOString(),
@@ -372,10 +400,15 @@ export default function EditProductPage() {
                     min="0"
                     value={form.purchase_price}
                     onChange={(e) => setForm({ ...form, purchase_price: e.target.value })}
-                    className="w-full pl-12 pr-10 py-3 bg-surface-container-lowest border border-outline-variant/30 focus:ring-2 focus:ring-primary/20 rounded-lg text-on-surface font-medium transition-all outline-none"
+                    className="w-full pl-12 pr-12 py-3 bg-surface-container-lowest border border-outline-variant/30 focus:ring-2 focus:ring-primary/20 rounded-lg text-on-surface font-medium transition-all outline-none"
                   />
-                  <span className="absolute right-4 top-1/2 -translate-y-1/2 text-xs font-bold text-outline">TL</span>
+                  <span className="absolute right-4 top-1/2 -translate-y-1/2 text-xs font-bold text-outline">{form.currency}</span>
                 </div>
+                {form.currency !== "TRY" && rates && (
+                  <p className="text-[10px] text-emerald-600 font-bold ml-1">
+                    ≈ {(parseFloat(form.purchase_price) * (rates[form.currency]?.selling || 1)).toLocaleString("tr-TR", { minimumFractionDigits: 2 })} TRY
+                  </p>
+                )}
               </div>
               
               {/* Satış Fiyatı */}
@@ -390,9 +423,33 @@ export default function EditProductPage() {
                     min="0"
                     value={form.sale_price}
                     onChange={(e) => setForm({ ...form, sale_price: e.target.value })}
-                    className="w-full pl-12 pr-10 py-3 bg-surface-container-lowest border border-outline-variant/30 focus:ring-2 focus:ring-primary/20 rounded-lg text-on-surface font-medium transition-all outline-none"
+                    className="w-full pl-12 pr-12 py-3 bg-surface-container-lowest border border-outline-variant/30 focus:ring-2 focus:ring-primary/20 rounded-lg text-on-surface font-medium transition-all outline-none"
                   />
-                  <span className="absolute right-4 top-1/2 -translate-y-1/2 text-xs font-bold text-outline">TL</span>
+                  <span className="absolute right-4 top-1/2 -translate-y-1/2 text-xs font-bold text-outline">{form.currency}</span>
+                </div>
+                {form.currency !== "TRY" && rates && (
+                  <p className="text-[10px] text-emerald-600 font-bold ml-1">
+                    ≈ {(parseFloat(form.sale_price) * (rates[form.currency]?.selling || 1)).toLocaleString("tr-TR", { minimumFractionDigits: 2 })} TRY
+                  </p>
+                )}
+              </div>
+
+              {/* Döviz Birimi */}
+              <div className="flex flex-col gap-2 md:col-span-2">
+                <label className="text-[11px] font-bold uppercase tracking-wider text-outline">Döviz Birimi</label>
+                <div className="relative">
+                  <span className="absolute left-4 top-1/2 -translate-y-1/2 material-symbols-outlined text-primary">euro_symbol</span>
+                  <select
+                    value={form.currency}
+                    onChange={(e) => setForm({ ...form, currency: e.target.value })}
+                    className="w-full pl-12 pr-10 py-3 bg-surface-container-lowest border border-outline-variant/30 focus:ring-2 focus:ring-primary/20 rounded-lg text-primary font-bold transition-all outline-none appearance-none"
+                  >
+                    <option value="TRY">TRY (₺)</option>
+                    <option value="USD">USD ($)</option>
+                    <option value="EUR">EUR (€)</option>
+                    <option value="GBP">GBP (£)</option>
+                  </select>
+                  <span className="absolute right-4 top-1/2 -translate-y-1/2 material-symbols-outlined text-primary pointer-events-none">expand_more</span>
                 </div>
               </div>
 
@@ -456,7 +513,7 @@ export default function EditProductPage() {
             <div className="flex justify-between items-start mb-6">
               <div>
                 <h4 className="text-xs font-bold uppercase tracking-widest opacity-80">Tahmini Kâr</h4>
-                <p className="font-headline text-2xl font-extrabold">{profitAmt.toLocaleString("tr-TR", { minimumFractionDigits: 2 })} TL</p>
+                <p className="font-headline text-2xl font-extrabold">{profitAmt.toLocaleString("tr-TR", { minimumFractionDigits: 2 })} {form.currency}</p>
               </div>
               <span className="material-symbols-outlined opacity-50 text-3xl">
                 {profitAmt >= 0 ? "trending_up" : "trending_down"}

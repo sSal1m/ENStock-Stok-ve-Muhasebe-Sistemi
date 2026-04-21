@@ -4,6 +4,7 @@ import { useState, useEffect } from "react";
 import { useParams } from "next/navigation";
 import Link from "next/link";
 import { supabase } from "@/lib/supabaseClient";
+import { useCurrencyConverter } from "@/hooks/useCurrencyConverter";
 
 /* ═══════════════════════════════════════════
    TYPES
@@ -56,8 +57,7 @@ const MOCK_ISLEMLER: Islem[] = [
    HELPERS
    ═══════════════════════════════════════════ */
 
-const fmt = (v: number) =>
-  new Intl.NumberFormat("tr-TR", { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(v);
+// fmt function is now handled by the hook
 
 const durumStyle = (d: Islem["durum"]) => {
   switch (d) {
@@ -113,6 +113,8 @@ export default function ContactDetailPage() {
   const [loading, setLoading] = useState(true);
   const [notFound, setNotFound] = useState(false);
   const [activeTab, setActiveTab] = useState<Tab>("Tüm İşlemler");
+
+  const { rates, viewCurrency, setViewCurrency, convert, format: fmt } = useCurrencyConverter();
 
   // ── Fetch cari record ──
   useEffect(() => {
@@ -181,6 +183,8 @@ export default function ContactDetailPage() {
       ? islemler
       : islemler.filter((i) => tabKategori(i.tur_tipi) === activeTab);
 
+  // convert function is now handled by the hook
+
   const bakiye = cari?.current_balance ?? 0;
   const isBorclu = bakiye < 0;
   const bakiyeLabel = isBorclu ? "Güncel Borç" : "Güncel Alacak";
@@ -241,6 +245,19 @@ export default function ContactDetailPage() {
           </div>
         </div>
         <div className="flex items-center gap-3">
+          <div className="flex items-center gap-2 bg-white border border-indigo-100 rounded-xl px-4 py-2.5 shadow-sm">
+            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-tighter">Görünüm:</span>
+            <select
+              value={viewCurrency}
+              onChange={(e) => setViewCurrency(e.target.value)}
+              className="bg-transparent border-none text-sm font-black text-primary outline-none focus:ring-0 cursor-pointer"
+            >
+              <option value="TRY">TRY (₺)</option>
+              <option value="USD">USD ($)</option>
+              <option value="EUR">EUR (€)</option>
+              <option value="GBP">GBP (£)</option>
+            </select>
+          </div>
           <button className="flex items-center gap-2 rounded-xl bg-white border border-indigo-100 px-4 py-2.5 text-sm font-bold text-slate-600 hover:bg-slate-50 transition-all">
             <span className="material-symbols-outlined text-[18px]">edit</span>
             Düzenle
@@ -313,17 +330,17 @@ export default function ContactDetailPage() {
 
           <div className={`rounded-2xl border p-6 text-center mb-6 ${bakiyeBg}`}>
             <p className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-1">{bakiyeLabel}</p>
-            <p className={`text-3xl font-black tabular-nums ${bakiyeColor}`}>₺{fmt(Math.abs(bakiye))}</p>
+            <p className={`text-3xl font-black tabular-nums ${bakiyeColor}`}>{fmt(convert(Math.abs(bakiye)), viewCurrency)}</p>
           </div>
 
           <div className="space-y-3 flex-1">
             <div className="flex items-center justify-between rounded-xl bg-slate-50 border border-indigo-50/50 px-4 py-3">
               <span className="text-xs font-bold text-slate-500">Bekleyen</span>
-              <span className="text-sm font-black text-on-surface tabular-nums">₺{fmt(bekleyen)}</span>
+              <span className="text-sm font-black text-on-surface tabular-nums">{fmt(convert(bekleyen), viewCurrency)}</span>
             </div>
             <div className="flex items-center justify-between rounded-xl bg-slate-50 border border-indigo-50/50 px-4 py-3">
               <span className="text-xs font-bold text-slate-500">Gecikmiş</span>
-              <span className="text-sm font-black text-error tabular-nums">₺{fmt(gecikmis)}</span>
+              <span className="text-sm font-black text-error tabular-nums">{fmt(convert(gecikmis), viewCurrency)}</span>
             </div>
           </div>
 
@@ -391,7 +408,7 @@ export default function ContactDetailPage() {
                       </div>
                     </td>
                     <td className="px-4 py-4 text-right font-black text-on-surface tabular-nums">
-                      {tx.tur_tipi === "alis" ? "-" : ""}₺{fmt(tx.toplam)}
+                      {tx.tur_tipi === "alis" ? "-" : ""}{fmt(convert(tx.toplam), viewCurrency)}
                     </td>
                     <td className="px-8 py-4 text-center">
                       <span className={`inline-flex items-center rounded-full px-3 py-1 text-[10px] font-black uppercase tracking-wider ${durumStyle(tx.durum)}`}>

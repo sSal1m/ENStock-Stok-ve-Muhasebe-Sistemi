@@ -2,17 +2,19 @@
 
 import { useState, useEffect } from "react";
 import { supabase } from "@/lib/supabaseClient";
+import { useCurrencyConverter } from "@/hooks/useCurrencyConverter";
 import Link from "next/link";
 
 interface Invoice {
   id: string;
-  invoice_number: number;
+  invoice_number: string;
   type: "sale" | "purchase";
   issue_date: string;
   total_amount: number;
   tax_total: number;
   status: string;
   contact_id: string;
+  currency: string;
 }
 
 interface Contact {
@@ -20,14 +22,8 @@ interface Contact {
   name: string;
 }
 
-const fmt = (val: number) =>
-  new Intl.NumberFormat("tr-TR", {
-    style: "currency",
-    currency: "TRY",
-    minimumFractionDigits: 2,
-  }).format(val);
-
 export default function InvoicesPage() {
+  const { viewCurrency, setViewCurrency, convert, format } = useCurrencyConverter();
   const [invoices, setInvoices] = useState<Invoice[]>([]);
   const [contacts, setContacts] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(true);
@@ -86,8 +82,12 @@ export default function InvoicesPage() {
     return typeMatch && searchMatch;
   });
 
-  const totalAmount = filtered.reduce((sum, inv) => sum + inv.total_amount, 0);
-  const vatAmount = filtered.reduce((sum, inv) => sum + inv.tax_total, 0);
+  const calculateInView = (amountTry: number) => {
+    return convert(amountTry); // Hook'un convert fonksiyonunu kullanıyoruz (TRY -> viewCurrency)
+  };
+
+  const totalAmount = filtered.reduce((sum, inv) => sum + calculateInView(inv.total_amount), 0);
+  const vatAmount = filtered.reduce((sum, inv) => sum + calculateInView(inv.tax_total), 0);
 
   return (
     <div className="w-full p-8 max-w-[1600px] mx-auto bg-slate-50 min-h-screen">
@@ -103,13 +103,30 @@ export default function InvoicesPage() {
               Tüm faturalarınızı yönetin ve takip edin
             </p>
           </div>
-          <Link
-            href="/invoices/new"
-            className="flex items-center gap-2 px-8 py-3.5 rounded-lg font-semibold text-sm text-white bg-gradient-to-r from-purple-600 to-purple-700 shadow-lg shadow-purple-200 hover:shadow-xl hover:shadow-purple-300 active:scale-[0.98] transition-all"
-          >
-            <span className="material-symbols-outlined">add_circle</span>
-            Yeni Fatura
-          </Link>
+          <div className="flex flex-wrap items-center gap-3">
+             {/* Döviz Görünüm Seçici */}
+             <div className="flex items-center gap-2 bg-white border-2 border-purple-100 rounded-xl px-4 py-2.5 shadow-sm">
+                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-tighter">Görünüm:</span>
+                <select
+                  value={viewCurrency}
+                  onChange={(e) => setViewCurrency(e.target.value)}
+                  className="bg-transparent border-none text-sm font-black text-purple-600 outline-none focus:ring-0 cursor-pointer"
+                >
+                  <option value="TRY">TRY (₺)</option>
+                  <option value="USD">USD ($)</option>
+                  <option value="EUR">EUR (€)</option>
+                  <option value="GBP">GBP (£)</option>
+                </select>
+              </div>
+
+            <Link
+              href="/invoices/new"
+              className="flex items-center gap-2 px-8 py-3.5 rounded-lg font-semibold text-sm text-white bg-gradient-to-r from-purple-600 to-purple-700 shadow-lg shadow-purple-200 hover:shadow-xl hover:shadow-purple-300 active:scale-[0.98] transition-all"
+            >
+              <span className="material-symbols-outlined">add_circle</span>
+              Yeni Fatura
+            </Link>
+          </div>
         </div>
 
         {/* Filter Bar */}
@@ -173,7 +190,7 @@ export default function InvoicesPage() {
                 <p className="text-xs font-semibold text-orange-600 uppercase tracking-wide mb-2">
                   Toplam KDV
                 </p>
-                <p className="font-bold text-2xl text-orange-700">{fmt(vatAmount)}</p>
+                <p className="font-bold text-2xl text-orange-700">{format(vatAmount)}</p>
               </div>
               <div className="w-12 h-12 bg-orange-200/50 rounded-lg flex items-center justify-center">
                 <span className="material-symbols-outlined text-xl text-orange-600">receipt_long</span>
@@ -187,7 +204,7 @@ export default function InvoicesPage() {
                 <p className="text-xs font-semibold text-green-600 uppercase tracking-wide mb-2">
                   Toplam Tutar
                 </p>
-                <p className="font-bold text-2xl text-green-700">{fmt(totalAmount)}</p>
+                <p className="font-bold text-2xl text-green-700">{format(totalAmount)}</p>
               </div>
               <div className="w-12 h-12 bg-green-200/50 rounded-lg flex items-center justify-center">
                 <span className="material-symbols-outlined text-xl text-green-600">payments</span>
@@ -278,7 +295,7 @@ export default function InvoicesPage() {
                       </p>
                     </td>
                     <td className="px-6 py-4 text-right">
-                      <p className="text-sm font-semibold text-slate-900">{fmt(invoice.total_amount)}</p>
+                      <p className="text-sm font-semibold text-slate-900">{format(calculateInView(invoice.total_amount))}</p>
                     </td>
                     <td className="px-6 py-4">
                       <span

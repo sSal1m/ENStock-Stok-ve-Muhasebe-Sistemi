@@ -2,8 +2,10 @@
 
 import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import { supabase } from '@/lib/supabaseClient';
 import toast from 'react-hot-toast';
+import { useCurrencyConverter } from '@/hooks/useCurrencyConverter';
 
 interface KPIData {
   totalProducts: number;
@@ -28,6 +30,7 @@ interface ChartDataPoint {
 }
 
 export default function DashboardPage() {
+  const router = useRouter();
   const [kpiData, setKpiData] = useState<KPIData>({
     totalProducts: 0,
     criticalStockItems: 0,
@@ -37,21 +40,18 @@ export default function DashboardPage() {
   const [activities, setActivities] = useState<ActivityLog[]>([]);
   const [chartData, setChartData] = useState<ChartDataPoint[]>([]);
   const [loading, setLoading] = useState(true);
-  const [user, setUser] = useState<any>(null);
+  const { rates, viewCurrency, setViewCurrency, convert, format: fmt } = useCurrencyConverter();
 
   useEffect(() => {
     const fetchData = async () => {
       try {
         setLoading(true);
 
-        const {
-          data: { user: authUser },
-        } = await supabase.auth.getUser();
+        const { data: { user: authUser } } = await supabase.auth.getUser();
         if (!authUser) {
-          toast.error('Oturum açmanız gereklidir');
+          router.push("/login");
           return;
         }
-        setUser(authUser);
 
         const [
           productsRes,
@@ -195,6 +195,8 @@ export default function DashboardPage() {
     return 'GECİKMİŞ';
   };
 
+  // Helper functions moved to hook
+
   if (loading) {
     return (
       <div className="flex items-center justify-center min-h-screen">
@@ -218,7 +220,20 @@ export default function DashboardPage() {
             Gerçek zamanlı performans metrikleri.
           </p>
         </div>
-        <div className="flex gap-3">
+        <div className="flex flex-wrap gap-3">
+          <div className="flex items-center gap-2 bg-white border border-indigo-100 rounded-xl px-4 py-2 shadow-sm">
+            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-tighter">Görünüm:</span>
+            <select
+              value={viewCurrency}
+              onChange={(e) => setViewCurrency(e.target.value)}
+              className="bg-transparent border-none text-sm font-black text-primary outline-none focus:ring-0 cursor-pointer"
+            >
+              <option value="TRY">TRY (₺)</option>
+              <option value="USD">USD ($)</option>
+              <option value="EUR">EUR (€)</option>
+              <option value="GBP">GBP (£)</option>
+            </select>
+          </div>
           <button className="flex items-center gap-2 px-4 py-2 bg-surface-container-lowest border-none rounded-xl text-sm font-semibold text-slate-600 shadow-sm hover:bg-surface-container-high transition-all">
             <span className="material-symbols-outlined text-[18px]">
               calendar_today
@@ -267,9 +282,11 @@ export default function DashboardPage() {
               <span className="material-symbols-outlined text-2xl">trending_up</span>
             </div>
           </div>
-          <p className="text-sm font-semibold text-slate-500">Günlük Satış Cirosu</p>
-          <h3 className="text-2xl font-black text-emerald-600">
-            ₺{kpiData.todayRevenue.toLocaleString('tr-TR', { minimumFractionDigits: 2 })}
+          <p className="text-xs font-bold text-slate-500 uppercase tracking-widest">
+            Günlük Satış Cirosu
+          </p>
+          <h3 className="text-2xl font-extrabold mt-1 text-slate-900">
+            {fmt(convert(kpiData.todayRevenue), viewCurrency)}
           </h3>
         </div>
 
@@ -473,7 +490,7 @@ export default function DashboardPage() {
                   <p className="text-sm font-semibold text-slate-900">Elektronik</p>
                   <p className="text-[11px] text-slate-500 font-medium">425 Ürün</p>
                 </div>
-                <span className="text-sm font-bold text-slate-700">₺52.4k</span>
+                <span className="text-sm font-bold text-slate-700">{fmt(convert(52400), viewCurrency)}</span>
               </div>
               <div className="flex items-center gap-4">
                 <div className="w-2.5 h-2.5 rounded-full bg-secondary"></div>
@@ -481,7 +498,7 @@ export default function DashboardPage() {
                   <p className="text-sm font-semibold text-slate-900">Ofis Malzemeleri</p>
                   <p className="text-[11px] text-slate-500 font-medium">1,120 Ürün</p>
                 </div>
-                <span className="text-sm font-bold text-slate-700">₺18.2k</span>
+                <span className="text-sm font-bold text-slate-700">{fmt(convert(18200), viewCurrency)}</span>
               </div>
               <div className="flex items-center gap-4">
                 <div className="w-2.5 h-2.5 rounded-full bg-tertiary"></div>
@@ -489,7 +506,7 @@ export default function DashboardPage() {
                   <p className="text-sm font-semibold text-slate-900">Mobilya</p>
                   <p className="text-[11px] text-slate-500 font-medium">84 Ürün</p>
                 </div>
-                <span className="text-sm font-bold text-slate-700">₺24.9k</span>
+                <span className="text-sm font-bold text-slate-700">{fmt(convert(24900), viewCurrency)}</span>
               </div>
             </div>
 

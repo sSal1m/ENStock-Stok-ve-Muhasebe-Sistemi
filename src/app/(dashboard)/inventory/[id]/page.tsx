@@ -20,7 +20,7 @@ interface Product {
   stock_quantity: number;
   critical_limit: number;
   tax_rate: number;
-  categories: { name: string } | { name: string }[] | null; // ✅ Dizi veya tek nesne
+  categories: ({ name: string } | { name: string }[]) | null; // ✅ Dizi veya tek nesne
 }
 
 interface StockMovement {

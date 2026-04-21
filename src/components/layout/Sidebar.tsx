@@ -16,7 +16,7 @@ const navLinks: NavLink[] = [
   { href: '/contacts', label: 'Cari (Kişiler)', icon: 'contacts' },
   { href: '/invoices', label: 'Faturalar', icon: 'receipt' },
   { href: '/reports', label: 'Raporlar', icon: 'analytics' },
-  { href: '/settings', label: 'Ayarlar', icon: 'settings' },
+  { href: '/settings/profile', label: 'Ayarlar', icon: 'settings' },
 ];
 
 export default function Sidebar() {

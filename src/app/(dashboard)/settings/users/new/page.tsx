@@ -43,7 +43,7 @@ export default function InviteUserPage() {
       if (error) throw error;
 
       toast.success(`${formData.full_name} için davet başarıyla gönderildi!`, { id: toastId });
-      router.push("/users");
+      router.push("/settings/users");
     } catch (err: any) {
       toast.error("Hata oluştu: " + err.message, { id: toastId });
     } finally {
@@ -53,19 +53,12 @@ export default function InviteUserPage() {
 
   return (
     <div className="max-w-5xl mx-auto w-full">
-      {/* Breadcrumbs */}
-      <nav className="flex items-center gap-2 text-xs font-medium text-outline mb-8 uppercase tracking-widest font-label">
-        <Link href="/users" className="hover:text-primary transition-colors">EKİP YÖNETİMİ</Link>
-        <span className="material-symbols-outlined text-[10px]">chevron_right</span>
-        <span className="text-on-surface">YENİ ÜYE DAVETİ</span>
-      </nav>
-
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-10 items-start">
         {/* Form Section */}
         <div className="lg:col-span-7 space-y-8">
           <div className="space-y-2">
-            <h2 className="text-4xl font-extrabold tracking-tight text-on-surface font-headline">Ekibe Katılmaya Davet Et</h2>
-            <p className="text-on-surface-variant leading-relaxed font-body">Yeni çalışma arkadaşınızın bilgilerini girin ve Sovereign Ledger ekosistemine dahil olması için bir davet gönderin.</p>
+            <h2 className="text-3xl font-extrabold tracking-tight text-on-surface font-headline">Ekibe Katılmaya Davet Et</h2>
+            <p className="text-on-surface-variant leading-relaxed font-body">Yeni çalışma arkadaşınızın bilgilerini girin ve ekosistemine dahil olması için bir davet gönderin.</p>
           </div>
           <div className="bg-surface-container-lowest p-8 rounded-xl shadow-sm border border-outline-variant/10">
             <form className="space-y-6" onSubmit={handleSubmit}>
@@ -196,7 +189,7 @@ export default function InviteUserPage() {
             />
             <div className="absolute bottom-6 left-6 right-6 z-20">
               <div className="text-white font-bold text-lg leading-tight font-headline">Güçlü Bir Ekip, Sağlam Bir Gelecek.</div>
-              <div className="text-white/70 text-xs mt-1 font-body">Sovereign Ledger ile kontrol sizde.</div>
+              <div className="text-white/70 text-xs mt-1 font-body">Sistemle kontrol sizde.</div>
             </div>
           </div>
         </div>

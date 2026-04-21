@@ -94,26 +94,6 @@ export default function UserListPage() {
 
   return (
     <>
-      {/* Page Header Section */}
-      <section className="mb-10 flex items-end justify-between">
-        <div>
-          <nav className="flex items-center gap-2 mb-2">
-            <span className="text-[11px] uppercase tracking-wider text-slate-400 font-label">Yönetim</span>
-            <span className="material-symbols-outlined text-[12px] text-slate-300">chevron_right</span>
-            <span className="text-[11px] uppercase tracking-wider text-indigo-600 font-bold font-label">Ekip Üyeleri</span>
-          </nav>
-          <h2 className="text-4xl font-extrabold font-headline text-slate-900 tracking-tight">Kullanıcı Yönetimi</h2>
-          <p className="text-slate-500 mt-1 max-w-lg font-body">Tüm finans ekibiniz için organizasyonel erişimi, rolleri ve güvenlik izinlerini yönetin.</p>
-        </div>
-        <Link 
-          href="/users/new"
-          className="px-6 py-3 bg-gradient-to-br from-primary to-primary-container text-white font-bold rounded-xl shadow-lg shadow-indigo-200 flex items-center gap-2 hover:opacity-95 transition-all active:scale-[0.98]"
-        >
-          <span className="material-symbols-outlined">person_add</span>
-          Üye Davet Et
-        </Link>
-      </section>
-
       {/* Stats Overview */}
       <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
         <div className="bg-surface-container-low p-6 rounded-2xl flex flex-col justify-between transition-all hover:shadow-md">
@@ -310,7 +290,7 @@ export default function UserListPage() {
             Yönetici Kontrolleri
           </h4>
           <p className="text-xs text-slate-500 mt-2 mb-4 leading-relaxed font-body">Finansal kayıtlara, kullanıcı yönetimine, faturalandırmaya ve sistem ayarlarına tam erişim.</p>
-          <Link href="/users/roles" className="text-xs font-bold text-indigo-600 flex items-center gap-1 group font-body">
+          <Link href="/settings/users/roles" className="text-xs font-bold text-indigo-600 flex items-center gap-1 group font-body">
             Politikayı Görüntüle <span className="material-symbols-outlined text-sm group-hover:translate-x-1 transition-transform">arrow_forward</span>
           </Link>
         </div>
@@ -323,7 +303,7 @@ export default function UserListPage() {
             Muhasebeci Görünümü
           </h4>
           <p className="text-xs text-slate-500 mt-2 mb-4 leading-relaxed font-body">Üye yönetimi olmadan defterlere, vergi raporlarına ve denetim günlüklerine özel erişim.</p>
-          <Link href="/users/roles" className="text-xs font-bold text-emerald-600 flex items-center gap-1 group font-body">
+          <Link href="/settings/users/roles" className="text-xs font-bold text-emerald-600 flex items-center gap-1 group font-body">
             Erişimi Yapılandır <span className="material-symbols-outlined text-sm group-hover:translate-x-1 transition-transform">arrow_forward</span>
           </Link>
         </div>

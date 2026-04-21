@@ -30,6 +30,9 @@ const pathTitleMap: Record<string, string> = {
   '/settings': 'Hesap Ayarları',
   '/settings/profile': 'Profil Ayarları',
   '/settings/business': 'İşletme Ayarları',
+  '/settings/users': 'Kullanıcı Yönetimi',
+  '/settings/users/new': 'Üye Davet Et',
+  '/settings/users/roles': 'Rol Yönetimi',
   '/reports': 'Genel Raporlar',
   '/reports/income-expense': 'Gelir-Gider Raporu',
 };
@@ -186,7 +189,7 @@ export default function Header() {
         {/* Settings Button */}
         <button
           className="p-2.5 text-slate-500 hover:text-slate-700 hover:bg-slate-100 rounded-lg transition-colors"
-          onClick={() => router.push('/settings')}
+          onClick={() => router.push('/settings/profile')}
           title="Ayarlar"
         >
           <span className="material-symbols-outlined text-xl">settings</span>

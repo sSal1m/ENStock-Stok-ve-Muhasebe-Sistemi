@@ -5,6 +5,7 @@ import { supabase } from "@/lib/supabaseClient";
 import { cariEkleAction } from "./actions";
 import toast from "react-hot-toast";
 import Link from "next/link";
+import * as XLSX from "xlsx";
 
 /* ═══════════════════════════════════════════
    DATA
@@ -151,6 +152,34 @@ export default function ContactsPage() {
     });
   };
 
+  // ── Excel Export Handler ──
+  const handleExportXlsx = () => {
+    if (filtered.length === 0) {
+      toast.error("Dışa aktarılacak kayıt bulunmuyor.");
+      return;
+    }
+
+    // Format data for excel
+    const exportData = filtered.map((c) => ({
+      "Cari Türü": c.type === "customer" ? "Müşteri" : "Tedarikçi",
+      "Firma / Şahıs Adı": c.name,
+      "E-posta": c.email || "Belirtilmemiş",
+      "Telefon": c.phone || "Belirtilmemiş",
+      "Adres": c.address || "Belirtilmemiş",
+      "Bakiye": c.current_balance,
+      "Görünen Bakiye": fmt(convert(c.current_balance), viewCurrency)
+    }));
+
+    // Create Worksheet & Workbook
+    const worksheet = XLSX.utils.json_to_sheet(exportData);
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(workbook, worksheet, "Cariler");
+
+    // Download
+    XLSX.writeFile(workbook, `Cariler_${new Date().toISOString().split("T")[0]}.xlsx`);
+    toast.success("Excel dosyası başarıyla indirildi.");
+  };
+
   return (
     <div className="p-6 lg:p-10 space-y-8">
       {/* ── Sayfa Başlığı ── */}
@@ -194,6 +223,7 @@ export default function ContactsPage() {
             />
           </div>
           <button
+            onClick={handleExportXlsx}
             className="border border-indigo-100 text-slate-600 px-5 py-3 rounded-xl font-bold flex items-center gap-2 hover:bg-slate-50 transition-all active:scale-95"
           >
             <span className="material-symbols-outlined text-[18px]">download</span>

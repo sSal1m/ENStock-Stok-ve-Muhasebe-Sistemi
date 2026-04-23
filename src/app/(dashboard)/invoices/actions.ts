@@ -249,7 +249,19 @@ export async function createInvoiceAction(request: CreateInvoiceRequest): Promis
     // ═══════════════════════════════════════════
     // Fatura Numarası Atama ve Çakışma Kontrolü
     // ═══════════════════════════════════════════
+    
+    // (FIX for 23503 FK Violation: Ensure user profile exists for invoices_created_by_fkey constraint)
+    // full_name is required in the profiles table, so we provide a placeholder if creating a new one.
+    const { error: profileUpsertError } = await supabaseServer.from("profiles").upsert(
+      { id: user_id, full_name: "Firma Yetkilisi" }, 
+      { onConflict: "id", ignoreDuplicates: true }
+    );
+    if (profileUpsertError) {
+      console.warn("Profile upsert warning:", profileUpsertError.message);
+    }
+
     let finalInvoiceNumber = reqInvoiceNumber;
+
     if (!finalInvoiceNumber || finalInvoiceNumber.trim() === "") {
        const nextNum = await getNextInvoiceNumber(user_id, invoice_type);
        finalInvoiceNumber = `FTR-${new Date(issue_date).getFullYear()}-${nextNum.toString().padStart(3, "0")}`;

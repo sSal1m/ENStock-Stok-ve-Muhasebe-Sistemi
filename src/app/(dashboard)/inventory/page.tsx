@@ -8,6 +8,7 @@ import CategoryModal from "@/components/inventory/CategoryModal";
 import DeleteConfirmationModal from "@/components/inventory/DeleteConfirmationModal";
 import Link from "next/link";
 import { useCurrencyConverter } from "@/hooks/useCurrencyConverter";
+import * as XLSX from "xlsx";
 
 // ─── Tipler ────────────────────────────────────────────────────────────────
 
@@ -235,6 +236,45 @@ export default function InventoryPage() {
     setFiltered(result);
   }, [search, stockFilter, products, categoryFilter, categories]);
 
+  // ── Excel Export Handler ──
+  const handleExportXlsx = () => {
+    if (filtered.length === 0) {
+      toast.error("Dışa aktarılacak kayıt bulunmuyor.");
+      return;
+    }
+
+    const exportData = filtered.map((p) => {
+      let categoryName = "Kategorisiz";
+      if (p.categories) {
+        if (Array.isArray(p.categories)) {
+          categoryName = p.categories[0]?.name || "Kategorisiz";
+        } else {
+          categoryName = (p.categories as { name: string }).name || "Kategorisiz";
+        }
+      }
+
+      return {
+        "SKU": p.sku,
+        "Ürün Adı": p.name,
+        "Kategori": categoryName,
+        "Mevcut Stok": p.stock_quantity,
+        "Kritik Limit": p.critical_limit,
+        "Alış Fiyatı (TRY)": p.purchase_price,
+        "Satış Fiyatı (TRY)": p.sale_price,
+        "Orjinal Döviz": p.currency,
+        "Orjinal Satış Fiyatı": p.sale_price_in_currency,
+        "Görünen Satış Fiyatı": formatPrice(convert(p.sale_price_in_currency), viewCurrency)
+      };
+    });
+
+    const worksheet = XLSX.utils.json_to_sheet(exportData);
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(workbook, worksheet, "Stoklar");
+
+    XLSX.writeFile(workbook, `Stoklar_${new Date().toISOString().split("T")[0]}.xlsx`);
+    toast.success("Excel dosyası başarıyla indirildi.");
+  };
+
   // ── Hata Durumu ──────────────────────────────────────────────────────────
   if (error) {
     return (
@@ -426,7 +466,7 @@ export default function InventoryPage() {
             <button className="p-2.5 text-slate-500 hover:bg-slate-50 rounded-xl border border-indigo-50 transition-colors">
               <span className="material-symbols-outlined">filter_list</span>
             </button>
-            <button className="p-2.5 text-slate-500 hover:bg-slate-50 rounded-xl border border-indigo-100 transition-colors">
+            <button onClick={handleExportXlsx} className="p-2.5 text-slate-500 hover:bg-slate-50 rounded-xl border border-indigo-100 transition-colors" title="Excel Olarak İndir">
               <span className="material-symbols-outlined">download</span>
             </button>
           </div>

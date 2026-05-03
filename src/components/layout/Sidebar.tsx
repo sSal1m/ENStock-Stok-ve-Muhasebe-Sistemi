@@ -15,6 +15,7 @@ const navLinks: NavLink[] = [
   { href: '/inventory', label: 'Stok', icon: 'inventory_2' },
   { href: '/contacts', label: 'Cari (Kişiler)', icon: 'contacts' },
   { href: '/invoices', label: 'Faturalar', icon: 'receipt' },
+  { href: '/quotes', label: 'Teklifler', icon: 'request_quote' },
   { href: '/reports', label: 'Raporlar', icon: 'analytics' },
   { href: '/settings', label: 'Ayarlar', icon: 'settings' },
 ];

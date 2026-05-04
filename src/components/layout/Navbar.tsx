@@ -29,7 +29,7 @@ export default function Navbar() {
       const { data, error } = await supabase
         .from("profiles")
         .select("full_name, company_name")
-        .eq("user_id", user.id)
+        .eq("id", user.id)
         .single();
 
       if (!error && data) {
@@ -48,7 +48,9 @@ export default function Navbar() {
     <header className="w-full h-16 sticky top-0 z-40 bg-white shadow-sm flex justify-between items-center px-6 text-sm font-medium border-b border-indigo-50/10">
       {/* Sol: Mobil Logo & Hızlı Bağlantılar */}
       <div className="flex items-center gap-8">
-        <span className="text-xl font-bold text-indigo-700 md:hidden">KOBİ Muhasebe</span>
+        <span className="text-xl font-bold text-indigo-700 md:hidden">
+          {loading ? 'Yükleniyor...' : (profile.company_name || 'Şirketim')}
+        </span>
         <div className="hidden md:flex items-center gap-6">
           <a className="text-slate-500 hover:text-indigo-600 transition-colors" href="#">
             Hızlı İşlemler

@@ -110,7 +110,7 @@ export async function searchProducts(userId: string, query: string, invoiceType:
 
   const { data, error } = await supabaseServer
     .from("products")
-    .select("id, name, sku, stock_quantity, sale_price, purchase_price, currency, sale_price_in_currency, purchase_price_in_currency")
+    .select("id, name, sku, stock_quantity, sale_price, purchase_price, currency, sale_price_in_currency, purchase_price_in_currency, tax_rate")
     .eq("user_id", userId)
     .or(`name.ilike.%${query}%,sku.ilike.%${query}%`)
     .limit(10);
@@ -129,36 +129,40 @@ export async function searchProducts(userId: string, query: string, invoiceType:
 
 export async function getNextInvoiceNumber(userId: string, invoiceType: "sales" | "purchase") {
   try {
-    // Veritabanındaki en son eklenen faturayı alarak numarasını bul (count yerine daha güvenli)
-    const { data: lastInvoiceData, error: lastInvoiceError } = await supabaseServer
+    const today = new Date();
+    const todayStr = today.toISOString().split("T")[0]; // YYYY-MM-DD
+    
+    // Bugün oluşturulan son faturayı bul
+    const { data: todayInvoices, error: todayError } = await supabaseServer
       .from("invoices")
       .select("invoice_number")
       .eq("user_id", userId)
+      .like("invoice_number", `FTR-${todayStr}-%`)
       .order("created_at", { ascending: false })
       .limit(1);
 
-    if (lastInvoiceError) {
-      console.error("Error fetching last invoice number:", lastInvoiceError);
-      return Math.floor(Date.now() % 1000000);
+    if (todayError) {
+      console.error("Error fetching today's invoices:", todayError);
+      return `FTR-${todayStr}-001`;
     }
 
-    if (!lastInvoiceData || lastInvoiceData.length === 0) {
-      return 1; // İlk fatura
+    if (!todayInvoices || todayInvoices.length === 0) {
+      return `FTR-${todayStr}-001`; // İlk fatura bugün
     }
 
-    const lastNumberStr = lastInvoiceData[0].invoice_number;
-    if (!lastNumberStr) return 1;
-
-    // Örn: FTR-2026-005 ise, sondaki 005'i yakala
+    // Son faturanın sıra numarasını çıkar (FTR-2026-05-03-001 ise 001'i al)
+    const lastNumberStr = todayInvoices[0].invoice_number;
     const match = lastNumberStr.match(/-(\d+)$/);
     if (match && match[1]) {
-      return parseInt(match[1], 10) + 1;
+      const nextSeq = parseInt(match[1], 10) + 1;
+      return `FTR-${todayStr}-${nextSeq.toString().padStart(3, "0")}`;
     }
 
-    return 1;
+    return `FTR-${todayStr}-001`;
   } catch (err) {
     console.error("Unexpected error in getNextInvoiceNumber:", err);
-    return Math.floor(Date.now() % 1000000);
+    const today = new Date();
+    return `FTR-${today.toISOString().split("T")[0]}-001`;
   }
 }
 

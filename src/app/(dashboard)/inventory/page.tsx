@@ -8,6 +8,7 @@ import CategoryModal from "@/components/inventory/CategoryModal";
 import DeleteConfirmationModal from "@/components/inventory/DeleteConfirmationModal";
 import Link from "next/link";
 import { useCurrencyConverter } from "@/hooks/useCurrencyConverter";
+import { resolveTeamIds, applyTeamFilter } from "@/lib/teamUtils";
 import * as XLSX from "xlsx";
 
 // ─── Tipler ────────────────────────────────────────────────────────────────
@@ -125,33 +126,27 @@ export default function InventoryPage() {
     setError(null);
     setIsAnimating(false);
     try {
-      // 1. Kategorileri çek (sadece bu kullanıcının)
-      const { data: categoryData, error: categoryError } = await supabase
-        .from("categories")
-        .select("id, name")
-        .eq("user_id", userId)
-        .order("name");
+      // Resolve team context
+      const teamIds = await resolveTeamIds(userId);
+
+      // 1. Kategorileri çek (ekip bazında)
+      const { data: categoryData, error: categoryError } = await applyTeamFilter(
+        supabase.from("categories").select("id, name"),
+        teamIds
+      ).order("name");
 
       if (categoryError) throw categoryError;
       setCategories((categoryData ?? []) as Category[]);
 
-      // 2. ✅ Ürünler + kategori join (sadece bu kullanıcının)
-      const { data: productData, error: productError } = await supabase
-        .from("products")
-        .select("id, sku, name, purchase_price, sale_price, currency, purchase_price_in_currency, sale_price_in_currency, stock_quantity, critical_limit, categories(name)")
-        .eq("user_id", userId)
-        .order("name");
+      // 2. Ürünler + kategori join (ekip bazında)
+      const { data: productData, error: productError } = await applyTeamFilter(
+        supabase.from("products").select("id, sku, name, purchase_price, sale_price, currency, purchase_price_in_currency, sale_price_in_currency, stock_quantity, critical_limit, categories(name)"),
+        teamIds
+      ).order("name");
 
       if (productError) throw productError;
       const prods = (productData ?? []) as Product[];
       
-      // 🔧 DEBUG: Veri yapısını kontrol et
-      if (prods.length > 0) {
-        console.log("📊 Gelen Veri (İlk Ürün):", prods[0]);
-        console.log("📊 Categories Tipi:", typeof prods[0].categories);
-        console.log("📊 Categories İçeriği:", prods[0].categories);
-      }
-
       // 3. İnsights: kritik limit altındaki ürünler
       const criticals = prods.filter((p) => p.stock_quantity <= p.critical_limit);
 
@@ -161,11 +156,11 @@ export default function InventoryPage() {
         0
       );
 
-      // 5. Fatura sayısı (sadece bu kullanıcının)
-      const { count: invoiceCount } = await supabase
-        .from("invoices")
-        .select("id", { count: "exact", head: true })
-        .eq("user_id", userId);
+      // 5. Fatura sayısı (ekip bazında)
+      const { count: invoiceCount } = await applyTeamFilter(
+        supabase.from("invoices").select("id", { count: "exact", head: true }),
+        teamIds
+      );
 
       setProducts(prods);
       setFiltered(prods);

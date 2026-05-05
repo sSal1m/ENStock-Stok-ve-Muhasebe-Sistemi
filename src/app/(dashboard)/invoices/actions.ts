@@ -8,6 +8,42 @@ const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
 const supabaseServer = createClient(supabaseUrl, supabaseServiceKey);
 
 /* ═══════════════════════════════════════════
+   TEAM RESOLUTION HELPER (SERVER-SIDE)
+   ═══════════════════════════════════════════ */
+
+async function resolveTeamIdsServer(userId: string): Promise<string[]> {
+  try {
+    const { data: myProfile } = await supabaseServer
+      .from("profiles")
+      .select("company_name")
+      .eq("id", userId)
+      .single();
+
+    const company = myProfile?.company_name;
+    if (!company) return [userId];
+
+    const { data: teamProfiles } = await supabaseServer
+      .from("profiles")
+      .select("id")
+      .eq("company_name", company);
+
+    if (teamProfiles && teamProfiles.length > 0) {
+      return teamProfiles.map((p) => p.id);
+    }
+    return [userId];
+  } catch {
+    return [userId];
+  }
+}
+
+function applyTeamFilterServer(query: any, teamIds: string[], column = "user_id") {
+  if (teamIds.length <= 1) {
+    return query.eq(column, teamIds[0]);
+  }
+  return query.in(column, teamIds);
+}
+
+/* ═══════════════════════════════════════════
    TYPE DEFINITIONS
    ═══════════════════════════════════════════ */
 
@@ -84,10 +120,14 @@ export async function searchContacts(userId: string, query: string) {
     return { success: false, data: [], message: "En az 1 karakter girin" };
   }
 
-  const { data, error } = await supabaseServer
-    .from("contacts")
-    .select("id, name, tax_number, tax_office, type")
-    .eq("user_id", userId)
+  const teamIds = await resolveTeamIdsServer(userId);
+
+  const { data, error } = await applyTeamFilterServer(
+    supabaseServer
+      .from("contacts")
+      .select("id, name, tax_number, tax_office, type"),
+    teamIds
+  )
     .or(`name.ilike.%${query}%,tax_number.ilike.%${query}%`)
     .limit(10);
 
@@ -108,10 +148,14 @@ export async function searchProducts(userId: string, query: string, invoiceType:
     return { success: false, data: [], message: "En az 1 karakter girin" };
   }
 
-  const { data, error } = await supabaseServer
-    .from("products")
-    .select("id, name, sku, stock_quantity, sale_price, purchase_price, currency, sale_price_in_currency, purchase_price_in_currency")
-    .eq("user_id", userId)
+  const teamIds = await resolveTeamIdsServer(userId);
+
+  const { data, error } = await applyTeamFilterServer(
+    supabaseServer
+      .from("products")
+      .select("id, name, sku, stock_quantity, sale_price, purchase_price, currency, sale_price_in_currency, purchase_price_in_currency"),
+    teamIds
+  )
     .or(`name.ilike.%${query}%,sku.ilike.%${query}%`)
     .limit(10);
 
@@ -129,11 +173,14 @@ export async function searchProducts(userId: string, query: string, invoiceType:
 
 export async function getNextInvoiceNumber(userId: string, invoiceType: "sales" | "purchase") {
   try {
-    // Veritabanındaki en son eklenen faturayı alarak numarasını bul (count yerine daha güvenli)
-    const { data: lastInvoiceData, error: lastInvoiceError } = await supabaseServer
-      .from("invoices")
-      .select("invoice_number")
-      .eq("user_id", userId)
+    const teamIds = await resolveTeamIdsServer(userId);
+
+    const { data: lastInvoiceData, error: lastInvoiceError } = await applyTeamFilterServer(
+      supabaseServer
+        .from("invoices")
+        .select("invoice_number"),
+      teamIds
+    )
       .order("created_at", { ascending: false })
       .limit(1);
 

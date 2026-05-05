@@ -6,6 +6,7 @@ import { useRouter } from 'next/navigation';
 import { supabase } from '@/lib/supabaseClient';
 import toast from 'react-hot-toast';
 import { useCurrencyConverter } from '@/hooks/useCurrencyConverter';
+import { resolveTeamIds, applyTeamFilter } from '@/lib/teamUtils';
 import * as XLSX from 'xlsx';
 
 interface KPIData {
@@ -54,24 +55,26 @@ export default function DashboardPage() {
           return;
         }
 
+        // Resolve team context so invited users see company data
+        const teamIds = await resolveTeamIds(authUser.id);
+
         const [
           productsRes,
           revenueRes,
           activitiesRes,
         ] = await Promise.all([
-          supabase
-            .from('products')
-            .select('id, name, stock_quantity, critical_limit')
-            .eq('user_id', authUser.id),
+          applyTeamFilter(
+            supabase.from('products').select('id, name, stock_quantity, critical_limit'),
+            teamIds
+          ),
 
-          supabase
-            .from('invoices')
-            .select('total_amount')
-            .eq('user_id', authUser.id),
+          applyTeamFilter(
+            supabase.from('invoices').select('total_amount'),
+            teamIds
+          ),
 
-          supabase
-            .from('inventory_logs')
-            .select(`
+          applyTeamFilter(
+            supabase.from('inventory_logs').select(`
               id,
               action_type,
               quantity_change,
@@ -79,8 +82,9 @@ export default function DashboardPage() {
               products (
                 name
               )
-            `)
-            .eq('user_id', authUser.id)
+            `),
+            teamIds
+          )
             .order('created_at', { ascending: false })
             .limit(5),
         ]);

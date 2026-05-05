@@ -5,6 +5,7 @@ import { supabase } from "@/lib/supabaseClient";
 import { useCurrencyConverter } from "@/hooks/useCurrencyConverter";
 import Link from "next/link";
 import toast from "react-hot-toast";
+import { resolveTeamIds, applyTeamFilter } from "@/lib/teamUtils";
 
 
 interface Invoice {
@@ -40,12 +41,14 @@ export default function InvoicesPage() {
       return;
     }
 
-    // Fetch invoices
-    const { data: invoicesData, error: invoicesError } = await supabase
-      .from("invoices")
-      .select("*")
-      .eq("user_id", user.id)
-      .order("issue_date", { ascending: false });
+    // Resolve team context
+    const teamIds = await resolveTeamIds(user.id);
+
+    // Fetch invoices (team-scoped)
+    const { data: invoicesData, error: invoicesError } = await applyTeamFilter(
+      supabase.from("invoices").select("*"),
+      teamIds
+    ).order("issue_date", { ascending: false });
 
     if (invoicesError) {
       console.error("Error fetching invoices:", invoicesError);

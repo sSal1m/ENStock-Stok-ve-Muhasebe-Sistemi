@@ -6,6 +6,7 @@ import { cariEkleAction } from "./actions";
 import toast from "react-hot-toast";
 import Link from "next/link";
 import * as XLSX from "xlsx";
+import { resolveTeamIds, applyTeamFilter } from "@/lib/teamUtils";
 
 /* ═══════════════════════════════════════════
    DATA
@@ -76,12 +77,14 @@ export default function ContactsPage() {
       setLoading(false);
       return;
     }
+
+    // Resolve team context
+    const teamIds = await resolveTeamIds(user.id);
     
-    const { data, error } = await supabase
-      .from("contacts")
-      .select("*")
-      .eq("user_id", user.id)
-      .order("created_at", { ascending: false });
+    const { data, error } = await applyTeamFilter(
+      supabase.from("contacts").select("*"),
+      teamIds
+    ).order("created_at", { ascending: false });
     
     if (error) {
       console.error("Veri çekme hatası:", error);

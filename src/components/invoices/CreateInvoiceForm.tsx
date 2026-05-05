@@ -26,6 +26,7 @@ interface Product {
   currency: string;
   sale_price_in_currency: number;
   purchase_price_in_currency: number;
+  tax_rate: number;
 }
 
 interface LineItem extends InvoiceLineItem {
@@ -89,7 +90,7 @@ export default function CreateInvoiceForm({ userId }: { userId: string }) {
 
       if (!editInvoiceId) {
         const nextNum = await getNextInvoiceNumber(userId, invoiceType);
-        setInvoiceNumber(`FTR-${new Date().getFullYear()}-${nextNum.toString().padStart(3, "0")}`);
+        setInvoiceNumber(nextNum);
       }
     };
     initData();
@@ -248,6 +249,7 @@ export default function CreateInvoiceForm({ userId }: { userId: string }) {
                product_id: product.id,
                product_name: product.name,
                unit_price: unitPrice,
+               vat_rate: product.tax_rate,
                stock_quantity: product.stock_quantity,
             }
           : item
@@ -681,11 +683,11 @@ export default function CreateInvoiceForm({ userId }: { userId: string }) {
                   Fatura No
                 </label>
                 <input
-                  className="w-full bg-slate-50 border border-slate-300 rounded-lg py-3 px-4 text-base font-bold text-slate-700 select-none cursor-not-allowed"
+                  className="w-full bg-white border border-slate-300 rounded-lg py-3 px-4 text-base font-bold text-slate-700 focus:ring-2 focus:ring-purple-500 focus:border-purple-500 transition-all"
                   type="text"
-                  readOnly
-                  value={invoiceNumber || "..."}
-                  placeholder="Otomatik Atanacak"
+                  value={invoiceNumber || ""}
+                  onChange={(e) => setInvoiceNumber(e.target.value)}
+                  placeholder="Fatura numarası girin"
                 />
               </div>
               <div>
@@ -836,7 +838,7 @@ export default function CreateInvoiceForm({ userId }: { userId: string }) {
                     </td>
                     <td className="px-6 py-6">
                       <select
-                        className="w-full bg-slate-50 border-2 border-slate-300 rounded-lg px-3 py-2 text-base font-semibold focus:ring-purple-500 focus:border-purple-500"
+                        className="w-40 bg-slate-50 border-2 border-slate-300 rounded-lg px-4 py-3 text-base font-semibold focus:ring-2 focus:ring-purple-500 focus:border-purple-500 hover:border-slate-400 transition-all"
                         value={item.vat_rate}
                         onChange={(e) => updateLineItem(item.id, "vat_rate", parseInt(e.target.value) || 0)}
                       >

@@ -31,6 +31,19 @@ interface ChartDataPoint {
   profit: number;
 }
 
+interface CategoryData {
+  id: string;
+  name: string;
+  totalProducts: number;
+  totalValue: number;
+}
+
+interface VendorData {
+  id: string;
+  name: string;
+  type: string;
+}
+
 export default function DashboardPage() {
   const router = useRouter();
   const [kpiData, setKpiData] = useState<KPIData>({
@@ -41,6 +54,8 @@ export default function DashboardPage() {
   });
   const [activities, setActivities] = useState<ActivityLog[]>([]);
   const [chartData, setChartData] = useState<ChartDataPoint[]>([]);
+  const [categories, setCategories] = useState<CategoryData[]>([]);
+  const [vendors, setVendors] = useState<VendorData[]>([]);
   const [loading, setLoading] = useState(true);
   const { rates, viewCurrency, setViewCurrency, convert, format: fmt } = useCurrencyConverter();
 
@@ -62,9 +77,13 @@ export default function DashboardPage() {
           productsRes,
           revenueRes,
           activitiesRes,
+          contactsRes,
+          invoicesDetailsRes,
         ] = await Promise.all([
           applyTeamFilter(
-            supabase.from('products').select('id, name, stock_quantity, critical_limit'),
+            supabase
+              .from('products')
+              .select('id, name, stock_quantity, critical_limit, sale_price, currency, sale_price_in_currency'),
             teamIds
           ),
 
@@ -87,7 +106,25 @@ export default function DashboardPage() {
           )
             .order('created_at', { ascending: false })
             .limit(5),
+
+          supabase
+            .from('contacts')
+            .select('id, name, type')
+            .eq('user_id', authUser.id)
+            .limit(10),
+
+          // Son 7 gün satış trendleri için
+          supabase
+            .from('invoices')
+            .select('total_amount, issue_date')
+            .eq('user_id', authUser.id)
+            .gte('issue_date', new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0]),
         ]);
+
+        // Hata kontrolü
+        if (productsRes.error) {
+          throw new Error(`Products: ${productsRes.error.message}`);
+        }
 
         const allProducts = productsRes.data || [];
         const totalProducts = allProducts.length;
@@ -95,6 +132,23 @@ export default function DashboardPage() {
         const criticalCount = allProducts.filter(
           (p) => p.stock_quantity <= (p.critical_limit || 10)
         ).length;
+
+        // En çok stoktaki ürünleri hesapla
+        const topProducts = allProducts
+          .filter((product: any) => product.stock_quantity > 0) // Sadece stoğu olan ürünler
+          .map((product: any) => {
+            const price = product.sale_price_in_currency 
+              ? parseFloat(product.sale_price_in_currency) 
+              : parseFloat(product.sale_price || 0);
+            return {
+              id: product.id,
+              name: product.name || 'Ürün',
+              totalProducts: product.stock_quantity || 0,
+              totalValue: isNaN(price) ? 0 : (price * (product.stock_quantity || 0)),
+            };
+          })
+          .sort((a, b) => b.totalProducts - a.totalProducts) // En çok stok önce
+          .slice(0, 3); // İlk 3 ürünü al
 
         let totalRevenue = 0;
         if (revenueRes.data) {
@@ -118,13 +172,23 @@ export default function DashboardPage() {
             }));
         }
 
+        // Tedarikçi verileri - tüm contacts'tan seç (type filter yok)
+        const vendorData = (contactsRes.data || [])
+          .slice(0, 2)
+          .map((contact: any) => ({
+            id: contact.id,
+            name: contact.name,
+            type: 'Tier 1 Partner',
+          }));
+
         const nonCriticalProducts = totalProducts - criticalCount;
         const stockHealth =
           totalProducts > 0
             ? Math.round((nonCriticalProducts / totalProducts) * 100)
             : 0;
 
-        const chartPoints = generateChartData();
+        // Gerçek satış trendleri hesapla
+        const chartPoints = generateChartDataFromInvoices(invoicesDetailsRes.data || []);
 
         setKpiData({
           totalProducts,
@@ -133,6 +197,8 @@ export default function DashboardPage() {
           stockHealth,
         });
         setActivities(processedActivities);
+        setCategories(topProducts);
+        setVendors(vendorData);
         setChartData(chartPoints);
       } catch (error) {
         console.error('Dashboard veri yükleme hatası:', error);
@@ -156,6 +222,8 @@ export default function DashboardPage() {
           stockHealth: 0,
         });
         setActivities([]);
+        setCategories([]);
+        setVendors([]);
         setChartData([]);
       } finally {
         setLoading(false);
@@ -172,18 +240,46 @@ export default function DashboardPage() {
     return 'delayed' as const;
   };
 
-  const generateChartData = (): ChartDataPoint[] => {
-    const data: ChartDataPoint[] = [];
+  const generateChartDataFromInvoices = (invoices: any[]): ChartDataPoint[] => {
     const days = ['Pzt', 'Sal', 'Çar', 'Per', 'Cum', 'Cmt', 'Paz'];
-    const baseRevenue = Math.random() * 5000 + 10000;
+    const dayMap = new Map<number, { revenue: number; profit: number }>();
 
+    // Son 7 gün için harita oluştur
+    for (let i = 6; i >= 0; i--) {
+      const date = new Date();
+      date.setDate(date.getDate() - i);
+      const dayOfWeek = date.getDay();
+      const adjustedDay = dayOfWeek === 0 ? 6 : dayOfWeek - 1; // Pazardan başla
+      dayMap.set(adjustedDay, { revenue: 0, profit: 0 });
+    }
+
+    // Invoice verileri işle
+    invoices.forEach((inv: any) => {
+      if (inv.issue_date) {
+        const date = new Date(inv.issue_date);
+        const dayOfWeek = date.getDay();
+        const adjustedDay = dayOfWeek === 0 ? 6 : dayOfWeek - 1;
+
+        if (dayMap.has(adjustedDay)) {
+          const existing = dayMap.get(adjustedDay)!;
+          existing.revenue += inv.total_amount || 0;
+          // Kar tahmini: brüt satışın %35'i
+          existing.profit += (inv.total_amount || 0) * 0.35;
+        }
+      }
+    });
+
+    // Sonuçları diziye dönüştür
+    const data: ChartDataPoint[] = [];
     for (let i = 0; i < 7; i++) {
+      const dayData = dayMap.get(i);
       data.push({
         name: days[i],
-        revenue: Math.round(baseRevenue + Math.random() * 3000),
-        profit: Math.round(baseRevenue * 0.4 + Math.random() * 1500),
+        revenue: dayData ? Math.round(dayData.revenue) : 0,
+        profit: dayData ? Math.round(dayData.profit) : 0,
       });
     }
+
     return data;
   };
 
@@ -369,33 +465,61 @@ export default function DashboardPage() {
 
             {/* Chart SVG */}
             <div className="h-64 w-full relative group">
-              <svg
-                className="w-full h-full"
-                preserveAspectRatio="none"
-                viewBox="0 0 1000 300"
-              >
-                <defs>
-                  <linearGradient id="chartGradient" x1="0%" x2="0%" y1="0%" y2="100%">
-                    <stop offset="0%" stopColor="#4b41e1" stopOpacity="0.1" />
-                    <stop offset="100%" stopColor="#4b41e1" stopOpacity="0" />
-                  </linearGradient>
-                </defs>
-                <path
-                  d="M0,250 L100,220 L200,240 L300,180 L400,210 L500,140 L600,160 L700,90 L800,120 L900,60 L1000,80"
-                  fill="none"
-                  stroke="#4b41e1"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth="4"
-                />
-                <path
-                  d="M0,250 L100,220 L200,240 L300,180 L400,210 L500,140 L600,160 L700,90 L800,120 L900,60 L1000,80 V300 H0 Z"
-                  fill="url(#chartGradient)"
-                />
-                <circle cx="500" cy="140" fill="#4b41e1" r="6" stroke="white" strokeWidth="2" />
-                <circle cx="700" cy="90" fill="#4b41e1" r="6" stroke="white" strokeWidth="2" />
-                <circle cx="900" cy="60" fill="#4b41e1" r="6" stroke="white" strokeWidth="2" />
-              </svg>
+              {chartData.length > 0 ? (
+                <svg
+                  className="w-full h-full"
+                  preserveAspectRatio="none"
+                  viewBox="0 0 700 300"
+                >
+                  <defs>
+                    <linearGradient id="chartGradient" x1="0%" x2="0%" y1="0%" y2="100%">
+                      <stop offset="0%" stopColor="#4b41e1" stopOpacity="0.1" />
+                      <stop offset="100%" stopColor="#4b41e1" stopOpacity="0" />
+                    </linearGradient>
+                  </defs>
+                  {(() => {
+                    // Max değerleri bul
+                    const maxRevenue = Math.max(...chartData.map(d => d.revenue || 0));
+                    const minRevenue = Math.min(...chartData.map(d => d.revenue || 0));
+                    const range = maxRevenue - minRevenue || 1;
+                    
+                    // Points'i normalize et (0-300 aralığında)
+                    const points = chartData.map((d, i) => {
+                      const x = (i / (chartData.length - 1 || 1)) * 700;
+                      const y = 250 - ((d.revenue - minRevenue) / range) * 200;
+                      return { x, y };
+                    });
+
+                    // Path oluştur
+                    const pathData = points.map((p, i) => `${i === 0 ? 'M' : 'L'}${p.x},${p.y}`).join(' ');
+                    const fillPath = `${pathData} L${points[points.length - 1].x},300 L0,300 Z`;
+
+                    return (
+                      <>
+                        <path
+                          d={pathData}
+                          fill="none"
+                          stroke="#4b41e1"
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          strokeWidth="4"
+                        />
+                        <path
+                          d={fillPath}
+                          fill="url(#chartGradient)"
+                        />
+                        {points.map((p, i) => (
+                          <circle key={i} cx={p.x} cy={p.y} fill="#4b41e1" r="5" stroke="white" strokeWidth="2" />
+                        ))}
+                      </>
+                    );
+                  })()}
+                </svg>
+              ) : (
+                <div className="w-full h-full flex items-center justify-center text-slate-400">
+                  <span>Grafik verisi yükleniyor...</span>
+                </div>
+              )}
               <div className="absolute inset-0 flex flex-col justify-between pointer-events-none opacity-10">
                 <div className="border-b border-slate-900 w-full h-px"></div>
                 <div className="border-b border-slate-900 w-full h-px"></div>
@@ -520,42 +644,53 @@ export default function DashboardPage() {
           {/* Category Breakdown */}
           <div className="bg-surface-container-lowest rounded-3xl p-6 shadow-sm">
             <div className="flex items-center justify-between mb-6">
-              <h2 className="text-lg font-bold text-on-surface">Kategori Dağılımı</h2>
+              <h2 className="text-lg font-bold text-on-surface">Ürün Dağılımı</h2>
               <span className="material-symbols-outlined text-slate-400">more_horiz</span>
             </div>
             <div className="space-y-4">
-              <div className="flex items-center gap-4">
-                <div className="w-2.5 h-2.5 rounded-full bg-primary"></div>
-                <div className="flex-1">
-                  <p className="text-sm font-semibold text-slate-900">Elektronik</p>
-                  <p className="text-[11px] text-slate-500 font-medium">425 Ürün</p>
+              {categories && categories.length > 0 ? (
+                categories.map((product, index) => {
+                  const colorClasses = [
+                    'bg-primary',
+                    'bg-secondary',
+                    'bg-tertiary',
+                  ];
+                  return (
+                    <Link key={product.id} href={`/inventory/${product.id}`}>
+                      <div className="flex items-center gap-4 hover:bg-slate-50/50 p-2 rounded-lg transition-colors cursor-pointer">
+                        <div className={`w-2.5 h-2.5 rounded-full ${colorClasses[index] || 'bg-primary'}`}></div>
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm font-semibold text-slate-900 truncate">{product.name || 'Ürün'}</p>
+                          <p className="text-[11px] text-slate-500 font-medium">
+                            {(product.totalProducts || 0).toLocaleString('tr-TR')} Adet Stok
+                          </p>
+                        </div>
+                        <span className="text-sm font-bold text-slate-700 whitespace-nowrap">
+                          {fmt(convert(product.totalValue || 0), viewCurrency)}
+                        </span>
+                      </div>
+                    </Link>
+                  );
+                })
+              ) : (
+                <div className="text-center py-6">
+                  <p className="text-sm text-slate-500">Ürün verisi bulunamadı</p>
                 </div>
-                <span className="text-sm font-bold text-slate-700">{fmt(convert(52400), viewCurrency)}</span>
-              </div>
-              <div className="flex items-center gap-4">
-                <div className="w-2.5 h-2.5 rounded-full bg-secondary"></div>
-                <div className="flex-1">
-                  <p className="text-sm font-semibold text-slate-900">Ofis Malzemeleri</p>
-                  <p className="text-[11px] text-slate-500 font-medium">1,120 Ürün</p>
-                </div>
-                <span className="text-sm font-bold text-slate-700">{fmt(convert(18200), viewCurrency)}</span>
-              </div>
-              <div className="flex items-center gap-4">
-                <div className="w-2.5 h-2.5 rounded-full bg-tertiary"></div>
-                <div className="flex-1">
-                  <p className="text-sm font-semibold text-slate-900">Mobilya</p>
-                  <p className="text-[11px] text-slate-500 font-medium">84 Ürün</p>
-                </div>
-                <span className="text-sm font-bold text-slate-700">{fmt(convert(24900), viewCurrency)}</span>
-              </div>
+              )}
             </div>
 
             <div className="mt-8 pt-6 border-t border-slate-50">
               <div className="flex items-center justify-between mb-2">
                 <span className="text-xs font-bold text-slate-400 uppercase tracking-widest">
-                  Kullanılan Depolama
+                  Toplam Stok Değeri
                 </span>
-                <span className="text-xs font-bold text-slate-900">1.2 / 2.0 TB</span>
+                <span className="text-xs font-bold text-slate-900">
+                  {fmt(convert(
+                    categories && categories.length > 0 
+                      ? categories.reduce((sum, p) => sum + (p.totalValue || 0), 0)
+                      : 0
+                  ), viewCurrency)}
+                </span>
               </div>
               <div className="w-full h-1.5 bg-slate-100 rounded-full overflow-hidden">
                 <div className="bg-slate-900 h-full w-[60%]"></div>
@@ -567,20 +702,23 @@ export default function DashboardPage() {
           <div className="bg-surface-container-low rounded-3xl p-6">
             <h2 className="text-lg font-bold text-on-surface mb-4">En İyi Tedarikçiler</h2>
             <div className="grid grid-cols-2 gap-3">
-              <div className="bg-white p-4 rounded-2xl flex flex-col items-center text-center">
-                <div className="w-10 h-10 rounded-lg bg-primary/10 flex items-center justify-center mb-3">
-                  <span className="material-symbols-outlined text-primary">business</span>
+              {vendors.length > 0 ? (
+                vendors.map((vendor, index) => (
+                  <div key={vendor.id} className="bg-white p-4 rounded-2xl flex flex-col items-center text-center">
+                    <div className="w-10 h-10 rounded-lg bg-primary/10 flex items-center justify-center mb-3">
+                      <span className="material-symbols-outlined text-primary">
+                        {index === 0 ? 'business' : 'apartment'}
+                      </span>
+                    </div>
+                    <p className="text-xs font-bold text-slate-900 truncate">{vendor.name}</p>
+                    <p className="text-[10px] text-slate-500 mt-1">{vendor.type}</p>
+                  </div>
+                ))
+              ) : (
+                <div className="col-span-2 text-center py-6">
+                  <p className="text-sm text-slate-500">Tedarikçi verisi bulunamadı</p>
                 </div>
-                <p className="text-xs font-bold text-slate-900">TechFlow Inc</p>
-                <p className="text-[10px] text-slate-500 mt-1">Tier 1 Partner</p>
-              </div>
-              <div className="bg-white p-4 rounded-2xl flex flex-col items-center text-center">
-                <div className="w-10 h-10 rounded-lg bg-primary/10 flex items-center justify-center mb-3">
-                  <span className="material-symbols-outlined text-primary">apartment</span>
-                </div>
-                <p className="text-xs font-bold text-slate-900">LuxeLiving</p>
-                <p className="text-[10px] text-slate-500 mt-1">Tier 1 Partner</p>
-              </div>
+              )}
             </div>
           </div>
         </div>

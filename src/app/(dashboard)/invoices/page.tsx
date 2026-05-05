@@ -33,6 +33,8 @@ export default function InvoicesPage() {
   const [filterType, setFilterType] = useState<"all" | "sales" | "purchase">("all");
   const [searchTerm, setSearchTerm] = useState("");
   const [downloadingPdfId, setDownloadingPdfId] = useState<string | null>(null);
+  const [currentPage, setCurrentPage] = useState(0);
+  const ITEMS_PER_PAGE = 5;
 
   const fetchInvoices = async () => {
     const { data: { user } } = await supabase.auth.getUser();
@@ -82,9 +84,15 @@ export default function InvoicesPage() {
 
   const filtered = invoices.filter((invoice) => {
     const typeMatch = filterType === "all" || invoice.type === (filterType === "sales" ? "sale" : filterType === "purchase" ? "purchase" : invoice.type);
+    
+    if (!searchTerm.trim()) {
+      return typeMatch;
+    }
+    
+    const searchLower = searchTerm.toLowerCase().trim();
     const searchMatch =
-      invoice.invoice_number.toString().includes(searchTerm) ||
-      (contacts[invoice.contact_id]?.toLowerCase().includes(searchTerm.toLowerCase()) ?? false);
+      invoice.invoice_number.toLowerCase().includes(searchLower) ||
+      (contacts[invoice.contact_id]?.toLowerCase().includes(searchLower) ?? false);
     return typeMatch && searchMatch;
   });
 
@@ -145,7 +153,7 @@ export default function InvoicesPage() {
         companyName,
         companyAddress,
         companyTaxId,
-        invoiceNumber: `FTR-${new Date(invoice.issue_date).getFullYear()}-${invoice.invoice_number.toString().padStart(3, "0")}`,
+        invoiceNumber: invoice.invoice_number,
         issueDate: invoice.issue_date,
         currency: invoice.currency || "TRY",
         status: invoice.status,
@@ -156,17 +164,14 @@ export default function InvoicesPage() {
         subtotal: invoice.total_amount - invoice.tax_total,
         vatTotal: invoice.tax_total,
         grandTotal: invoice.total_amount,
-        // notes string i tablodan çekilmiyor listeleme ekranında, bu küçük bir eksiklik olabilir
-        // eğer notes önemliyse önce invoice'u tekil de fetchleyebilirdik, ama bu idare eder
       };
 
       const { data: fullInvoice } = await supabase.from("invoices").select("notes").eq("id", invoice.id).single();
-      if (fullInvoice && fullInvoice.notes) pdfData.notes = fullInvoice.notes;
+      if (fullInvoice && fullInvoice.notes) (pdfData as any).notes = fullInvoice.notes;
 
       const { generateInvoicePdf } = await import("@/lib/generateInvoicePdf");
       await generateInvoicePdf(pdfData, invoice.status === "draft" ? "quotation" : "invoice");
       toast.success("PDF başarıyla oluşturuldu.", { id: toastId });
-
 
     } catch (err: any) {
       console.error("PDF Generate error:", err);
@@ -175,6 +180,12 @@ export default function InvoicesPage() {
       setDownloadingPdfId(null);
     }
   };
+
+  // Pagination
+  const paginatedInvoices = filtered.slice(
+    currentPage * ITEMS_PER_PAGE,
+    (currentPage + 1) * ITEMS_PER_PAGE
+  );
 
   return (
     <div className="w-full p-8 max-w-[1600px] mx-auto bg-slate-50 min-h-screen">
@@ -324,104 +335,121 @@ export default function InvoicesPage() {
             </Link>
           </div>
         ) : (
-          <div className="bg-white rounded-2xl overflow-hidden shadow-sm border border-slate-200">
-            <table className="w-full text-left border-collapse">
-              <thead>
-                <tr className="bg-slate-100 border-b border-slate-200">
-                  <th className="px-6 py-4 text-xs font-semibold uppercase tracking-wide text-slate-600">
-                    Fatura No
-                  </th>
-                  <th className="px-6 py-4 text-xs font-semibold uppercase tracking-wide text-slate-600">
-                    Cari Adı
-                  </th>
-                  <th className="px-6 py-4 text-xs font-semibold uppercase tracking-wide text-slate-600">
-                    Tür
-                  </th>
-                  <th className="px-6 py-4 text-xs font-semibold uppercase tracking-wide text-slate-600">
-                    Tarih
-                  </th>
-                  <th className="px-6 py-4 text-xs font-semibold uppercase tracking-wide text-slate-600 text-right">
-                    Tutar
-                  </th>
-                  <th className="px-6 py-4 text-xs font-semibold uppercase tracking-wide text-slate-600">
-                    Durum
-                  </th>
-                  <th className="px-6 py-4 w-24">İşlemler</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-200">
-                {filtered.map((invoice) => (
-                  <tr key={invoice.id} className="group hover:bg-slate-50 transition-colors">
-                    <td className="px-6 py-4">
-                      <p className="text-sm font-semibold text-slate-900">
-                        FTR-{new Date(invoice.issue_date).getFullYear()}-{invoice.invoice_number
-                          .toString()
-                          .padStart(3, "0")}
-                      </p>
-                    </td>
-                    <td className="px-6 py-4">
-                      <p className="text-sm font-medium text-slate-700">{contacts[invoice.contact_id] || "—"}</p>
-                    </td>
-                    <td className="px-6 py-4">
-                      <span
-                        className={`text-xs font-semibold px-3 py-1.5 rounded-lg flex items-center gap-1 w-fit ${
-                          invoice.type === "sale"
-                            ? "bg-green-100 text-green-700"
-                            : "bg-blue-100 text-blue-700"
-                        }`}
-                      >
-                        <span className="material-symbols-outlined text-sm">
-                          {invoice.type === "sale" ? "trending_up" : "trending_down"}
-                        </span>
-                        {invoice.type === "sale" ? "Satış" : "Alış"}
-                      </span>
-                    </td>
-                    <td className="px-6 py-4">
-                      <p className="text-sm text-slate-700 font-medium">
-                        {new Date(invoice.issue_date).toLocaleDateString("tr-TR")}
-                      </p>
-                    </td>
-                    <td className="px-6 py-4 text-right">
-                      <p className="text-sm font-semibold text-slate-900">{format(calculateInView(invoice.total_amount))}</p>
-                    </td>
-                    <td className="px-6 py-4">
-                      <span
-                        className={`text-xs font-semibold px-3 py-1.5 rounded-lg flex items-center gap-1 w-fit ${
-                        invoice.status === "draft" ? "bg-slate-100 text-slate-700" : invoice.status === "pending" ? "bg-orange-100 text-orange-700" : "bg-green-100 text-green-700"
-                      }`}>
-                        <span className="material-symbols-outlined text-sm">
-                          {invoice.status === "draft" ? "description" : invoice.status === "pending" ? "schedule" : "check_circle"}
-                        </span>
-                        {invoice.status === "draft" ? "📝 TASLAK" : invoice.status === "pending" ? "⏳ BEKLIYOR" : "✅ ÖDENDİ"}
-                      </span>
-                    </td>
-                    <td className="px-6 py-4 text-center">
-                      <div className="flex items-center justify-center gap-1">
-                        <button
-                          onClick={() => handleDownloadPdf(invoice)}
-                          disabled={downloadingPdfId === invoice.id}
-                          className="inline-flex items-center justify-center w-10 h-10 rounded-lg text-emerald-600 hover:bg-emerald-100 transition-all disabled:opacity-50"
-                          title="PDF Olarak İndir"
-                        >
-                          <span className={`material-symbols-outlined ${downloadingPdfId === invoice.id ? 'animate-pulse' : ''}`}>
-                            {downloadingPdfId === invoice.id ? 'sync' : 'picture_as_pdf'}
+          <div className="space-y-4">
+            <div className="bg-white rounded-3xl overflow-hidden shadow-sm border border-indigo-50">
+              <div className="overflow-x-auto">
+                <table className="w-full text-left border-collapse table-fixed">
+                  <thead>
+                    <tr className="bg-surface-container-low/50">
+                      <th className="w-[160px] px-6 py-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest align-middle">Fatura No</th>
+                      <th className="w-[150px] px-6 py-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest align-middle">Cari Adı</th>
+                      <th className="w-[100px] px-6 py-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest align-middle">Tür</th>
+                      <th className="w-[120px] px-6 py-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest align-middle">Tarih</th>
+                      <th className="w-[130px] px-6 py-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest align-middle text-right">Tutar</th>
+                      <th className="w-[120px] px-6 py-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest align-middle">Durum</th>
+                      <th className="w-[100px] px-6 py-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest align-middle text-center">İşlemler</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-indigo-50/50">
+                    {paginatedInvoices.map((invoice) => (
+                      <tr key={invoice.id} className="hover:bg-indigo-50/30 transition-colors align-middle">
+                        <td className="w-[160px] px-6 py-5 align-middle">
+                          <p className="text-sm font-semibold text-on-surface">
+                            {invoice.invoice_number}
+                          </p>
+                        </td>
+                        <td className="w-[150px] px-6 py-5 align-middle">
+                          <p className="text-sm font-medium text-slate-700 truncate">{contacts[invoice.contact_id] || "—"}</p>
+                        </td>
+                        <td className="w-[100px] px-6 py-5 align-middle">
+                          <span
+                            className={`text-xs font-semibold px-3 py-1.5 rounded-full inline-flex items-center gap-1 ${
+                              invoice.type === "sale"
+                                ? "bg-emerald-50 text-emerald-700"
+                                : "bg-indigo-50 text-indigo-700"
+                            }`}
+                          >
+                            <span className="material-symbols-outlined text-sm">
+                              {invoice.type === "sale" ? "trending_up" : "trending_down"}
+                            </span>
+                            {invoice.type === "sale" ? "Satış" : "Alış"}
                           </span>
-                        </button>
-                        <Link
-                          href={invoice.status === "draft" ? `/invoices/new?id=${invoice.id}` : `/invoices/${invoice.id}`}
-                          className="inline-flex items-center justify-center w-10 h-10 rounded-lg text-purple-600 hover:bg-purple-100 transition-all"
-                          title={invoice.status === "draft" ? "Taslak faturayı düzenle" : "Fatura detaylarını görüntüle"}
-                        >
-                          <span className="material-symbols-outlined">
-                            {invoice.status === "draft" ? "edit" : "arrow_forward"}
+                        </td>
+                        <td className="w-[120px] px-6 py-5 align-middle">
+                          <p className="text-sm text-slate-700 font-medium">
+                            {new Date(invoice.issue_date).toLocaleDateString("tr-TR")}
+                          </p>
+                        </td>
+                        <td className="w-[130px] px-6 py-5 align-middle text-right">
+                          <p className="text-sm font-semibold text-on-surface">{format(calculateInView(invoice.total_amount))}</p>
+                        </td>
+                        <td className="w-[120px] px-6 py-5 align-middle">
+                          <span
+                            className={`text-xs font-semibold px-3 py-1.5 rounded-full inline-flex items-center gap-1 ${
+                            invoice.status === "draft" ? "bg-slate-100 text-slate-700" : invoice.status === "pending" ? "bg-amber-50 text-amber-700" : "bg-emerald-50 text-emerald-700"
+                          }`}>
+                            <span className="material-symbols-outlined text-sm">
+                              {invoice.status === "draft" ? "description" : invoice.status === "pending" ? "schedule" : "check_circle"}
+                            </span>
+                            {invoice.status === "draft" ? "TASLAK" : invoice.status === "pending" ? "BEKLIYOR" : "ÖDENDİ"}
                           </span>
-                        </Link>
-                      </div>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+                        </td>
+                        <td className="w-[100px] px-6 py-5 text-center">
+                          <div className="flex items-center justify-center gap-1">
+                            <button
+                              onClick={() => handleDownloadPdf(invoice)}
+                              disabled={downloadingPdfId === invoice.id}
+                              className="inline-flex items-center justify-center w-10 h-10 rounded-lg text-emerald-600 hover:bg-emerald-100 transition-all disabled:opacity-50"
+                              title="PDF Olarak İndir"
+                            >
+                              <span className={`material-symbols-outlined ${downloadingPdfId === invoice.id ? 'animate-pulse' : ''}`}>
+                                {downloadingPdfId === invoice.id ? 'sync' : 'picture_as_pdf'}
+                              </span>
+                            </button>
+                            <Link
+                              href={invoice.status === "draft" ? `/invoices/new?id=${invoice.id}` : `/invoices/${invoice.id}`}
+                              className="inline-flex items-center justify-center w-10 h-10 rounded-lg text-primary hover:bg-primary/10 transition-all"
+                              title={invoice.status === "draft" ? "Taslak faturayı düzenle" : "Fatura detaylarını görüntüle"}
+                            >
+                              <span className="material-symbols-outlined">
+                                {invoice.status === "draft" ? "edit" : "arrow_forward"}
+                              </span>
+                            </Link>
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+
+              {/* Pagination */}
+              <div className="px-6 py-5 bg-surface-container-low/30 border-t border-indigo-50 flex justify-between items-center">
+                <p className="text-xs text-slate-500">
+                  {filtered.length === 0
+                    ? "Kayıt bulunamadı"
+                    : `${paginatedInvoices.length} / ${filtered.length} fatura gösteriliyor (Sayfa ${currentPage + 1})`}
+                </p>
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => setCurrentPage(currentPage - 1)}
+                    disabled={currentPage === 0}
+                    className="px-4 py-2 text-xs font-bold rounded-lg border border-indigo-50 transition-all bg-white flex items-center gap-2 disabled:text-slate-300 disabled:cursor-not-allowed disabled:opacity-50 enabled:text-primary enabled:hover:bg-indigo-50"
+                  >
+                    <span className="material-symbols-outlined text-sm">arrow_back</span>
+                    Önceki
+                  </button>
+                  <button
+                    onClick={() => setCurrentPage(currentPage + 1)}
+                    disabled={(currentPage + 1) * ITEMS_PER_PAGE >= filtered.length}
+                    className="px-4 py-2 text-xs font-bold rounded-lg border border-indigo-50 transition-all bg-white flex items-center gap-2 disabled:text-slate-300 disabled:cursor-not-allowed disabled:opacity-50 enabled:text-primary enabled:hover:bg-indigo-50"
+                  >
+                    <span className="material-symbols-outlined text-sm">arrow_forward</span>
+                    Sonraki
+                  </button>
+                </div>
+              </div>
+            </div>
           </div>
         )}
       </div>

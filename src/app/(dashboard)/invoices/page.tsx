@@ -4,6 +4,9 @@ import { useState, useEffect } from "react";
 import { supabase } from "@/lib/supabaseClient";
 import { useCurrencyConverter } from "@/hooks/useCurrencyConverter";
 import Link from "next/link";
+import toast from "react-hot-toast";
+import { resolveTeamIds, applyTeamFilter } from "@/lib/teamUtils";
+
 
 interface Invoice {
   id: string;
@@ -29,6 +32,7 @@ export default function InvoicesPage() {
   const [loading, setLoading] = useState(true);
   const [filterType, setFilterType] = useState<"all" | "sales" | "purchase">("all");
   const [searchTerm, setSearchTerm] = useState("");
+  const [downloadingPdfId, setDownloadingPdfId] = useState<string | null>(null);
   const [currentPage, setCurrentPage] = useState(0);
   const ITEMS_PER_PAGE = 5;
 
@@ -39,12 +43,14 @@ export default function InvoicesPage() {
       return;
     }
 
-    // Fetch invoices
-    const { data: invoicesData, error: invoicesError } = await supabase
-      .from("invoices")
-      .select("*")
-      .eq("user_id", user.id)
-      .order("issue_date", { ascending: false });
+    // Resolve team context
+    const teamIds = await resolveTeamIds(user.id);
+
+    // Fetch invoices (team-scoped)
+    const { data: invoicesData, error: invoicesError } = await applyTeamFilter(
+      supabase.from("invoices").select("*"),
+      teamIds
+    ).order("issue_date", { ascending: false });
 
     if (invoicesError) {
       console.error("Error fetching invoices:", invoicesError);
@@ -96,6 +102,84 @@ export default function InvoicesPage() {
 
   const totalAmount = filtered.reduce((sum, inv) => sum + calculateInView(inv.total_amount), 0);
   const vatAmount = filtered.reduce((sum, inv) => sum + calculateInView(inv.tax_total), 0);
+
+  const handleDownloadPdf = async (invoice: Invoice) => {
+    setDownloadingPdfId(invoice.id);
+    const toastId = toast.loading("PDF hazırlanıyor...");
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) throw new Error("Kullanıcı bulunamadı");
+
+      // 1. Get Business Info
+      let companyName = "Şirket Adı Belirtilmemiş";
+      let companyAddress = "";
+      let companyTaxId = "";
+      const localSettingsRaw = localStorage.getItem(`business_settings_${user.id}`);
+      if (localSettingsRaw) {
+        const localSettings = JSON.parse(localSettingsRaw);
+        companyName = localSettings.companyName || companyName;
+        companyAddress = localSettings.address || "";
+        companyTaxId = localSettings.taxId || "";
+      } else {
+        const { data: profile } = await supabase.from("profiles").select("company_name, tax_id").eq("id", user.id).single();
+        if (profile) {
+          companyName = profile.company_name || companyName;
+          companyTaxId = profile.tax_id || "";
+        }
+      }
+
+      // 2. Get Contact Info
+      const { data: contactData } = await supabase.from("contacts").select("*").eq("id", invoice.contact_id).single();
+      
+      // 3. Get Invoice Items and Products
+      const { data: itemsData } = await supabase.from("invoice_items").select("*").eq("invoice_id", invoice.id);
+      
+      const formattedItems = [];
+      if (itemsData && itemsData.length > 0) {
+        for (const item of itemsData) {
+          const { data: product } = await supabase.from("products").select("name").eq("id", item.product_id).single();
+          formattedItems.push({
+            productName: product?.name || "Bilinmeyen Ürün",
+            quantity: Number(item.quantity),
+            unitPrice: Number(item.unit_price),
+            vatRate: Number(item.vat_rate),
+            lineTotal: Number(item.line_total),
+          });
+        }
+      }
+
+      // Generate Data Object
+      const pdfData = {
+        companyName,
+        companyAddress,
+        companyTaxId,
+        invoiceNumber: invoice.invoice_number,
+        issueDate: invoice.issue_date,
+        currency: invoice.currency || "TRY",
+        status: invoice.status,
+        contactName: contactData?.name || "Cari Belirtilmemiş",
+        contactTaxNumber: contactData?.tax_number,
+        contactTaxOffice: contactData?.tax_office,
+        items: formattedItems,
+        subtotal: invoice.total_amount - invoice.tax_total,
+        vatTotal: invoice.tax_total,
+        grandTotal: invoice.total_amount,
+      };
+
+      const { data: fullInvoice } = await supabase.from("invoices").select("notes").eq("id", invoice.id).single();
+      if (fullInvoice && fullInvoice.notes) (pdfData as any).notes = fullInvoice.notes;
+
+      const { generateInvoicePdf } = await import("@/lib/generateInvoicePdf");
+      await generateInvoicePdf(pdfData, invoice.status === "draft" ? "quotation" : "invoice");
+      toast.success("PDF başarıyla oluşturuldu.", { id: toastId });
+
+    } catch (err: any) {
+      console.error("PDF Generate error:", err);
+      toast.error(`Aksiyon hatası: ${err.message}`, { id: toastId });
+    } finally {
+      setDownloadingPdfId(null);
+    }
+  };
 
   // Pagination
   const paginatedInvoices = filtered.slice(
@@ -263,7 +347,7 @@ export default function InvoicesPage() {
                       <th className="w-[120px] px-6 py-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest align-middle">Tarih</th>
                       <th className="w-[130px] px-6 py-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest align-middle text-right">Tutar</th>
                       <th className="w-[120px] px-6 py-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest align-middle">Durum</th>
-                      <th className="w-16 px-6 py-4"></th>
+                      <th className="w-[100px] px-6 py-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest align-middle text-center">İşlemler</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-indigo-50/50">
@@ -310,16 +394,28 @@ export default function InvoicesPage() {
                             {invoice.status === "draft" ? "TASLAK" : invoice.status === "pending" ? "BEKLIYOR" : "ÖDENDİ"}
                           </span>
                         </td>
-                        <td className="w-16 px-6 py-5 text-center">
-                          <Link
-                            href={invoice.status === "draft" ? `/invoices/new?id=${invoice.id}` : `/invoices/${invoice.id}`}
-                            className="inline-flex items-center justify-center w-10 h-10 rounded-lg text-primary hover:bg-primary/10 transition-all"
-                            title={invoice.status === "draft" ? "Taslak faturayı düzenle" : "Fatura detaylarını görüntüle"}
-                          >
-                            <span className="material-symbols-outlined">
-                              {invoice.status === "draft" ? "edit" : "arrow_forward"}
-                            </span>
-                          </Link>
+                        <td className="w-[100px] px-6 py-5 text-center">
+                          <div className="flex items-center justify-center gap-1">
+                            <button
+                              onClick={() => handleDownloadPdf(invoice)}
+                              disabled={downloadingPdfId === invoice.id}
+                              className="inline-flex items-center justify-center w-10 h-10 rounded-lg text-emerald-600 hover:bg-emerald-100 transition-all disabled:opacity-50"
+                              title="PDF Olarak İndir"
+                            >
+                              <span className={`material-symbols-outlined ${downloadingPdfId === invoice.id ? 'animate-pulse' : ''}`}>
+                                {downloadingPdfId === invoice.id ? 'sync' : 'picture_as_pdf'}
+                              </span>
+                            </button>
+                            <Link
+                              href={invoice.status === "draft" ? `/invoices/new?id=${invoice.id}` : `/invoices/${invoice.id}`}
+                              className="inline-flex items-center justify-center w-10 h-10 rounded-lg text-primary hover:bg-primary/10 transition-all"
+                              title={invoice.status === "draft" ? "Taslak faturayı düzenle" : "Fatura detaylarını görüntüle"}
+                            >
+                              <span className="material-symbols-outlined">
+                                {invoice.status === "draft" ? "edit" : "arrow_forward"}
+                              </span>
+                            </Link>
+                          </div>
                         </td>
                       </tr>
                     ))}

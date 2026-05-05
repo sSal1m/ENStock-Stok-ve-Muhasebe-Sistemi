@@ -44,10 +44,11 @@ export function useCurrencyConverter(initialCurrency = "TRY") {
    * Eğer hedef belirtilmezse mevcut 'viewCurrency' kullanılır.
    */
   const convert = useCallback(
-    (amount: number, to: string = viewCurrency) => {
-      if (!rates || to === "TRY") return amount;
+    (amount: number | null | undefined, to: string = viewCurrency) => {
+      const parsedAmount = Number(amount) || 0;
+      if (!rates || to === "TRY") return parsedAmount;
       const rate = rates[to]?.selling || 1;
-      return amount / rate;
+      return parsedAmount / rate;
     },
     [rates, viewCurrency]
   );
@@ -56,13 +57,14 @@ export function useCurrencyConverter(initialCurrency = "TRY") {
    * Herhangi bir birimden başka bir birime çevirme yapar (Full Converter)
    */
   const convertFull = useCallback(
-    (amount: number, from: string, to: string) => {
-      if (!rates) return amount;
+    (amount: number | null | undefined, from: string, to: string) => {
+      const parsedAmount = Number(amount) || 0;
+      if (!rates) return parsedAmount;
       
       // Önce her şeyi TRY'ye çevir
-      let amountInTry = amount;
+      let amountInTry = parsedAmount;
       if (from !== "TRY") {
-        amountInTry = amount * (rates[from]?.selling || 1);
+        amountInTry = parsedAmount * (rates[from]?.selling || 1);
       }
 
       // Sonra TRY'den hedefe çevir
@@ -76,7 +78,7 @@ export function useCurrencyConverter(initialCurrency = "TRY") {
    * Para birimini sembolüyle ve binlik ayracıyla formatlar.
    */
   const format = useCallback(
-    (amount: number, currency: string = viewCurrency) => {
+    (amount: number | null | undefined, currency: string = viewCurrency) => {
       const symbols: Record<string, string> = {
         TRY: "₺",
         USD: "$",
@@ -85,9 +87,11 @@ export function useCurrencyConverter(initialCurrency = "TRY") {
       };
       const symbol = symbols[currency] || (currency === "TRY" ? "₺" : currency);
       
+      const parsedAmount = Number(amount) || 0;
+
       return (
         symbol +
-        amount.toLocaleString("tr-TR", {
+        parsedAmount.toLocaleString("tr-TR", {
           minimumFractionDigits: 2,
           maximumFractionDigits: 2,
         })

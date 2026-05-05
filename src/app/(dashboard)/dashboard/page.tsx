@@ -6,6 +6,8 @@ import { useRouter } from 'next/navigation';
 import { supabase } from '@/lib/supabaseClient';
 import toast from 'react-hot-toast';
 import { useCurrencyConverter } from '@/hooks/useCurrencyConverter';
+import { resolveTeamIds, applyTeamFilter } from '@/lib/teamUtils';
+import * as XLSX from 'xlsx';
 
 interface KPIData {
   totalProducts: number;
@@ -68,6 +70,9 @@ export default function DashboardPage() {
           return;
         }
 
+        // Resolve team context so invited users see company data
+        const teamIds = await resolveTeamIds(authUser.id);
+
         const [
           productsRes,
           revenueRes,
@@ -75,19 +80,20 @@ export default function DashboardPage() {
           contactsRes,
           invoicesDetailsRes,
         ] = await Promise.all([
-          supabase
-            .from('products')
-            .select('id, name, stock_quantity, critical_limit, sale_price, currency, sale_price_in_currency')
-            .eq('user_id', authUser.id),
+          applyTeamFilter(
+            supabase
+              .from('products')
+              .select('id, name, stock_quantity, critical_limit, sale_price, currency, sale_price_in_currency'),
+            teamIds
+          ),
 
-          supabase
-            .from('invoices')
-            .select('total_amount')
-            .eq('user_id', authUser.id),
+          applyTeamFilter(
+            supabase.from('invoices').select('total_amount'),
+            teamIds
+          ),
 
-          supabase
-            .from('inventory_logs')
-            .select(`
+          applyTeamFilter(
+            supabase.from('inventory_logs').select(`
               id,
               action_type,
               quantity_change,
@@ -95,8 +101,9 @@ export default function DashboardPage() {
               products (
                 name
               )
-            `)
-            .eq('user_id', authUser.id)
+            `),
+            teamIds
+          )
             .order('created_at', { ascending: false })
             .limit(5),
 
@@ -291,6 +298,41 @@ export default function DashboardPage() {
 
   // Helper functions moved to hook
 
+  const handleExportXlsx = () => {
+    try {
+      const workbook = XLSX.utils.book_new();
+
+      // 1. KPI Sayfası (Genel Özellikler)
+      const kpiExport = [
+        { "Metrik": "Toplam Ürün", "Değer": kpiData.totalProducts.toString() },
+        { "Metrik": "Kritik Stok Ürünleri", "Değer": kpiData.criticalStockItems.toString() },
+        { "Metrik": "Günlük Satış Cirosu", "Değer": fmt(convert(kpiData.todayRevenue), viewCurrency) },
+        { "Metrik": "Stok Sağlığı", "Değer": `%${kpiData.stockHealth}` },
+      ];
+      const kpiSheet = XLSX.utils.json_to_sheet(kpiExport);
+      XLSX.utils.book_append_sheet(workbook, kpiSheet, "Özet Veriler");
+
+      // 2. Aktiviteler Sayfası
+      if (activities && activities.length > 0) {
+        const activitiesExport = activities.map(a => ({
+          "Tarih": new Date(a.created_at).toLocaleDateString('tr-TR'),
+          "Ürün": a.product_name,
+          "İşlem Türü": a.operation_type === 'stock_in' ? 'Stok Girişi' : a.operation_type === 'sale' ? 'Satış' : 'İade',
+          "Değişim Miktarı": a.quantity,
+          "Durum": getStatusLabel(a.status)
+        }));
+        const activitiesSheet = XLSX.utils.json_to_sheet(activitiesExport);
+        XLSX.utils.book_append_sheet(workbook, activitiesSheet, "Son İşlemler");
+      }
+
+      XLSX.writeFile(workbook, `Genel_Rapor_${new Date().toISOString().split("T")[0]}.xlsx`);
+      toast.success("Rapor başarıyla excel dosyası olarak indirildi.");
+    } catch (error) {
+      console.error(error);
+      toast.error("Rapor oluşturulurken bir hata meydana geldi.");
+    }
+  };
+
   if (loading) {
     return (
       <div className="flex items-center justify-center min-h-screen">
@@ -334,7 +376,7 @@ export default function DashboardPage() {
             </span>
             Son 30 Gün
           </button>
-          <button className="flex items-center gap-2 px-4 py-2 bg-primary text-white rounded-xl text-sm font-semibold shadow-md shadow-primary/20 hover:scale-[1.02] active:scale-95 transition-all">
+          <button onClick={handleExportXlsx} className="flex items-center gap-2 px-4 py-2 bg-primary text-white rounded-xl text-sm font-semibold shadow-md shadow-primary/20 hover:scale-[1.02] active:scale-95 transition-all">
             <span className="material-symbols-outlined text-[18px]">download</span>
             Raporu Dışa Aktar
           </button>

@@ -8,6 +8,42 @@ const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
 const supabaseServer = createClient(supabaseUrl, supabaseServiceKey);
 
 /* ═══════════════════════════════════════════
+   TEAM RESOLUTION HELPER (SERVER-SIDE)
+   ═══════════════════════════════════════════ */
+
+async function resolveTeamIdsServer(userId: string): Promise<string[]> {
+  try {
+    const { data: myProfile } = await supabaseServer
+      .from("profiles")
+      .select("company_name")
+      .eq("id", userId)
+      .single();
+
+    const company = myProfile?.company_name;
+    if (!company) return [userId];
+
+    const { data: teamProfiles } = await supabaseServer
+      .from("profiles")
+      .select("id")
+      .eq("company_name", company);
+
+    if (teamProfiles && teamProfiles.length > 0) {
+      return teamProfiles.map((p) => p.id);
+    }
+    return [userId];
+  } catch {
+    return [userId];
+  }
+}
+
+function applyTeamFilterServer(query: any, teamIds: string[], column = "user_id") {
+  if (teamIds.length <= 1) {
+    return query.eq(column, teamIds[0]);
+  }
+  return query.in(column, teamIds);
+}
+
+/* ═══════════════════════════════════════════
    TYPE DEFINITIONS
    ═══════════════════════════════════════════ */
 
@@ -84,10 +120,14 @@ export async function searchContacts(userId: string, query: string) {
     return { success: false, data: [], message: "En az 1 karakter girin" };
   }
 
-  const { data, error } = await supabaseServer
-    .from("contacts")
-    .select("id, name, tax_number, tax_office, type")
-    .eq("user_id", userId)
+  const teamIds = await resolveTeamIdsServer(userId);
+
+  const { data, error } = await applyTeamFilterServer(
+    supabaseServer
+      .from("contacts")
+      .select("id, name, tax_number, tax_office, type"),
+    teamIds
+  )
     .or(`name.ilike.%${query}%,tax_number.ilike.%${query}%`)
     .limit(10);
 
@@ -108,10 +148,14 @@ export async function searchProducts(userId: string, query: string, invoiceType:
     return { success: false, data: [], message: "En az 1 karakter girin" };
   }
 
-  const { data, error } = await supabaseServer
-    .from("products")
-    .select("id, name, sku, stock_quantity, sale_price, purchase_price, currency, sale_price_in_currency, purchase_price_in_currency, tax_rate")
-    .eq("user_id", userId)
+  const teamIds = await resolveTeamIdsServer(userId);
+
+  const { data, error } = await applyTeamFilterServer(
+    supabaseServer
+      .from("products")
+      .select("id, name, sku, stock_quantity, sale_price, purchase_price, currency, sale_price_in_currency, purchase_price_in_currency, tax_rate"),
+    teamIds
+  )
     .or(`name.ilike.%${query}%,sku.ilike.%${query}%`)
     .limit(10);
 
@@ -132,12 +176,16 @@ export async function getNextInvoiceNumber(userId: string, invoiceType: "sales" 
     const today = new Date();
     const todayStr = today.toISOString().split("T")[0]; // YYYY-MM-DD
     
+    const teamIds = await resolveTeamIdsServer(userId);
+
     // Bugün oluşturulan son faturayı bul
-    const { data: todayInvoices, error: todayError } = await supabaseServer
-      .from("invoices")
-      .select("invoice_number")
-      .eq("user_id", userId)
-      .like("invoice_number", `FTR-${todayStr}-%`)
+    const { data: todayInvoices, error: todayError } = await applyTeamFilterServer(
+      supabaseServer
+        .from("invoices")
+        .select("invoice_number")
+        .like("invoice_number", `FTR-${todayStr}-%`),
+      teamIds
+    )
       .order("created_at", { ascending: false })
       .limit(1);
 
@@ -253,7 +301,19 @@ export async function createInvoiceAction(request: CreateInvoiceRequest): Promis
     // ═══════════════════════════════════════════
     // Fatura Numarası Atama ve Çakışma Kontrolü
     // ═══════════════════════════════════════════
+    
+    // (FIX for 23503 FK Violation: Ensure user profile exists for invoices_created_by_fkey constraint)
+    // full_name is required in the profiles table, so we provide a placeholder if creating a new one.
+    const { error: profileUpsertError } = await supabaseServer.from("profiles").upsert(
+      { id: user_id, full_name: "Firma Yetkilisi" }, 
+      { onConflict: "id", ignoreDuplicates: true }
+    );
+    if (profileUpsertError) {
+      console.warn("Profile upsert warning:", profileUpsertError.message);
+    }
+
     let finalInvoiceNumber = reqInvoiceNumber;
+
     if (!finalInvoiceNumber || finalInvoiceNumber.trim() === "") {
        const nextNum = await getNextInvoiceNumber(user_id, invoice_type);
        finalInvoiceNumber = `FTR-${new Date(issue_date).getFullYear()}-${nextNum.toString().padStart(3, "0")}`;

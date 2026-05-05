@@ -7,6 +7,7 @@ import { supabase } from "@/lib/supabaseClient";
 import Toast from "@/components/invoices/Toast";
 import { useCurrencyConverter } from "@/hooks/useCurrencyConverter";
 
+
 interface Contact {
   id: string;
   name: string;
@@ -375,6 +376,75 @@ export default function CreateInvoiceForm({ userId }: { userId: string }) {
       addToast("error", "❌ Bağlantı Hatası", "Sunucu ile iletişim kurulamadı.");
     } finally {
       setIsLoading(false);
+    }
+  };
+
+  // ✅ Preview PDF
+  const handlePreviewPdf = async () => {
+    if (!validateForm()) return;
+
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) {
+        addToast("error", "❌ Hata", "Kullanıcı bilgisi alınamadı");
+        return;
+      }
+
+      let companyName = "Şirket Adı Belirtilmemiş";
+      let companyAddress = "";
+      let companyTaxId = "";
+      const localSettingsRaw = localStorage.getItem(`business_settings_${user.id}`);
+      if (localSettingsRaw) {
+        const localSettings = JSON.parse(localSettingsRaw);
+        companyName = localSettings.companyName || companyName;
+        companyAddress = localSettings.address || "";
+        companyTaxId = localSettings.taxId || "";
+      } else {
+        const { data: profile } = await supabase.from("profiles").select("company_name, tax_id").eq("id", user.id).single();
+        if (profile) {
+          companyName = profile.company_name || companyName;
+          companyTaxId = profile.tax_id || "";
+        }
+      }
+
+      const totals = calculateTotals();
+
+      const pdfData = {
+        companyName,
+        companyAddress,
+        companyTaxId,
+        invoiceNumber: invoiceNumber || "ÖNİZLEME",
+        issueDate: issueDate,
+        currency: currency,
+        status: "draft",
+        notes: notes || undefined,
+        contactName: selectedContact!.name,
+        contactTaxNumber: selectedContact!.tax_number || undefined,
+        contactTaxOffice: selectedContact!.tax_office || undefined,
+        items: lineItems.map((item) => {
+          const lineSubtotal = item.quantity * item.unit_price;
+          const lineVat = lineSubtotal * (item.vat_rate / 100);
+          return {
+            productName: item.product_name || "Bilinmeyen Ürün",
+            quantity: item.quantity,
+            unitPrice: item.unit_price,
+            vatRate: item.vat_rate,
+            lineTotal: lineSubtotal + lineVat,
+          };
+        }),
+        subtotal: totals.subtotal,
+        vatTotal: totals.vatTotal,
+        grandTotal: totals.total,
+      };
+
+      const { generateInvoicePdf } = await import("@/lib/generateInvoicePdf");
+      await generateInvoicePdf(pdfData, 'quotation');
+      addToast("success", "📄 Başarılı", "Teklif/Proforma PDF'i önizlendi");
+
+
+    } catch (e: any) {
+      console.error(e);
+      addToast("error", "❌ Hata", "Önizleme oluşturulurken hata oluştu");
     }
   };
 
@@ -846,6 +916,15 @@ export default function CreateInvoiceForm({ userId }: { userId: string }) {
               </div>
             </div>
             <div className="flex gap-4">
+              <button
+                type="button"
+                onClick={handlePreviewPdf}
+                disabled={isLoading || !selectedContact || lineItems.length === 0}
+                className="flex-1 px-8 py-4 rounded-lg font-semibold text-emerald-700 bg-emerald-50 border border-emerald-200 hover:bg-emerald-100 active:scale-95 transition-all flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                <span className="material-symbols-outlined text-lg">visibility</span>
+                Teklif Önizle
+              </button>
               <button 
                 type="button"
                 onClick={handleSaveDraft}
@@ -853,7 +932,7 @@ export default function CreateInvoiceForm({ userId }: { userId: string }) {
                 className="flex-1 px-8 py-4 rounded-lg font-semibold text-slate-700 bg-slate-100 border border-slate-300 hover:bg-slate-200 active:scale-95 transition-all flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 <span className="material-symbols-outlined text-lg">draft</span>
-                Taslak Kaydet
+                Taslak
               </button>
               <button
                 type="button"

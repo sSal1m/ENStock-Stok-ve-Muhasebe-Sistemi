@@ -14,6 +14,7 @@ interface UserProfile {
   created_at: string;
   email?: string;
   status?: string;
+  profile_image?: string;
 }
 
 export default function UserListPage() {
@@ -25,13 +26,25 @@ export default function UserListPage() {
   const fetchUsers = async () => {
     setIsLoading(true);
     try {
+      const { data: { user: authUser } } = await supabase.auth.getUser();
+      if (!authUser) return;
+
+      const { data: myProfile } = await supabase
+        .from("profiles")
+        .select("company_name")
+        .eq("id", authUser.id)
+        .single();
+
+      const company = myProfile?.company_name || "Belirtilmemiş";
+
       const { data, error } = await supabase
         .from("profiles")
         .select("*")
+        .eq("company_name", company)
         .order("created_at", { ascending: false });
 
       if (error) throw error;
-      setUsers(data || []);
+      setUsers((data || []) as UserProfile[]);
     } catch (err: any) {
       toast.error("Kullanıcılar yüklenirken hata oluştu: " + err.message);
     } finally {
@@ -86,14 +99,27 @@ export default function UserListPage() {
     }
   };
 
-  // Stats calculation
   const totalUsers = users.length;
-  const activeUsers = users.filter(u => u.status !== 'pending').length;
-  const pendingInvites = users.filter(u => u.status === 'pending').length;
+  const activeUsers = users.length; // Simplified for now
+  const pendingInvites = 0;
   const adminCount = users.filter(u => u.role === 'admin' || u.role === 'Yönetici').length;
 
   return (
-    <>
+    <div className="space-y-8 animate-in fade-in duration-700">
+      {/* Header with Action */}
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+        <div>
+          <h2 className="text-2xl font-black text-slate-900 font-headline tracking-tight">Ekip Üyeleri</h2>
+          <p className="text-sm text-slate-500 font-body">Sisteme erişimi olan tüm personelleri yönetin.</p>
+        </div>
+        <Link 
+          href="/settings/users/new"
+          className="flex items-center gap-2 bg-indigo-600 text-white px-6 py-3 rounded-xl font-bold text-sm shadow-lg shadow-indigo-200 hover:bg-indigo-700 hover:scale-[1.02] active:scale-95 transition-all"
+        >
+          <span className="material-symbols-outlined text-[18px]">person_add</span>
+          Yeni Üye Ekle
+        </Link>
+      </div>
       {/* Stats Overview */}
       <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
         <div className="bg-surface-container-low p-6 rounded-2xl flex flex-col justify-between transition-all hover:shadow-md">
@@ -321,6 +347,6 @@ export default function UserListPage() {
           </button>
         </div>
       </div>
-    </>
+    </div>
   );
 }

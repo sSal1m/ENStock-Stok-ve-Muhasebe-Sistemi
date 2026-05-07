@@ -3,6 +3,7 @@
 import { useState, useEffect, useRef, useTransition } from "react";
 import { supabase } from "@/lib/supabaseClient";
 import { cariEkleAction } from "./actions";
+import { softDeleteContact } from "@/app/(dashboard)/trash/actions";
 import toast from "react-hot-toast";
 import Link from "next/link";
 import * as XLSX from "xlsx";
@@ -82,7 +83,7 @@ export default function ContactsPage() {
     const teamIds = await resolveTeamIds(user.id);
     
     const { data, error } = await applyTeamFilter(
-      supabase.from("contacts").select("*"),
+      supabase.from("contacts").select("*").is("deleted_at", null),
       teamIds
     ).order("created_at", { ascending: false });
     
@@ -376,8 +377,22 @@ export default function ContactsPage() {
                       <Link href={`/contacts/${c.id}`} className="p-2 text-primary hover:bg-indigo-50 rounded-lg">
                         <span className="material-symbols-outlined text-lg">visibility</span>
                       </Link>
-                      <button className="p-2 text-slate-400 hover:bg-slate-50 rounded-lg">
-                        <span className="material-symbols-outlined text-lg">more_vert</span>
+                      <button
+                        onClick={async () => {
+                          const { data: { user } } = await supabase.auth.getUser();
+                          if (!user) { toast.error("Oturum açma gerekli."); return; }
+                          const result = await softDeleteContact(c.id, user.id);
+                          if (result.success) {
+                            toast.success(`"${c.name}" çöp kutusuna taşındı.`, { icon: "🗑️" });
+                            setContacts(prev => prev.filter(x => x.id !== c.id));
+                          } else {
+                            toast.error(result.message);
+                          }
+                        }}
+                        className="p-2 text-amber-500 hover:bg-amber-50 rounded-lg"
+                        title="Çöp Kutusuna Taşı"
+                      >
+                        <span className="material-symbols-outlined text-lg">delete</span>
                       </button>
                     </div>
                   </td>

@@ -125,7 +125,8 @@ export async function searchContacts(userId: string, query: string) {
   const { data, error } = await applyTeamFilterServer(
     supabaseServer
       .from("contacts")
-      .select("id, name, tax_number, tax_office, type"),
+      .select("id, name, tax_number, tax_office, type")
+      .is("deleted_at", null),
     teamIds
   )
     .or(`name.ilike.%${query}%,tax_number.ilike.%${query}%`)
@@ -153,7 +154,8 @@ export async function searchProducts(userId: string, query: string, invoiceType:
   const { data, error } = await applyTeamFilterServer(
     supabaseServer
       .from("products")
-      .select("id, name, sku, stock_quantity, sale_price, purchase_price, currency, sale_price_in_currency, purchase_price_in_currency, tax_rate"),
+      .select("id, name, sku, stock_quantity, sale_price, purchase_price, currency, sale_price_in_currency, purchase_price_in_currency, tax_rate")
+      .is("deleted_at", null),
     teamIds
   )
     .or(`name.ilike.%${query}%,sku.ilike.%${query}%`)

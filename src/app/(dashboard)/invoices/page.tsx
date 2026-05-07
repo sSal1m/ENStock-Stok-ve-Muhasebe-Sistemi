@@ -3,6 +3,7 @@
 import { useState, useEffect } from "react";
 import { supabase } from "@/lib/supabaseClient";
 import { useCurrencyConverter } from "@/hooks/useCurrencyConverter";
+import { softDeleteInvoice } from "@/app/(dashboard)/trash/actions";
 import Link from "next/link";
 import toast from "react-hot-toast";
 import { resolveTeamIds, applyTeamFilter } from "@/lib/teamUtils";
@@ -48,7 +49,7 @@ export default function InvoicesPage() {
 
     // Fetch invoices (team-scoped)
     const { data: invoicesData, error: invoicesError } = await applyTeamFilter(
-      supabase.from("invoices").select("*"),
+      supabase.from("invoices").select("*").is("deleted_at", null),
       teamIds
     ).order("issue_date", { ascending: false });
 
@@ -415,6 +416,23 @@ export default function InvoicesPage() {
                                 {invoice.status === "draft" ? "edit" : "arrow_forward"}
                               </span>
                             </Link>
+                            <button
+                              onClick={async () => {
+                                const { data: { user } } = await supabase.auth.getUser();
+                                if (!user) { toast.error("Oturum açma gerekli."); return; }
+                                const result = await softDeleteInvoice(invoice.id, user.id);
+                                if (result.success) {
+                                  toast.success(`Fatura çöp kutusuna taşındı.`, { icon: "🗑️" });
+                                  setInvoices(prev => prev.filter(x => x.id !== invoice.id));
+                                } else {
+                                  toast.error(result.message);
+                                }
+                              }}
+                              className="inline-flex items-center justify-center w-10 h-10 rounded-lg text-amber-500 hover:bg-amber-50 transition-all"
+                              title="Çöp Kutusuna Taşı"
+                            >
+                              <span className="material-symbols-outlined">delete</span>
+                            </button>
                           </div>
                         </td>
                       </tr>

@@ -138,9 +138,9 @@ export default function InventoryPage() {
       if (categoryError) throw categoryError;
       setCategories((categoryData ?? []) as Category[]);
 
-      // 2. Ürünler + kategori join (ekip bazında)
+      // 2. Ürünler + kategori join (ekip bazında) — çöp kutusundakiler hariç
       const { data: productData, error: productError } = await applyTeamFilter(
-        supabase.from("products").select("id, sku, name, purchase_price, sale_price, currency, purchase_price_in_currency, sale_price_in_currency, stock_quantity, critical_limit, categories(name)"),
+        supabase.from("products").select("id, sku, name, purchase_price, sale_price, currency, purchase_price_in_currency, sale_price_in_currency, stock_quantity, critical_limit, categories(name)").is("deleted_at", null),
         teamIds
       ).order("name");
 
@@ -156,9 +156,9 @@ export default function InventoryPage() {
         0
       );
 
-      // 5. Fatura sayısı (ekip bazında)
+      // 5. Fatura sayısı (ekip bazında) — çöp kutusundakiler hariç
       const { count: invoiceCount } = await applyTeamFilter(
-        supabase.from("invoices").select("id", { count: "exact", head: true }),
+        supabase.from("invoices").select("id", { count: "exact", head: true }).is("deleted_at", null),
         teamIds
       );
 

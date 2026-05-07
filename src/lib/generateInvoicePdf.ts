@@ -58,7 +58,7 @@ export async function generateInvoicePdf(data: PdfInvoiceData, documentType: 'in
 
   // Colors based on document type
   const isQuotation = documentType === 'quotation';
-  const primaryColor = isQuotation ? [15, 118, 110] : [109, 40, 217]; // Teal for quotation, Purple for invoice
+  const primaryColor: [number, number, number] = isQuotation ? [15, 118, 110] : [109, 40, 217]; // Teal for quotation, Purple for invoice
   const textColor = [51, 65, 85];
   const lightGray = [148, 163, 184];
 

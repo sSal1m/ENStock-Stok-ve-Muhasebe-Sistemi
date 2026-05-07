@@ -138,11 +138,12 @@ export default function ContactDetailPage() {
 
         setCari(cariData as ContactRecord);
 
-        // Fetch invoices for this contact
+        // Fetch invoices for this contact (çöp kutusundakiler hariç)
         const { data: invoiceData, error: invoiceError } = await supabase
           .from("invoices")
           .select("id, invoice_number, type, issue_date, total_amount, status")
           .eq("contact_id", cariId)
+          .is("deleted_at", null)
           .order("issue_date", { ascending: false });
 
         if (invoiceError) {

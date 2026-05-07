@@ -83,12 +83,13 @@ export default function DashboardPage() {
           applyTeamFilter(
             supabase
               .from('products')
-              .select('id, name, stock_quantity, critical_limit, sale_price, currency, sale_price_in_currency'),
+              .select('id, name, stock_quantity, critical_limit, sale_price, currency, sale_price_in_currency')
+              .is('deleted_at', null),
             teamIds
           ),
 
           applyTeamFilter(
-            supabase.from('invoices').select('total_amount'),
+            supabase.from('invoices').select('total_amount').is('deleted_at', null),
             teamIds
           ),
 
@@ -111,6 +112,7 @@ export default function DashboardPage() {
             .from('contacts')
             .select('id, name, type')
             .eq('user_id', authUser.id)
+            .is('deleted_at', null)
             .limit(10),
 
           // Son 7 gün satış trendleri için
@@ -118,6 +120,7 @@ export default function DashboardPage() {
             .from('invoices')
             .select('total_amount, issue_date')
             .eq('user_id', authUser.id)
+            .is('deleted_at', null)
             .gte('issue_date', new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0]),
         ]);
 
@@ -130,7 +133,7 @@ export default function DashboardPage() {
         const totalProducts = allProducts.length;
 
         const criticalCount = allProducts.filter(
-          (p) => p.stock_quantity <= (p.critical_limit || 10)
+          (p: any) => p.stock_quantity <= (p.critical_limit || 10)
         ).length;
 
         // En çok stoktaki ürünleri hesapla
@@ -147,13 +150,13 @@ export default function DashboardPage() {
               totalValue: isNaN(price) ? 0 : (price * (product.stock_quantity || 0)),
             };
           })
-          .sort((a, b) => b.totalProducts - a.totalProducts) // En çok stok önce
+          .sort((a: any, b: any) => b.totalProducts - a.totalProducts) // En çok stok önce
           .slice(0, 3); // İlk 3 ürünü al
 
         let totalRevenue = 0;
         if (revenueRes.data) {
           totalRevenue = revenueRes.data.reduce(
-            (sum, inv) => sum + (inv.total_amount || 0),
+            (sum: number, inv: any) => sum + (inv.total_amount || 0),
             0
           );
         }

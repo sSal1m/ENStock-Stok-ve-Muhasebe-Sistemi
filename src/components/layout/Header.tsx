@@ -5,6 +5,7 @@ import { usePathname } from 'next/navigation';
 import { supabase } from '@/lib/supabaseClient';
 import toast from 'react-hot-toast';
 import { useRouter } from 'next/navigation';
+import GlobalSearch from './GlobalSearch';
 
 interface UserProfile {
   full_name: string;
@@ -74,7 +75,6 @@ export default function Header() {
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [loading, setLoading] = useState(true);
   const [showDropdown, setShowDropdown] = useState(false);
-  const [searchQuery, setSearchQuery] = useState('');
   const router = useRouter();
 
   useEffect(() => {
@@ -161,18 +161,7 @@ export default function Header() {
 
       {/* Center - Search Bar */}
       <div className="flex-shrink-0 mx-8">
-        <div className="relative w-80">
-          <input
-            type="text"
-            placeholder="Ürün, fatura veya müşteri ara..."
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            className="w-full px-4 py-3 pl-10 rounded-full bg-slate-50 border border-slate-200 text-sm text-slate-700 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition-all"
-          />
-          <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 material-symbols-outlined">
-            search
-          </span>
-        </div>
+        <GlobalSearch />
       </div>
 
       {/* Right side - Notifications, Settings & User Menu */}

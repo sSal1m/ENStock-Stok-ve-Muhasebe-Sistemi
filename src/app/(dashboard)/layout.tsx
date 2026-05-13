@@ -1,3 +1,4 @@
+
 'use client';
 
 import { useEffect, useState } from 'react';
@@ -5,6 +6,7 @@ import { useRouter } from 'next/navigation';
 import { supabase } from '@/lib/supabaseClient';
 import Sidebar from '@/components/layout/Sidebar';
 import Header from '@/components/layout/Header';
+import { usePermissions } from '@/hooks/usePermissions';
 
 export default function DashboardLayout({
   children,
@@ -13,6 +15,7 @@ export default function DashboardLayout({
 }) {
   const [isLoading, setIsLoading] = useState(true);
   const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const { hasPermission, isLoading: permsLoading, role } = usePermissions();
   const router = useRouter();
 
   useEffect(() => {
@@ -24,6 +27,37 @@ export default function DashboardLayout({
 
         if (user) {
           setIsAuthenticated(true);
+          
+          // Update status to active if it was pending
+          await supabase
+            .from('profiles')
+            .update({ status: 'active' })
+            .eq('id', user.id)
+            .eq('status', 'pending');
+          
+          // Route-based permission check
+          const pathname = window.location.pathname;
+          const getModuleId = (path: string) => {
+            if (path.includes('/inventory')) return 'stock';
+            if (path.includes('/contacts')) return 'contacts';
+            if (path.includes('/invoices')) return 'invoices';
+            if (path.includes('/reports')) return 'reports';
+            if (path.includes('/settings/users')) return 'users'; 
+            return null;
+          };
+
+          const moduleId = getModuleId(pathname);
+          
+          if (!permsLoading) {
+            if (moduleId === 'users' && role !== 'admin') {
+              router.push('/unauthorized');
+              return;
+            }
+            if (moduleId && moduleId !== 'users' && !hasPermission(moduleId, 'view')) {
+              router.push('/unauthorized');
+              return;
+            }
+          }
         } else {
           router.push('/login');
         }
@@ -36,9 +70,9 @@ export default function DashboardLayout({
     };
 
     checkAuth();
-  }, [router]);
+  }, [router, permsLoading, hasPermission, role]);
 
-  if (isLoading) {
+  if (isLoading || permsLoading) {
     return (
       <div className="h-screen flex items-center justify-center bg-surface">
         <div className="text-center">

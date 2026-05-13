@@ -60,8 +60,10 @@ export default function BusinessSettingsPage() {
           .maybeSingle();
 
         if (error) {
-          console.error("Supabase fetch error:", error);
+          console.error("Supabase fetch error (stringified):", JSON.stringify(error, null, 2));
+          console.error("Supabase error code:", error.code);
         } else if (data) {
+          console.log("Supabase fetch success:", data);
           // Merge Supabase data onto form (overwriting defaults/local for these fields)
           setFormData(prev => ({
             ...prev,

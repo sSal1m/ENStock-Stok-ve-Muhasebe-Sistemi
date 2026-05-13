@@ -11,9 +11,9 @@ interface UserProfile {
   full_name: string;
   company_name: string;
   role: string;
-  created_at: string;
+  updated_at: string;
   email?: string;
-  status?: string;
+  status?: 'active' | 'pending' | 'inactive' | string;
   profile_image?: string;
 }
 
@@ -41,7 +41,7 @@ export default function UserListPage() {
         .from("profiles")
         .select("*")
         .eq("company_name", company)
-        .order("created_at", { ascending: false });
+        .order("updated_at", { ascending: false });
 
       if (error) throw error;
       setUsers((data || []) as UserProfile[]);
@@ -57,20 +57,27 @@ export default function UserListPage() {
   }, []);
 
   const handleDelete = async (id: string) => {
-    if (!confirm("Bu kullanıcıyı silmek istediğinize emin misiniz?")) return;
+    if (id === (await supabase.auth.getUser()).data.user?.id) {
+      toast.error("Kendi hesabınızı silemezsiniz.");
+      return;
+    }
     
+    if (!confirm("Bu kullanıcıyı silmek istediğinize emin misiniz? Bu işlem geri alınamaz.")) return;
+    
+    const toastId = toast.loading("Kullanıcı siliniyor...");
     try {
-      const { error } = await supabase
+      const { error, count } = await supabase
         .from("profiles")
-        .delete()
+        .delete({ count: 'exact' })
         .eq("id", id);
       
       if (error) throw error;
       
-      toast.success("Kullanıcı başarıyla silindi.");
+      toast.success("Kullanıcı başarıyla silindi.", { id: toastId });
       setUsers(users.filter(u => u.id !== id));
     } catch (err: any) {
-      toast.error("Silme hatası: " + err.message);
+      console.error("Delete error:", err);
+      toast.error("Silme hatası: " + err.message, { id: toastId });
     }
   };
 
@@ -100,8 +107,8 @@ export default function UserListPage() {
   };
 
   const totalUsers = users.length;
-  const activeUsers = users.length; // Simplified for now
-  const pendingInvites = 0;
+  const activeUsers = users.filter(u => u.status !== 'pending').length;
+  const pendingInvites = users.filter(u => u.status === 'pending').length;
   const adminCount = users.filter(u => u.role === 'admin' || u.role === 'Yönetici').length;
 
   return (
@@ -247,7 +254,7 @@ export default function UserListPage() {
                           <div>
                             <p className="font-semibold text-slate-900">{user.full_name}</p>
                             <p className="text-[10px] text-slate-400 uppercase tracking-tighter font-bold">
-                              {new Date(user.created_at).toLocaleDateString('tr-TR', { month: 'long', year: 'numeric' })}'da katıldı
+                            {new Date(user.updated_at).toLocaleDateString('tr-TR', { month: 'long', year: 'numeric' })}'da katıldı
                             </p>
                           </div>
                         </div>
@@ -256,16 +263,25 @@ export default function UserListPage() {
                         <span className={`inline-flex items-center px-2.5 py-1 rounded-md text-[10px] font-bold uppercase tracking-wider ${
                           user.role === 'admin' ? 'bg-indigo-50 text-indigo-700 border border-indigo-100' :
                           user.role === 'accounting' ? 'bg-emerald-50 text-emerald-700 border border-emerald-100' :
+                          user.role === 'warehouse' ? 'bg-orange-50 text-orange-700 border border-orange-100' :
+                          user.role === 'sales' ? 'bg-blue-50 text-blue-700 border border-blue-100' :
                           'bg-slate-100 text-slate-600 border border-slate-200'
                         }`}>
-                          {user.role === 'admin' ? 'Yönetici' : user.role === 'accounting' ? 'Muhasebe' : 'Personel'}
+                          {user.role === 'admin' ? 'Yönetici' : user.role === 'accounting' ? 'Muhasebe' : user.role === 'warehouse' ? 'Depo Personeli' : user.role === 'sales' ? 'Satış Temsilcisi' : 'Personel'}
                         </span>
                       </td>
                       <td className="px-8 py-5">
-                        <span className="flex items-center gap-1.5 text-xs font-semibold text-green-700">
-                          <span className="w-1.5 h-1.5 bg-green-500 rounded-full"></span>
-                          Aktif
-                        </span>
+                        {user.status === 'pending' ? (
+                          <span className="flex items-center gap-1.5 text-xs font-semibold text-amber-600 bg-amber-50 px-2 py-1 rounded-full border border-amber-100">
+                            <span className="w-1.5 h-1.5 bg-amber-500 rounded-full animate-pulse"></span>
+                            Bekliyor
+                          </span>
+                        ) : (
+                          <span className="flex items-center gap-1.5 text-xs font-semibold text-green-700 bg-green-50 px-2 py-1 rounded-full border border-green-100">
+                            <span className="w-1.5 h-1.5 bg-green-500 rounded-full"></span>
+                            Aktif
+                          </span>
+                        )}
                       </td>
                       <td className="px-8 py-5 text-right">
                         <div className="flex items-center justify-end gap-1 opacity-0 group-hover:opacity-100 transition-all duration-300 transform translate-x-2 group-hover:translate-x-0">

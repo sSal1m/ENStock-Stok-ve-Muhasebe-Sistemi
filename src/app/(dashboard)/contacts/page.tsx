@@ -3,8 +3,11 @@
 import { useState, useEffect, useRef, useTransition } from "react";
 import { supabase } from "@/lib/supabaseClient";
 import { cariEkleAction } from "./actions";
+import { softDeleteContact } from "@/app/(dashboard)/trash/actions";
 import toast from "react-hot-toast";
 import Link from "next/link";
+import * as XLSX from "xlsx";
+import { resolveTeamIds, applyTeamFilter } from "@/lib/teamUtils";
 
 /* ═══════════════════════════════════════════
    DATA
@@ -27,10 +30,10 @@ interface Contact {
    HELPERS
    ═══════════════════════════════════════════ */
 
-const fmt = (val: number) =>
+const fmt = (val: number, currency: string = "TRY") =>
   new Intl.NumberFormat("tr-TR", {
     style: "currency",
-    currency: "TRY",
+    currency: currency,
     minimumFractionDigits: 2,
   }).format(val);
 
@@ -47,6 +50,26 @@ export default function ContactsPage() {
   const [isPending, startTransition] = useTransition();
   const formRef = useRef<HTMLFormElement>(null);
 
+  // Döviz Durumu
+  const [viewCurrency, setViewCurrency] = useState("TRY");
+  const [rates, setRates] = useState<any>(null);
+
+  // ── Döviz Kurlarını Çek ────────────────────────────────────────────────
+  useEffect(() => {
+    async function fetchRates() {
+      try {
+        const res = await fetch("/api/currency");
+        const data = await res.json();
+        if (data.rates) {
+          setRates(data.rates);
+        }
+      } catch (err) {
+        console.error("Kurlar yüklenemedi:", err);
+      }
+    }
+    fetchRates();
+  }, []);
+
   // ── Fetch from Supabase ──
   const fetchContacts = async () => {
     const { data: { user } } = await supabase.auth.getUser();
@@ -55,12 +78,14 @@ export default function ContactsPage() {
       setLoading(false);
       return;
     }
+
+    // Resolve team context
+    const teamIds = await resolveTeamIds(user.id);
     
-    const { data, error } = await supabase
-      .from("contacts")
-      .select("*")
-      .eq("user_id", user.id)
-      .order("created_at", { ascending: false });
+    const { data, error } = await applyTeamFilter(
+      supabase.from("contacts").select("*").is("deleted_at", null),
+      teamIds
+    ).order("created_at", { ascending: false });
     
     if (error) {
       console.error("Veri çekme hatası:", error);
@@ -84,6 +109,12 @@ export default function ContactsPage() {
       .includes(search.toLocaleLowerCase("tr"));
     return tabOk && searchOk;
   });
+
+  const convert = (val: number) => {
+    if (viewCurrency === "TRY" || !rates) return val;
+    const rate = rates[viewCurrency]?.selling || 1;
+    return val / rate;
+  };
 
   const alacak = contacts.filter((c) => c.current_balance > 0).reduce((s, c) => s + c.current_balance, 0);
   const borc = contacts.filter((c) => c.current_balance < 0).reduce((s, c) => s + Math.abs(c.current_balance), 0);
@@ -125,6 +156,34 @@ export default function ContactsPage() {
     });
   };
 
+  // ── Excel Export Handler ──
+  const handleExportXlsx = () => {
+    if (filtered.length === 0) {
+      toast.error("Dışa aktarılacak kayıt bulunmuyor.");
+      return;
+    }
+
+    // Format data for excel
+    const exportData = filtered.map((c) => ({
+      "Cari Türü": c.type === "customer" ? "Müşteri" : "Tedarikçi",
+      "Firma / Şahıs Adı": c.name,
+      "E-posta": c.email || "Belirtilmemiş",
+      "Telefon": c.phone || "Belirtilmemiş",
+      "Adres": c.address || "Belirtilmemiş",
+      "Bakiye": c.current_balance,
+      "Görünen Bakiye": fmt(convert(c.current_balance), viewCurrency)
+    }));
+
+    // Create Worksheet & Workbook
+    const worksheet = XLSX.utils.json_to_sheet(exportData);
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(workbook, worksheet, "Cariler");
+
+    // Download
+    XLSX.writeFile(workbook, `Cariler_${new Date().toISOString().split("T")[0]}.xlsx`);
+    toast.success("Excel dosyası başarıyla indirildi.");
+  };
+
   return (
     <div className="p-6 lg:p-10 space-y-8">
       {/* ── Sayfa Başlığı ── */}
@@ -142,8 +201,21 @@ export default function ContactsPage() {
             Müşteri ve tedarikçi hesaplarınızı tek panelden yönetin.
           </p>
         </div>
-        <div className="flex items-center gap-3">
-          <div className="relative">
+          <div className="flex items-center gap-3">
+            <div className="flex items-center gap-2 bg-white border border-indigo-100 rounded-xl px-3 py-1.5 shadow-sm">
+              <span className="text-[10px] font-bold text-slate-400 uppercase tracking-tighter">Görünüm:</span>
+              <select
+                value={viewCurrency}
+                onChange={(e) => setViewCurrency(e.target.value)}
+                className="bg-transparent border-none text-sm font-black text-primary outline-none focus:ring-0 cursor-pointer"
+              >
+                <option value="TRY">TRY (₺)</option>
+                <option value="USD">USD ($)</option>
+                <option value="EUR">EUR (€)</option>
+                <option value="GBP">GBP (£)</option>
+              </select>
+            </div>
+            <div className="relative">
             <span className="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 text-[18px]">search</span>
             <input
               id="cari-search"
@@ -155,6 +227,7 @@ export default function ContactsPage() {
             />
           </div>
           <button
+            onClick={handleExportXlsx}
             className="border border-indigo-100 text-slate-600 px-5 py-3 rounded-xl font-bold flex items-center gap-2 hover:bg-slate-50 transition-all active:scale-95"
           >
             <span className="material-symbols-outlined text-[18px]">download</span>
@@ -176,7 +249,7 @@ export default function ContactsPage() {
         <div className="bg-white p-6 rounded-2xl shadow-sm border border-indigo-50/50">
           <p className="text-xs font-bold uppercase tracking-widest text-slate-400">Toplam Alacak</p>
           <div className="mt-2 flex items-end gap-3">
-            <p className="text-2xl font-extrabold text-emerald-600 tabular-nums leading-none">{fmt(alacak)}</p>
+            <p className="text-2xl font-extrabold text-emerald-600 tabular-nums leading-none">{fmt(convert(alacak), viewCurrency)}</p>
             <span className="mb-0.5 inline-flex items-center gap-0.5 text-[11px] font-bold text-emerald-500">
               <span className="material-symbols-outlined text-[14px]">arrow_upward</span>
               +12.5%
@@ -188,7 +261,7 @@ export default function ContactsPage() {
         <div className="bg-white p-6 rounded-2xl shadow-sm border border-indigo-50/50">
           <p className="text-xs font-bold uppercase tracking-widest text-slate-400">Toplam Borç</p>
           <div className="mt-2 flex items-end gap-3">
-            <p className="text-2xl font-extrabold text-error tabular-nums leading-none">{fmt(borc)}</p>
+            <p className="text-2xl font-extrabold text-error tabular-nums leading-none">{fmt(convert(borc), viewCurrency)}</p>
             <span className="mb-0.5 inline-flex items-center gap-0.5 text-[11px] font-bold text-error">
               <span className="material-symbols-outlined text-[14px]">arrow_downward</span>
               -4.2%
@@ -296,7 +369,7 @@ export default function ContactsPage() {
                           : "bg-error-container/20 text-error"
                       }`}
                     >
-                      {fmt(c.current_balance)}
+                      {fmt(convert(c.current_balance), viewCurrency)}
                     </span>
                   </td>
                   <td className="px-8 py-4 text-right">
@@ -304,8 +377,22 @@ export default function ContactsPage() {
                       <Link href={`/contacts/${c.id}`} className="p-2 text-primary hover:bg-indigo-50 rounded-lg">
                         <span className="material-symbols-outlined text-lg">visibility</span>
                       </Link>
-                      <button className="p-2 text-slate-400 hover:bg-slate-50 rounded-lg">
-                        <span className="material-symbols-outlined text-lg">more_vert</span>
+                      <button
+                        onClick={async () => {
+                          const { data: { user } } = await supabase.auth.getUser();
+                          if (!user) { toast.error("Oturum açma gerekli."); return; }
+                          const result = await softDeleteContact(c.id, user.id);
+                          if (result.success) {
+                            toast.success(`"${c.name}" çöp kutusuna taşındı.`, { icon: "🗑️" });
+                            setContacts(prev => prev.filter(x => x.id !== c.id));
+                          } else {
+                            toast.error(result.message);
+                          }
+                        }}
+                        className="p-2 text-amber-500 hover:bg-amber-50 rounded-lg"
+                        title="Çöp Kutusuna Taşı"
+                      >
+                        <span className="material-symbols-outlined text-lg">delete</span>
                       </button>
                     </div>
                   </td>

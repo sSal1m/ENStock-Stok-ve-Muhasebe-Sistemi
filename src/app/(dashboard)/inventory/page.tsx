@@ -7,6 +7,9 @@ import { supabase } from "@/lib/supabaseClient";
 import CategoryModal from "@/components/inventory/CategoryModal";
 import DeleteConfirmationModal from "@/components/inventory/DeleteConfirmationModal";
 import Link from "next/link";
+import { useCurrencyConverter } from "@/hooks/useCurrencyConverter";
+import { resolveTeamIds, applyTeamFilter } from "@/lib/teamUtils";
+import * as XLSX from "xlsx";
 
 // ─── Tipler ────────────────────────────────────────────────────────────────
 
@@ -16,6 +19,9 @@ interface Product {
   name: string;
   purchase_price: number;
   sale_price: number;
+  currency: string;
+  purchase_price_in_currency: number;
+  sale_price_in_currency: number;
   stock_quantity: number;
   critical_limit: number;
   categories: { name: string }[] | { name: string } | null;
@@ -59,12 +65,7 @@ function getStockPercent(qty: number, limit: number): number {
   return Math.min(Math.round((qty / max) * 100), 100);
 }
 
-function formatPrice(val: number): string {
-  return (
-    "₺" +
-    val.toLocaleString("tr-TR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })
-  );
-}
+// formatPrice function is now handled by the hook
 
 // ─── Yükleme Skeleton ───────────────────────────────────────────────────────
 
@@ -100,6 +101,9 @@ export default function InventoryPage() {
   const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<{ id: string; name: string } | null>(null);
   const [userId, setUserId] = useState<string | null>(null);
+  
+  // Dashboard Döviz Durumu
+  const { rates, viewCurrency, setViewCurrency, convert, format: formatPrice } = useCurrencyConverter();
   const router = useRouter();
 
   // ── Kullanıcı ID'sini Al ────────────────────────────────────────────────
@@ -122,33 +126,27 @@ export default function InventoryPage() {
     setError(null);
     setIsAnimating(false);
     try {
-      // 1. Kategorileri çek (sadece bu kullanıcının)
-      const { data: categoryData, error: categoryError } = await supabase
-        .from("categories")
-        .select("id, name")
-        .eq("user_id", userId)
-        .order("name");
+      // Resolve team context
+      const teamIds = await resolveTeamIds(userId);
+
+      // 1. Kategorileri çek (ekip bazında)
+      const { data: categoryData, error: categoryError } = await applyTeamFilter(
+        supabase.from("categories").select("id, name"),
+        teamIds
+      ).order("name");
 
       if (categoryError) throw categoryError;
       setCategories((categoryData ?? []) as Category[]);
 
-      // 2. ✅ Ürünler + kategori join (sadece bu kullanıcının)
-      const { data: productData, error: productError } = await supabase
-        .from("products")
-        .select("id, sku, name, purchase_price, sale_price, stock_quantity, critical_limit, categories(name)")
-        .eq("user_id", userId)
-        .order("name");
+      // 2. Ürünler + kategori join (ekip bazında) — çöp kutusundakiler hariç
+      const { data: productData, error: productError } = await applyTeamFilter(
+        supabase.from("products").select("id, sku, name, purchase_price, sale_price, currency, purchase_price_in_currency, sale_price_in_currency, stock_quantity, critical_limit, categories(name)").is("deleted_at", null),
+        teamIds
+      ).order("name");
 
       if (productError) throw productError;
       const prods = (productData ?? []) as Product[];
       
-      // 🔧 DEBUG: Veri yapısını kontrol et
-      if (prods.length > 0) {
-        console.log("📊 Gelen Veri (İlk Ürün):", prods[0]);
-        console.log("📊 Categories Tipi:", typeof prods[0].categories);
-        console.log("📊 Categories İçeriği:", prods[0].categories);
-      }
-
       // 3. İnsights: kritik limit altındaki ürünler
       const criticals = prods.filter((p) => p.stock_quantity <= p.critical_limit);
 
@@ -158,11 +156,11 @@ export default function InventoryPage() {
         0
       );
 
-      // 5. Fatura sayısı (sadece bu kullanıcının)
-      const { count: invoiceCount } = await supabase
-        .from("invoices")
-        .select("id", { count: "exact", head: true })
-        .eq("user_id", userId);
+      // 5. Fatura sayısı (ekip bazında) — çöp kutusundakiler hariç
+      const { count: invoiceCount } = await applyTeamFilter(
+        supabase.from("invoices").select("id", { count: "exact", head: true }).is("deleted_at", null),
+        teamIds
+      );
 
       setProducts(prods);
       setFiltered(prods);
@@ -232,6 +230,45 @@ export default function InventoryPage() {
 
     setFiltered(result);
   }, [search, stockFilter, products, categoryFilter, categories]);
+
+  // ── Excel Export Handler ──
+  const handleExportXlsx = () => {
+    if (filtered.length === 0) {
+      toast.error("Dışa aktarılacak kayıt bulunmuyor.");
+      return;
+    }
+
+    const exportData = filtered.map((p) => {
+      let categoryName = "Kategorisiz";
+      if (p.categories) {
+        if (Array.isArray(p.categories)) {
+          categoryName = p.categories[0]?.name || "Kategorisiz";
+        } else {
+          categoryName = (p.categories as { name: string }).name || "Kategorisiz";
+        }
+      }
+
+      return {
+        "SKU": p.sku,
+        "Ürün Adı": p.name,
+        "Kategori": categoryName,
+        "Mevcut Stok": p.stock_quantity,
+        "Kritik Limit": p.critical_limit,
+        "Alış Fiyatı (TRY)": p.purchase_price,
+        "Satış Fiyatı (TRY)": p.sale_price,
+        "Orjinal Döviz": p.currency,
+        "Orjinal Satış Fiyatı": p.sale_price_in_currency,
+        "Görünen Satış Fiyatı": formatPrice(convert(p.sale_price_in_currency), viewCurrency)
+      };
+    });
+
+    const worksheet = XLSX.utils.json_to_sheet(exportData);
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(workbook, worksheet, "Stoklar");
+
+    XLSX.writeFile(workbook, `Stoklar_${new Date().toISOString().split("T")[0]}.xlsx`);
+    toast.success("Excel dosyası başarıyla indirildi.");
+  };
 
   // ── Hata Durumu ──────────────────────────────────────────────────────────
   if (error) {
@@ -340,7 +377,7 @@ export default function InventoryPage() {
             {loading ? (
               <span className="inline-block w-28 h-7 bg-slate-100 rounded animate-pulse" />
             ) : (
-              formatPrice(stats?.totalStockValue ?? 0)
+              formatPrice(convert(stats?.totalStockValue ?? 0))
             )}
           </h3>
         </div>
@@ -408,10 +445,23 @@ export default function InventoryPage() {
             </div>
           </div>
           <div className="flex items-center gap-2 w-full lg:w-auto justify-end">
+            <div className="flex items-center gap-2 bg-white border border-indigo-100 rounded-xl px-3 py-1.5 shadow-sm">
+              <span className="text-[10px] font-bold text-slate-400 uppercase tracking-tighter">Görünüm:</span>
+              <select
+                value={viewCurrency}
+                onChange={(e) => setViewCurrency(e.target.value)}
+                className="bg-transparent border-none text-sm font-black text-primary outline-none focus:ring-0 cursor-pointer"
+              >
+                <option value="TRY">TRY (₺)</option>
+                <option value="USD">USD ($)</option>
+                <option value="EUR">EUR (€)</option>
+                <option value="GBP">GBP (£)</option>
+              </select>
+            </div>
             <button className="p-2.5 text-slate-500 hover:bg-slate-50 rounded-xl border border-indigo-50 transition-colors">
               <span className="material-symbols-outlined">filter_list</span>
             </button>
-            <button className="p-2.5 text-slate-500 hover:bg-slate-50 rounded-xl border border-indigo-100 transition-colors">
+            <button onClick={handleExportXlsx} className="p-2.5 text-slate-500 hover:bg-slate-50 rounded-xl border border-indigo-100 transition-colors" title="Excel Olarak İndir">
               <span className="material-symbols-outlined">download</span>
             </button>
           </div>
@@ -515,7 +565,18 @@ export default function InventoryPage() {
 
                       {/* Birim Fiyat */}
                       <td className="px-6 py-4 text-right">
-                        <p className="font-bold text-on-surface">{formatPrice(item.sale_price)}</p>
+                        <p className="font-bold text-on-surface">
+                          {item.currency !== "TRY" ? (
+                            <>
+                              {formatPrice(item.sale_price_in_currency, item.currency)}
+                              <span className="block text-[10px] text-slate-400 font-medium">
+                                ({formatPrice(item.sale_price, "TRY")})
+                              </span>
+                            </>
+                          ) : (
+                            formatPrice(item.sale_price, "TRY")
+                          )}
+                        </p>
                       </td>
 
                       {/* İşlemler */}

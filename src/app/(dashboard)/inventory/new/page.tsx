@@ -4,6 +4,7 @@ import { useEffect, useState, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import toast, { Toaster } from "react-hot-toast";
 import { supabase } from "@/lib/supabaseClient";
+import { useCurrencyConverter } from "@/hooks/useCurrencyConverter";
 
 // ─── Tipler ────────────────────────────────────────────────────────────────
 
@@ -22,6 +23,7 @@ interface FormState {
   stock_quantity: string;
   critical_limit: string;
   tax_rate: number; // 1 | 10 | 20
+  currency: string;
 }
 
 const INITIAL_FORM: FormState = {
@@ -34,6 +36,7 @@ const INITIAL_FORM: FormState = {
   stock_quantity: "",
   critical_limit: "",
   tax_rate: 20,
+  currency: "TRY",
 };
 
 // ─── Yardımcılar ────────────────────────────────────────────────────────────
@@ -43,8 +46,8 @@ function toNum(val: string): number {
   return isNaN(n) ? 0 : n;
 }
 
-function fmtTRY(val: number): string {
-  return val.toLocaleString("tr-TR", { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + " TRY";
+function fmtCurr(val: number, currency: string): string {
+  return val.toLocaleString("tr-TR", { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + " " + currency;
 }
 
 // ─── Bileşen ────────────────────────────────────────────────────────────────
@@ -61,6 +64,7 @@ export default function NewInventoryPage() {
   const [showNewCategoryForm, setShowNewCategoryForm] = useState(false);
   const [newCategoryName, setNewCategoryName] = useState("");
   const [savingCategory, setSavingCategory] = useState(false);
+  const { rates, convertFull } = useCurrencyConverter();
 
   // ── Kullanıcı ID'sini Al ────────────────────────────────────────────────
   useEffect(() => {
@@ -185,6 +189,11 @@ export default function NewInventoryPage() {
   // ── Hesaplamalar (Hızlı Özet) ───────────────────────────────────────────
   const salePrice = toNum(form.sale_price);
   const purchasePrice = toNum(form.purchase_price);
+  
+  // Döviz Çevrimi (Görsel Yardım için - Hook üzerinden)
+  const purchasePriceTRY = convertFull(purchasePrice, form.currency, "TRY");
+  const salePriceTRY = convertFull(salePrice, form.currency, "TRY");
+
   const vatAmount = salePrice * (form.tax_rate / 100);
   const priceWithVat = salePrice + vatAmount;
   const margin = purchasePrice > 0 ? ((salePrice - purchasePrice) / purchasePrice) * 100 : 0;
@@ -231,8 +240,11 @@ export default function NewInventoryPage() {
         sku: form.sku.trim(),
         category_id: form.category_id,
         description: form.description.trim() || null,
-        purchase_price: toNum(form.purchase_price),
-        sale_price: toNum(form.sale_price),
+        currency: form.currency,
+        purchase_price_in_currency: toNum(form.purchase_price),
+        sale_price_in_currency: toNum(form.sale_price),
+        purchase_price: purchasePriceTRY, // TRY karşılığı (Hızlı raporlama için)
+        sale_price: salePriceTRY,         // TRY karşılığı
         stock_quantity: Math.round(toNum(form.stock_quantity)),
         critical_limit: Math.round(toNum(form.critical_limit)),
         tax_rate: form.tax_rate,
@@ -538,7 +550,7 @@ export default function NewInventoryPage() {
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
 
                   {/* Alış Fiyatı */}
-                  <div>
+                  <div className="md:col-span-1">
                     <label className="block text-xs font-bold text-on-surface-variant uppercase tracking-wider mb-2">
                       Alış Fiyatı
                     </label>
@@ -554,13 +566,18 @@ export default function NewInventoryPage() {
                         step="0.01"
                       />
                       <span className="absolute right-3 top-3 text-on-surface-variant/50 text-xs font-bold">
-                        TRY
+                        {form.currency}
                       </span>
                     </div>
+                    {form.currency !== "TRY" && rates && (
+                      <p className="mt-1 text-[10px] text-emerald-600 font-bold">
+                        ≈ {fmtCurr(purchasePriceTRY, "TRY")}
+                      </p>
+                    )}
                   </div>
 
                   {/* Satış Fiyatı */}
-                  <div>
+                  <div className="md:col-span-1">
                     <label className="block text-xs font-bold text-on-surface-variant uppercase tracking-wider mb-2">
                       Satış Fiyatı
                     </label>
@@ -576,13 +593,36 @@ export default function NewInventoryPage() {
                         step="0.01"
                       />
                       <span className="absolute right-3 top-3 text-on-surface-variant/50 text-xs font-bold">
-                        TRY
+                        {form.currency}
                       </span>
                     </div>
+                    {form.currency !== "TRY" && rates && (
+                      <p className="mt-1 text-[10px] text-emerald-600 font-bold">
+                        ≈ {fmtCurr(salePriceTRY, "TRY")}
+                      </p>
+                    )}
+                  </div>
+
+                  {/* Döviz Seçimi */}
+                  <div className="md:col-span-1">
+                    <label className="block text-xs font-bold text-on-surface-variant uppercase tracking-wider mb-2">
+                      Döviz Birimi
+                    </label>
+                    <select
+                      name="currency"
+                      value={form.currency}
+                      onChange={handleChange}
+                      className="w-full bg-surface-container-low border-none rounded-lg px-4 py-3 focus:ring-2 focus:ring-primary/20 focus:bg-white transition-all text-sm font-bold text-primary outline-none h-[44px]"
+                    >
+                      <option value="TRY">TRY (₺)</option>
+                      <option value="USD">USD ($)</option>
+                      <option value="EUR">EUR (€)</option>
+                      <option value="GBP">GBP (£)</option>
+                    </select>
                   </div>
 
                   {/* KDV Oranı */}
-                  <div>
+                  <div className="md:col-span-3">
                     <label className="block text-xs font-bold text-on-surface-variant uppercase tracking-wider mb-2">
                       KDV Oranı
                     </label>
@@ -651,7 +691,7 @@ export default function NewInventoryPage() {
                   <div className="space-y-2">
                     <div className="flex justify-between text-xs">
                       <span className="text-on-surface-variant">KDV Dahil Satış:</span>
-                      <span className="font-bold text-on-surface">{fmtTRY(priceWithVat)}</span>
+                      <span className="font-bold text-on-surface">{fmtCurr(priceWithVat, form.currency)}</span>
                     </div>
                     <div className="flex justify-between text-xs">
                       <span className="text-on-surface-variant">Kâr Marjı:</span>
@@ -666,7 +706,7 @@ export default function NewInventoryPage() {
                     </div>
                     <div className="flex justify-between text-xs">
                       <span className="text-on-surface-variant">KDV Tutarı:</span>
-                      <span className="font-bold text-on-surface">{fmtTRY(vatAmount)}</span>
+                      <span className="font-bold text-on-surface">{fmtCurr(vatAmount, form.currency)}</span>
                     </div>
                   </div>
                 </div>

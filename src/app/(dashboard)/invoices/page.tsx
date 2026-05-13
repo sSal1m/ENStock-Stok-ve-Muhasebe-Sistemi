@@ -2,17 +2,23 @@
 
 import { useState, useEffect } from "react";
 import { supabase } from "@/lib/supabaseClient";
+import { useCurrencyConverter } from "@/hooks/useCurrencyConverter";
+import { softDeleteInvoice } from "@/app/(dashboard)/trash/actions";
 import Link from "next/link";
+import toast from "react-hot-toast";
+import { resolveTeamIds, applyTeamFilter } from "@/lib/teamUtils";
+
 
 interface Invoice {
   id: string;
-  invoice_number: number;
+  invoice_number: string;
   type: "sale" | "purchase";
   issue_date: string;
   total_amount: number;
   tax_total: number;
   status: string;
   contact_id: string;
+  currency: string;
 }
 
 interface Contact {
@@ -20,19 +26,16 @@ interface Contact {
   name: string;
 }
 
-const fmt = (val: number) =>
-  new Intl.NumberFormat("tr-TR", {
-    style: "currency",
-    currency: "TRY",
-    minimumFractionDigits: 2,
-  }).format(val);
-
 export default function InvoicesPage() {
+  const { viewCurrency, setViewCurrency, convert, format } = useCurrencyConverter();
   const [invoices, setInvoices] = useState<Invoice[]>([]);
   const [contacts, setContacts] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(true);
   const [filterType, setFilterType] = useState<"all" | "sales" | "purchase">("all");
   const [searchTerm, setSearchTerm] = useState("");
+  const [downloadingPdfId, setDownloadingPdfId] = useState<string | null>(null);
+  const [currentPage, setCurrentPage] = useState(0);
+  const ITEMS_PER_PAGE = 5;
 
   const fetchInvoices = async () => {
     const { data: { user } } = await supabase.auth.getUser();
@@ -41,12 +44,14 @@ export default function InvoicesPage() {
       return;
     }
 
-    // Fetch invoices
-    const { data: invoicesData, error: invoicesError } = await supabase
-      .from("invoices")
-      .select("*")
-      .eq("user_id", user.id)
-      .order("issue_date", { ascending: false });
+    // Resolve team context
+    const teamIds = await resolveTeamIds(user.id);
+
+    // Fetch invoices (team-scoped)
+    const { data: invoicesData, error: invoicesError } = await applyTeamFilter(
+      supabase.from("invoices").select("*").is("deleted_at", null),
+      teamIds
+    ).order("issue_date", { ascending: false });
 
     if (invoicesError) {
       console.error("Error fetching invoices:", invoicesError);
@@ -80,14 +85,108 @@ export default function InvoicesPage() {
 
   const filtered = invoices.filter((invoice) => {
     const typeMatch = filterType === "all" || invoice.type === (filterType === "sales" ? "sale" : filterType === "purchase" ? "purchase" : invoice.type);
+    
+    if (!searchTerm.trim()) {
+      return typeMatch;
+    }
+    
+    const searchLower = searchTerm.toLowerCase().trim();
     const searchMatch =
-      invoice.invoice_number.toString().includes(searchTerm) ||
-      (contacts[invoice.contact_id]?.toLowerCase().includes(searchTerm.toLowerCase()) ?? false);
+      invoice.invoice_number.toLowerCase().includes(searchLower) ||
+      (contacts[invoice.contact_id]?.toLowerCase().includes(searchLower) ?? false);
     return typeMatch && searchMatch;
   });
 
-  const totalAmount = filtered.reduce((sum, inv) => sum + inv.total_amount, 0);
-  const vatAmount = filtered.reduce((sum, inv) => sum + inv.tax_total, 0);
+  const calculateInView = (amountTry: number) => {
+    return convert(amountTry); // Hook'un convert fonksiyonunu kullanıyoruz (TRY -> viewCurrency)
+  };
+
+  const totalAmount = filtered.reduce((sum, inv) => sum + calculateInView(inv.total_amount), 0);
+  const vatAmount = filtered.reduce((sum, inv) => sum + calculateInView(inv.tax_total), 0);
+
+  const handleDownloadPdf = async (invoice: Invoice) => {
+    setDownloadingPdfId(invoice.id);
+    const toastId = toast.loading("PDF hazırlanıyor...");
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) throw new Error("Kullanıcı bulunamadı");
+
+      // 1. Get Business Info
+      let companyName = "Şirket Adı Belirtilmemiş";
+      let companyAddress = "";
+      let companyTaxId = "";
+      const localSettingsRaw = localStorage.getItem(`business_settings_${user.id}`);
+      if (localSettingsRaw) {
+        const localSettings = JSON.parse(localSettingsRaw);
+        companyName = localSettings.companyName || companyName;
+        companyAddress = localSettings.address || "";
+        companyTaxId = localSettings.taxId || "";
+      } else {
+        const { data: profile } = await supabase.from("profiles").select("company_name, tax_id").eq("id", user.id).single();
+        if (profile) {
+          companyName = profile.company_name || companyName;
+          companyTaxId = profile.tax_id || "";
+        }
+      }
+
+      // 2. Get Contact Info
+      const { data: contactData } = await supabase.from("contacts").select("*").eq("id", invoice.contact_id).single();
+      
+      // 3. Get Invoice Items and Products
+      const { data: itemsData } = await supabase.from("invoice_items").select("*").eq("invoice_id", invoice.id);
+      
+      const formattedItems = [];
+      if (itemsData && itemsData.length > 0) {
+        for (const item of itemsData) {
+          const { data: product } = await supabase.from("products").select("name").eq("id", item.product_id).single();
+          formattedItems.push({
+            productName: product?.name || "Bilinmeyen Ürün",
+            quantity: Number(item.quantity),
+            unitPrice: Number(item.unit_price),
+            vatRate: Number(item.vat_rate),
+            lineTotal: Number(item.line_total),
+          });
+        }
+      }
+
+      // Generate Data Object
+      const pdfData = {
+        companyName,
+        companyAddress,
+        companyTaxId,
+        invoiceNumber: invoice.invoice_number,
+        issueDate: invoice.issue_date,
+        currency: invoice.currency || "TRY",
+        status: invoice.status,
+        contactName: contactData?.name || "Cari Belirtilmemiş",
+        contactTaxNumber: contactData?.tax_number,
+        contactTaxOffice: contactData?.tax_office,
+        items: formattedItems,
+        subtotal: invoice.total_amount - invoice.tax_total,
+        vatTotal: invoice.tax_total,
+        grandTotal: invoice.total_amount,
+      };
+
+      const { data: fullInvoice } = await supabase.from("invoices").select("notes").eq("id", invoice.id).single();
+      if (fullInvoice && fullInvoice.notes) (pdfData as any).notes = fullInvoice.notes;
+
+      const { generateInvoicePdf } = await import("@/lib/generateInvoicePdf");
+      await generateInvoicePdf(pdfData, invoice.status === "draft" ? "quotation" : "invoice");
+      toast.success("PDF başarıyla oluşturuldu.", { id: toastId });
+
+    } catch (err: any) {
+      console.error("PDF Generate error:", err);
+      toast.error(`Aksiyon hatası: ${err.message}`, { id: toastId });
+    } finally {
+      setDownloadingPdfId(null);
+    }
+  };
+
+  // Pagination
+  const paginatedInvoices = filtered.slice(
+    currentPage * ITEMS_PER_PAGE,
+    (currentPage + 1) * ITEMS_PER_PAGE
+  );
 
   return (
     <div className="w-full p-8 max-w-[1600px] mx-auto bg-slate-50 min-h-screen">
@@ -103,13 +202,30 @@ export default function InvoicesPage() {
               Tüm faturalarınızı yönetin ve takip edin
             </p>
           </div>
-          <Link
-            href="/invoices/new"
-            className="flex items-center gap-2 px-8 py-3.5 rounded-lg font-semibold text-sm text-white bg-gradient-to-r from-purple-600 to-purple-700 shadow-lg shadow-purple-200 hover:shadow-xl hover:shadow-purple-300 active:scale-[0.98] transition-all"
-          >
-            <span className="material-symbols-outlined">add_circle</span>
-            Yeni Fatura
-          </Link>
+          <div className="flex flex-wrap items-center gap-3">
+             {/* Döviz Görünüm Seçici */}
+             <div className="flex items-center gap-2 bg-white border-2 border-purple-100 rounded-xl px-4 py-2.5 shadow-sm">
+                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-tighter">Görünüm:</span>
+                <select
+                  value={viewCurrency}
+                  onChange={(e) => setViewCurrency(e.target.value)}
+                  className="bg-transparent border-none text-sm font-black text-purple-600 outline-none focus:ring-0 cursor-pointer"
+                >
+                  <option value="TRY">TRY (₺)</option>
+                  <option value="USD">USD ($)</option>
+                  <option value="EUR">EUR (€)</option>
+                  <option value="GBP">GBP (£)</option>
+                </select>
+              </div>
+
+            <Link
+              href="/invoices/new"
+              className="flex items-center gap-2 px-8 py-3.5 rounded-lg font-semibold text-sm text-white bg-gradient-to-r from-purple-600 to-purple-700 shadow-lg shadow-purple-200 hover:shadow-xl hover:shadow-purple-300 active:scale-[0.98] transition-all"
+            >
+              <span className="material-symbols-outlined">add_circle</span>
+              Yeni Fatura
+            </Link>
+          </div>
         </div>
 
         {/* Filter Bar */}
@@ -173,7 +289,7 @@ export default function InvoicesPage() {
                 <p className="text-xs font-semibold text-orange-600 uppercase tracking-wide mb-2">
                   Toplam KDV
                 </p>
-                <p className="font-bold text-2xl text-orange-700">{fmt(vatAmount)}</p>
+                <p className="font-bold text-2xl text-orange-700">{format(vatAmount)}</p>
               </div>
               <div className="w-12 h-12 bg-orange-200/50 rounded-lg flex items-center justify-center">
                 <span className="material-symbols-outlined text-xl text-orange-600">receipt_long</span>
@@ -187,7 +303,7 @@ export default function InvoicesPage() {
                 <p className="text-xs font-semibold text-green-600 uppercase tracking-wide mb-2">
                   Toplam Tutar
                 </p>
-                <p className="font-bold text-2xl text-green-700">{fmt(totalAmount)}</p>
+                <p className="font-bold text-2xl text-green-700">{format(totalAmount)}</p>
               </div>
               <div className="w-12 h-12 bg-green-200/50 rounded-lg flex items-center justify-center">
                 <span className="material-symbols-outlined text-xl text-green-600">payments</span>
@@ -220,92 +336,138 @@ export default function InvoicesPage() {
             </Link>
           </div>
         ) : (
-          <div className="bg-white rounded-2xl overflow-hidden shadow-sm border border-slate-200">
-            <table className="w-full text-left border-collapse">
-              <thead>
-                <tr className="bg-slate-100 border-b border-slate-200">
-                  <th className="px-6 py-4 text-xs font-semibold uppercase tracking-wide text-slate-600">
-                    Fatura No
-                  </th>
-                  <th className="px-6 py-4 text-xs font-semibold uppercase tracking-wide text-slate-600">
-                    Cari Adı
-                  </th>
-                  <th className="px-6 py-4 text-xs font-semibold uppercase tracking-wide text-slate-600">
-                    Tür
-                  </th>
-                  <th className="px-6 py-4 text-xs font-semibold uppercase tracking-wide text-slate-600">
-                    Tarih
-                  </th>
-                  <th className="px-6 py-4 text-xs font-semibold uppercase tracking-wide text-slate-600 text-right">
-                    Tutar
-                  </th>
-                  <th className="px-6 py-4 text-xs font-semibold uppercase tracking-wide text-slate-600">
-                    Durum
-                  </th>
-                  <th className="px-6 py-4 w-16"></th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-200">
-                {filtered.map((invoice) => (
-                  <tr key={invoice.id} className="group hover:bg-slate-50 transition-colors">
-                    <td className="px-6 py-4">
-                      <p className="text-sm font-semibold text-slate-900">
-                        FTR-{new Date(invoice.issue_date).getFullYear()}-{invoice.invoice_number
-                          .toString()
-                          .padStart(3, "0")}
-                      </p>
-                    </td>
-                    <td className="px-6 py-4">
-                      <p className="text-sm font-medium text-slate-700">{contacts[invoice.contact_id] || "—"}</p>
-                    </td>
-                    <td className="px-6 py-4">
-                      <span
-                        className={`text-xs font-semibold px-3 py-1.5 rounded-lg flex items-center gap-1 w-fit ${
-                          invoice.type === "sale"
-                            ? "bg-green-100 text-green-700"
-                            : "bg-blue-100 text-blue-700"
-                        }`}
-                      >
-                        <span className="material-symbols-outlined text-sm">
-                          {invoice.type === "sale" ? "trending_up" : "trending_down"}
-                        </span>
-                        {invoice.type === "sale" ? "Satış" : "Alış"}
-                      </span>
-                    </td>
-                    <td className="px-6 py-4">
-                      <p className="text-sm text-slate-700 font-medium">
-                        {new Date(invoice.issue_date).toLocaleDateString("tr-TR")}
-                      </p>
-                    </td>
-                    <td className="px-6 py-4 text-right">
-                      <p className="text-sm font-semibold text-slate-900">{fmt(invoice.total_amount)}</p>
-                    </td>
-                    <td className="px-6 py-4">
-                      <span
-                        className={`text-xs font-semibold px-3 py-1.5 rounded-lg flex items-center gap-1 w-fit ${
-                        invoice.status === "draft" ? "bg-slate-100 text-slate-700" : invoice.status === "pending" ? "bg-orange-100 text-orange-700" : "bg-green-100 text-green-700"
-                      }`}>
-                        <span className="material-symbols-outlined text-sm">
-                          {invoice.status === "draft" ? "description" : invoice.status === "pending" ? "schedule" : "check_circle"}
-                        </span>
-                        {invoice.status === "draft" ? "📝 TASLAK" : invoice.status === "pending" ? "⏳ BEKLIYOR" : "✅ ÖDENDİ"}
-                      </span>
-                    </td>
-                    <td className="px-6 py-4 text-center">
-                      <Link
-                        href={invoice.status === "draft" ? `/invoices/new?id=${invoice.id}` : `/invoices/${invoice.id}`}
-                        className="inline-flex items-center justify-center w-10 h-10 rounded-lg text-purple-600 hover:bg-purple-100 transition-all"
-                        title={invoice.status === "draft" ? "Taslak faturayı düzenle" : "Fatura detaylarını görüntüle"}
-                      >
-                        <span className="material-symbols-outlined">
-                          {invoice.status === "draft" ? "edit" : "arrow_forward"}
-                        </span>
-                      </Link>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+          <div className="space-y-4">
+            <div className="bg-white rounded-3xl overflow-hidden shadow-sm border border-indigo-50">
+              <div className="overflow-x-auto">
+                <table className="w-full text-left border-collapse table-fixed">
+                  <thead>
+                    <tr className="bg-surface-container-low/50">
+                      <th className="w-[160px] px-6 py-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest align-middle">Fatura No</th>
+                      <th className="w-[150px] px-6 py-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest align-middle">Cari Adı</th>
+                      <th className="w-[100px] px-6 py-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest align-middle">Tür</th>
+                      <th className="w-[120px] px-6 py-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest align-middle">Tarih</th>
+                      <th className="w-[130px] px-6 py-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest align-middle text-right">Tutar</th>
+                      <th className="w-[120px] px-6 py-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest align-middle">Durum</th>
+                      <th className="w-[100px] px-6 py-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest align-middle text-center">İşlemler</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-indigo-50/50">
+                    {paginatedInvoices.map((invoice) => (
+                      <tr key={invoice.id} className="hover:bg-indigo-50/30 transition-colors align-middle">
+                        <td className="w-[160px] px-6 py-5 align-middle">
+                          <p className="text-sm font-semibold text-on-surface">
+                            {invoice.invoice_number}
+                          </p>
+                        </td>
+                        <td className="w-[150px] px-6 py-5 align-middle">
+                          <p className="text-sm font-medium text-slate-700 truncate">{contacts[invoice.contact_id] || "—"}</p>
+                        </td>
+                        <td className="w-[100px] px-6 py-5 align-middle">
+                          <span
+                            className={`text-xs font-semibold px-3 py-1.5 rounded-full inline-flex items-center gap-1 ${
+                              invoice.type === "sale"
+                                ? "bg-emerald-50 text-emerald-700"
+                                : "bg-indigo-50 text-indigo-700"
+                            }`}
+                          >
+                            <span className="material-symbols-outlined text-sm">
+                              {invoice.type === "sale" ? "trending_up" : "trending_down"}
+                            </span>
+                            {invoice.type === "sale" ? "Satış" : "Alış"}
+                          </span>
+                        </td>
+                        <td className="w-[120px] px-6 py-5 align-middle">
+                          <p className="text-sm text-slate-700 font-medium">
+                            {new Date(invoice.issue_date).toLocaleDateString("tr-TR")}
+                          </p>
+                        </td>
+                        <td className="w-[130px] px-6 py-5 align-middle text-right">
+                          <p className="text-sm font-semibold text-on-surface">{format(calculateInView(invoice.total_amount))}</p>
+                        </td>
+                        <td className="w-[120px] px-6 py-5 align-middle">
+                          <span
+                            className={`text-xs font-semibold px-3 py-1.5 rounded-full inline-flex items-center gap-1 ${
+                            invoice.status === "draft" ? "bg-slate-100 text-slate-700" : invoice.status === "pending" ? "bg-amber-50 text-amber-700" : "bg-emerald-50 text-emerald-700"
+                          }`}>
+                            <span className="material-symbols-outlined text-sm">
+                              {invoice.status === "draft" ? "description" : invoice.status === "pending" ? "schedule" : "check_circle"}
+                            </span>
+                            {invoice.status === "draft" ? "TASLAK" : invoice.status === "pending" ? "BEKLIYOR" : "ÖDENDİ"}
+                          </span>
+                        </td>
+                        <td className="w-[100px] px-6 py-5 text-center">
+                          <div className="flex items-center justify-center gap-1">
+                            <button
+                              onClick={() => handleDownloadPdf(invoice)}
+                              disabled={downloadingPdfId === invoice.id}
+                              className="inline-flex items-center justify-center w-10 h-10 rounded-lg text-emerald-600 hover:bg-emerald-100 transition-all disabled:opacity-50"
+                              title="PDF Olarak İndir"
+                            >
+                              <span className={`material-symbols-outlined ${downloadingPdfId === invoice.id ? 'animate-pulse' : ''}`}>
+                                {downloadingPdfId === invoice.id ? 'sync' : 'picture_as_pdf'}
+                              </span>
+                            </button>
+                            <Link
+                              href={invoice.status === "draft" ? `/invoices/new?id=${invoice.id}` : `/invoices/${invoice.id}`}
+                              className="inline-flex items-center justify-center w-10 h-10 rounded-lg text-primary hover:bg-primary/10 transition-all"
+                              title={invoice.status === "draft" ? "Taslak faturayı düzenle" : "Fatura detaylarını görüntüle"}
+                            >
+                              <span className="material-symbols-outlined">
+                                {invoice.status === "draft" ? "edit" : "arrow_forward"}
+                              </span>
+                            </Link>
+                            <button
+                              onClick={async () => {
+                                const { data: { user } } = await supabase.auth.getUser();
+                                if (!user) { toast.error("Oturum açma gerekli."); return; }
+                                const result = await softDeleteInvoice(invoice.id, user.id);
+                                if (result.success) {
+                                  toast.success(`Fatura çöp kutusuna taşındı.`, { icon: "🗑️" });
+                                  setInvoices(prev => prev.filter(x => x.id !== invoice.id));
+                                } else {
+                                  toast.error(result.message);
+                                }
+                              }}
+                              className="inline-flex items-center justify-center w-10 h-10 rounded-lg text-amber-500 hover:bg-amber-50 transition-all"
+                              title="Çöp Kutusuna Taşı"
+                            >
+                              <span className="material-symbols-outlined">delete</span>
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+
+              {/* Pagination */}
+              <div className="px-6 py-5 bg-surface-container-low/30 border-t border-indigo-50 flex justify-between items-center">
+                <p className="text-xs text-slate-500">
+                  {filtered.length === 0
+                    ? "Kayıt bulunamadı"
+                    : `${paginatedInvoices.length} / ${filtered.length} fatura gösteriliyor (Sayfa ${currentPage + 1})`}
+                </p>
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => setCurrentPage(currentPage - 1)}
+                    disabled={currentPage === 0}
+                    className="px-4 py-2 text-xs font-bold rounded-lg border border-indigo-50 transition-all bg-white flex items-center gap-2 disabled:text-slate-300 disabled:cursor-not-allowed disabled:opacity-50 enabled:text-primary enabled:hover:bg-indigo-50"
+                  >
+                    <span className="material-symbols-outlined text-sm">arrow_back</span>
+                    Önceki
+                  </button>
+                  <button
+                    onClick={() => setCurrentPage(currentPage + 1)}
+                    disabled={(currentPage + 1) * ITEMS_PER_PAGE >= filtered.length}
+                    className="px-4 py-2 text-xs font-bold rounded-lg border border-indigo-50 transition-all bg-white flex items-center gap-2 disabled:text-slate-300 disabled:cursor-not-allowed disabled:opacity-50 enabled:text-primary enabled:hover:bg-indigo-50"
+                  >
+                    <span className="material-symbols-outlined text-sm">arrow_forward</span>
+                    Sonraki
+                  </button>
+                </div>
+              </div>
+            </div>
           </div>
         )}
       </div>

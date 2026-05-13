@@ -5,6 +5,8 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { createInvoiceAction, searchContacts, searchProducts, getNextInvoiceNumber, type InvoiceLineItem } from "@/app/(dashboard)/invoices/actions";
 import { supabase } from "@/lib/supabaseClient";
 import Toast from "@/components/invoices/Toast";
+import { useCurrencyConverter } from "@/hooks/useCurrencyConverter";
+
 
 interface Contact {
   id: string;
@@ -21,6 +23,10 @@ interface Product {
   stock_quantity: number;
   sale_price: number;
   purchase_price: number;
+  currency: string;
+  sale_price_in_currency: number;
+  purchase_price_in_currency: number;
+  tax_rate: number;
 }
 
 interface LineItem extends InvoiceLineItem {
@@ -64,15 +70,30 @@ export default function CreateInvoiceForm({ userId }: { userId: string }) {
   const [isLoading, setIsLoading] = useState(false);
   const [isInitialLoading, setIsInitialLoading] = useState(!!editInvoiceId); // ✅ Taslak yükleme durumu
 
+  const { rates, viewCurrency: currency, setViewCurrency: setCurrency, convertFull, format, convert } = useCurrencyConverter();
+  const prevCurrencyRef = useRef(currency);
+
+  // 💱 Para birimi değiştiğinde listedeki fiyatları otomatik dönüştür
+  useEffect(() => {
+    if (prevCurrencyRef.current !== currency && rates && lineItems.length > 0) {
+      setLineItems(prev => prev.map(item => ({
+        ...item,
+        unit_price: convertFull(item.unit_price, prevCurrencyRef.current, currency)
+      })));
+    }
+    prevCurrencyRef.current = currency;
+  }, [currency, rates, convertFull]);
+
   // Initialize invoice number
   useEffect(() => {
-    const initInvoiceNumber = async () => {
+    const initData = async () => {
+
       if (!editInvoiceId) {
         const nextNum = await getNextInvoiceNumber(userId, invoiceType);
-        setInvoiceNumber(`FTR-${new Date().getFullYear()}-${nextNum.toString().padStart(3, "0")}`);
+        setInvoiceNumber(nextNum);
       }
     };
-    initInvoiceNumber();
+    initData();
   }, [userId, invoiceType, editInvoiceId]);
 
   // ✅ Load draft invoice data if editing
@@ -103,6 +124,7 @@ export default function CreateInvoiceForm({ userId }: { userId: string }) {
         setIssueDate(invoiceData.issue_date);
         setNotes(invoiceData.notes || "");
         setInvoiceNumber(invoiceData.invoice_number);
+        if (invoiceData.currency) setCurrency(invoiceData.currency);
 
         // Fetch and set contact
         const { data: contactData, error: contactError } = await supabase
@@ -208,16 +230,27 @@ export default function CreateInvoiceForm({ userId }: { userId: string }) {
 
   // Select product
   const handleSelectProduct = (lineItemId: string, product: Product) => {
-    const unitPrice = invoiceType === "sales" ? product.sale_price : product.purchase_price;
+    let unitPrice = invoiceType === "sales" ? product.sale_price : product.purchase_price;
+    
+    // 💱 Döviz dönüşümü (Hook üzerinden)
+    if (currency !== "TRY" && rates) {
+       if (product.currency === currency) {
+          unitPrice = invoiceType === "sales" ? product.sale_price_in_currency : product.purchase_price_in_currency;
+       } else {
+          unitPrice = convertFull(unitPrice, "TRY", currency);
+       }
+    }
+
     setLineItems((prev) =>
       prev.map((item) =>
         item.id === lineItemId
           ? {
-              ...item,
-              product_id: product.id,
-              product_name: product.name,
-              unit_price: unitPrice,
-              stock_quantity: product.stock_quantity,
+               ...item,
+               product_id: product.id,
+               product_name: product.name,
+               unit_price: unitPrice,
+               vat_rate: product.tax_rate,
+               stock_quantity: product.stock_quantity,
             }
           : item
       )
@@ -323,6 +356,8 @@ export default function CreateInvoiceForm({ userId }: { userId: string }) {
         status: "draft",  // ✅ Draft olarak kaydet
         invoice_id: editInvoiceId || undefined,  // ✅ Update varsa ID
         invoice_number: invoiceNumber, // ✅ Manuel atanan fatura numarası
+        currency: currency, // ✅ NEW
+        exchange_rate: currency === "TRY" ? 1 : rates?.[currency]?.selling || 1, // ✅ NEW
       });
 
       if (response.success) {
@@ -341,6 +376,75 @@ export default function CreateInvoiceForm({ userId }: { userId: string }) {
       addToast("error", "❌ Bağlantı Hatası", "Sunucu ile iletişim kurulamadı.");
     } finally {
       setIsLoading(false);
+    }
+  };
+
+  // ✅ Preview PDF
+  const handlePreviewPdf = async () => {
+    if (!validateForm()) return;
+
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) {
+        addToast("error", "❌ Hata", "Kullanıcı bilgisi alınamadı");
+        return;
+      }
+
+      let companyName = "Şirket Adı Belirtilmemiş";
+      let companyAddress = "";
+      let companyTaxId = "";
+      const localSettingsRaw = localStorage.getItem(`business_settings_${user.id}`);
+      if (localSettingsRaw) {
+        const localSettings = JSON.parse(localSettingsRaw);
+        companyName = localSettings.companyName || companyName;
+        companyAddress = localSettings.address || "";
+        companyTaxId = localSettings.taxId || "";
+      } else {
+        const { data: profile } = await supabase.from("profiles").select("company_name, tax_id").eq("id", user.id).single();
+        if (profile) {
+          companyName = profile.company_name || companyName;
+          companyTaxId = profile.tax_id || "";
+        }
+      }
+
+      const totals = calculateTotals();
+
+      const pdfData = {
+        companyName,
+        companyAddress,
+        companyTaxId,
+        invoiceNumber: invoiceNumber || "ÖNİZLEME",
+        issueDate: issueDate,
+        currency: currency,
+        status: "draft",
+        notes: notes || undefined,
+        contactName: selectedContact!.name,
+        contactTaxNumber: selectedContact!.tax_number || undefined,
+        contactTaxOffice: selectedContact!.tax_office || undefined,
+        items: lineItems.map((item) => {
+          const lineSubtotal = item.quantity * item.unit_price;
+          const lineVat = lineSubtotal * (item.vat_rate / 100);
+          return {
+            productName: item.product_name || "Bilinmeyen Ürün",
+            quantity: item.quantity,
+            unitPrice: item.unit_price,
+            vatRate: item.vat_rate,
+            lineTotal: lineSubtotal + lineVat,
+          };
+        }),
+        subtotal: totals.subtotal,
+        vatTotal: totals.vatTotal,
+        grandTotal: totals.total,
+      };
+
+      const { generateInvoicePdf } = await import("@/lib/generateInvoicePdf");
+      await generateInvoicePdf(pdfData, 'quotation');
+      addToast("success", "📄 Başarılı", "Teklif/Proforma PDF'i önizlendi");
+
+
+    } catch (e: any) {
+      console.error(e);
+      addToast("error", "❌ Hata", "Önizleme oluşturulurken hata oluştu");
     }
   };
 
@@ -376,6 +480,8 @@ export default function CreateInvoiceForm({ userId }: { userId: string }) {
         status: "pending",  // ✅ Kesilmiş fatura olarak kaydet
         invoice_id: editInvoiceId || undefined,  // ✅ Update varsa ID
         invoice_number: invoiceNumber, // ✅ Manuel atanan fatura numarası
+        currency: currency, // ✅ NEW
+        exchange_rate: currency === "TRY" ? 1 : rates?.[currency]?.selling || 1, // ✅ NEW
       });
 
       if (response.success) {
@@ -577,12 +683,27 @@ export default function CreateInvoiceForm({ userId }: { userId: string }) {
                   Fatura No
                 </label>
                 <input
-                  className="w-full bg-slate-50 border border-slate-300 rounded-lg py-3 px-4 text-base font-bold text-slate-700 select-none cursor-not-allowed"
+                  className="w-full bg-white border border-slate-300 rounded-lg py-3 px-4 text-base font-bold text-slate-700 focus:ring-2 focus:ring-purple-500 focus:border-purple-500 transition-all"
                   type="text"
-                  readOnly
-                  value={invoiceNumber || "..."}
-                  placeholder="Otomatik Atanacak"
+                  value={invoiceNumber || ""}
+                  onChange={(e) => setInvoiceNumber(e.target.value)}
+                  placeholder="Fatura numarası girin"
                 />
+              </div>
+              <div>
+                <label className="block text-xs font-semibold text-slate-600 uppercase tracking-wide mb-2">
+                  Döviz Birimi
+                </label>
+                <select
+                  className="w-full bg-slate-50 border border-slate-300 rounded-lg py-3 px-4 text-base font-bold text-primary focus:ring-purple-500 focus:border-purple-500"
+                  value={currency}
+                  onChange={(e) => setCurrency(e.target.value)}
+                >
+                  <option value="TRY">TRY (₺)</option>
+                  <option value="USD">USD ($)</option>
+                  <option value="EUR">EUR (€)</option>
+                  <option value="GBP">GBP (£)</option>
+                </select>
               </div>
               <div>
                 <label className="block text-xs font-semibold text-slate-600 uppercase tracking-wide mb-2">
@@ -609,7 +730,7 @@ export default function CreateInvoiceForm({ userId }: { userId: string }) {
                 <th className="px-6 py-5 text-xs font-semibold uppercase text-slate-700 tracking-wide">Hizmet / Ürün</th>
                 <th className="px-6 py-5 text-xs font-semibold uppercase text-slate-700 tracking-wide w-28">Miktar</th>
                 <th className="px-6 py-5 text-xs font-semibold uppercase text-slate-700 tracking-wide w-32">
-                  Birim Fiyat (₺)
+                  Birim Fiyat ({currency === "TRY" ? "₺" : currency})
                 </th>
                 <th className="px-6 py-5 text-xs font-semibold uppercase text-slate-700 tracking-wide w-24">KDV %</th>
                 <th className="px-6 py-5 text-xs font-semibold uppercase text-slate-700 tracking-wide w-32 text-right">
@@ -717,7 +838,7 @@ export default function CreateInvoiceForm({ userId }: { userId: string }) {
                     </td>
                     <td className="px-6 py-6">
                       <select
-                        className="w-full bg-slate-50 border-2 border-slate-300 rounded-lg px-3 py-2 text-base font-semibold focus:ring-purple-500 focus:border-purple-500"
+                        className="w-40 bg-slate-50 border-2 border-slate-300 rounded-lg px-4 py-3 text-base font-semibold focus:ring-2 focus:ring-purple-500 focus:border-purple-500 hover:border-slate-400 transition-all"
                         value={item.vat_rate}
                         onChange={(e) => updateLineItem(item.id, "vat_rate", parseInt(e.target.value) || 0)}
                       >
@@ -728,7 +849,7 @@ export default function CreateInvoiceForm({ userId }: { userId: string }) {
                     </td>
                     <td className="px-6 py-6 text-right">
                       <span className={`text-base font-bold ${hasStockWarning ? "text-red-600" : "text-slate-900"}`}>
-                        {lineTotal.toFixed(2)} ₺
+                        {format(lineTotal, currency)}
                       </span>
                       {hasStockWarning && (
                         <p className="text-xs text-red-600 font-bold flex items-center gap-1 justify-end mt-2">
@@ -777,18 +898,33 @@ export default function CreateInvoiceForm({ userId }: { userId: string }) {
             <div className="bg-white rounded-2xl p-8 space-y-4 shadow-sm border border-slate-200">
               <div className="flex justify-between items-center text-sm">
                 <span className="text-slate-600 font-semibold">Ara Toplam</span>
-                <span className="font-bold text-slate-900 text-base">{totals.subtotal.toFixed(2)} ₺</span>
+                <span className="font-bold text-slate-900 text-base">
+                  {format(totals.subtotal, currency)}
+                </span>
               </div>
               <div className="flex justify-between items-center text-sm">
                 <span className="text-slate-600 font-semibold">KDV Toplamı</span>
-                <span className="font-bold text-slate-900 text-base">{totals.vatTotal.toFixed(2)} ₺</span>
+                <span className="font-bold text-slate-900 text-base">
+                  {format(totals.vatTotal, currency)}
+                </span>
               </div>
               <div className="pt-4 border-t border-slate-200 flex justify-between items-center">
                 <span className="font-bold text-slate-900">Genel Toplam</span>
-                <span className="font-extrabold text-3xl bg-gradient-to-r from-purple-600 to-purple-500 bg-clip-text text-transparent">{totals.total.toFixed(2)} ₺</span>
+                <span className="font-extrabold text-3xl bg-gradient-to-r from-purple-600 to-purple-500 bg-clip-text text-transparent">
+                  {format(totals.total, currency)}
+                </span>
               </div>
             </div>
             <div className="flex gap-4">
+              <button
+                type="button"
+                onClick={handlePreviewPdf}
+                disabled={isLoading || !selectedContact || lineItems.length === 0}
+                className="flex-1 px-8 py-4 rounded-lg font-semibold text-emerald-700 bg-emerald-50 border border-emerald-200 hover:bg-emerald-100 active:scale-95 transition-all flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                <span className="material-symbols-outlined text-lg">visibility</span>
+                Teklif Önizle
+              </button>
               <button 
                 type="button"
                 onClick={handleSaveDraft}
@@ -796,7 +932,7 @@ export default function CreateInvoiceForm({ userId }: { userId: string }) {
                 className="flex-1 px-8 py-4 rounded-lg font-semibold text-slate-700 bg-slate-100 border border-slate-300 hover:bg-slate-200 active:scale-95 transition-all flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 <span className="material-symbols-outlined text-lg">draft</span>
-                Taslak Kaydet
+                Taslak
               </button>
               <button
                 type="button"

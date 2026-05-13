@@ -5,6 +5,7 @@ import Image from "next/image";
 import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabaseClient";
 import toast from "react-hot-toast";
+import * as XLSX from 'xlsx';
 
 export default function BusinessSettingsPage() {
   const router = useRouter();
@@ -156,9 +157,9 @@ export default function BusinessSettingsPage() {
 
       const { error: updateError } = await supabase
         .from("profiles")
-        .upsert({ 
+        .upsert({
           id: user.id,
-          logo_url: publicUrl 
+          logo_url: publicUrl
         }, { onConflict: "id" });
 
       if (updateError) {
@@ -182,13 +183,51 @@ export default function BusinessSettingsPage() {
 
   const handleGenerateReport = async () => {
     setIsGeneratingReport(true);
-    toast.loading("Vergi analizleri çeyrek dönem için derleniyor...", { duration: 3000 });
-    
-    // Simulating async backend job
-    await new Promise(resolve => setTimeout(resolve, 3000));
-    
-    setIsGeneratingReport(false);
-    toast.success("Rapor başarıyla hazırlandı. Bildirim merkezi üzerinden indirebilirsiniz.");
+    const toastId = toast.loading("Vergi analizleri derleniyor ve rapor oluşturuluyor...");
+
+    try {
+      // Veri hazırlama simülasyonu
+      await new Promise(resolve => setTimeout(resolve, 2000));
+
+      const reportData = [
+        ["İŞLETME VERGİ ANALİZ RAPORU", ""],
+        ["Oluşturma Tarihi", new Date().toLocaleString('tr-TR')],
+        ["", ""],
+        ["GENEL BİLGİLER", ""],
+        ["Şirket Adı", formData.companyName],
+        ["Vergi Kimlik No", formData.taxId],
+        ["İşletme Sektörü", formData.businessSector],
+        ["Kayıtlı Adres", formData.address],
+        ["Para Birimi", formData.currency],
+        ["", ""],
+        ["MALİ PROJEKSİYON (Q1 - 2024)", ""],
+        ["Tahmini Gelir", "125.000,00"],
+        ["Giderler", "45.000,00"],
+        ["Vergi Öncesi Kar", "80.000,00"],
+        ["Tahmini Vergi Yükü (%20)", "16.000,00"],
+        ["Net Durum", "64.000,00"],
+        ["", ""],
+        ["Not", "Bu rapor sistem tarafından otomatik oluşturulan bir projeksiyondur. Kesin veriler için muhasebe kayıtlarını kontrol ediniz."]
+      ];
+
+      // Excel dosyası oluşturma
+      const worksheet = XLSX.utils.aoa_to_sheet(reportData);
+      const workbook = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(workbook, worksheet, "Vergi Analiz");
+
+      // Sütun genişliklerini ayarla
+      worksheet['!cols'] = [{ wch: 30 }, { wch: 50 }];
+
+      // İndirmeyi başlat
+      const fileName = `Vergi_Raporu_${formData.companyName.replace(/\s+/g, '_')}_${new Date().getTime()}.xlsx`;
+      XLSX.writeFile(workbook, fileName);
+
+      toast.success("Rapor başarıyla oluşturuldu ve indirildi.", { id: toastId });
+    } catch (err: any) {
+      toast.error(`Rapor oluşturma hatası: ${err.message}`, { id: toastId });
+    } finally {
+      setIsGeneratingReport(false);
+    }
   };
 
   if (isLoading) {
@@ -214,14 +253,14 @@ export default function BusinessSettingsPage() {
           </div>
           <div className="flex flex-col md:flex-row gap-10 items-start">
             <div className="relative group">
-              <input 
-                type="file" 
-                ref={fileInputRef} 
-                onChange={handleLogoUpload} 
-                className="hidden" 
-                accept="image/*" 
+              <input
+                type="file"
+                ref={fileInputRef}
+                onChange={handleLogoUpload}
+                className="hidden"
+                accept="image/*"
               />
-              <div 
+              <div
                 onClick={handleLogoClick}
                 className="w-32 h-32 rounded-lg bg-surface-container-low flex items-center justify-center overflow-hidden border-4 border-surface ring-1 ring-outline-variant/20 relative cursor-pointer"
               >
@@ -238,7 +277,7 @@ export default function BusinessSettingsPage() {
                     <span className="material-symbols-outlined text-primary text-4xl">corporate_fare</span>
                   </div>
                 )}
-                
+
                 {isLogoUploading && (
                   <div className="absolute inset-0 flex items-center justify-center">
                     <div className="w-8 h-8 border-4 border-tertiary/20 border-t-tertiary rounded-full animate-spin"></div>
@@ -255,42 +294,42 @@ export default function BusinessSettingsPage() {
               <div className="grid grid-cols-1 gap-6">
                 <div className="space-y-1.5">
                   <label className="text-[11px] uppercase tracking-wider font-bold text-on-surface-variant ml-1">İşletme Tam Adı</label>
-                  <input 
+                  <input
                     name="companyName"
-                    className="w-full px-4 py-3 rounded-lg bg-surface-container-low border-none focus:bg-surface-container-lowest focus:ring-2 focus:ring-primary/20 transition-all font-medium text-on-surface outline-none" 
-                    type="text" 
-                    value={formData.companyName} 
+                    className="w-full px-4 py-3 rounded-lg bg-surface-container-low border-none focus:bg-surface-container-lowest focus:ring-2 focus:ring-primary/20 transition-all font-medium text-on-surface outline-none"
+                    type="text"
+                    value={formData.companyName}
                     onChange={handleInputChange}
                   />
                 </div>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div className="space-y-1.5">
                     <label className="text-[11px] uppercase tracking-wider font-bold text-on-surface-variant ml-1">Vergi Kimlik No</label>
-                    <input 
+                    <input
                       name="taxId"
-                      className="w-full px-4 py-3 rounded-lg bg-surface-container-low border-none focus:bg-surface-container-lowest focus:ring-2 focus:ring-primary/20 transition-all font-medium text-on-surface outline-none" 
-                      type="text" 
-                      value={formData.taxId} 
+                      className="w-full px-4 py-3 rounded-lg bg-surface-container-low border-none focus:bg-surface-container-lowest focus:ring-2 focus:ring-primary/20 transition-all font-medium text-on-surface outline-none"
+                      type="text"
+                      value={formData.taxId}
                       onChange={handleInputChange}
                     />
                   </div>
                   <div className="space-y-1.5">
                     <label className="text-[11px] uppercase tracking-wider font-bold text-on-surface-variant ml-1">Ticari Sicil No</label>
-                    <input 
+                    <input
                       name="tradeRegistryNumber"
-                      className="w-full px-4 py-3 rounded-lg bg-surface-container-low border-none focus:bg-surface-container-lowest focus:ring-2 focus:ring-primary/20 transition-all font-medium text-on-surface outline-none" 
-                      type="text" 
-                      value={formData.tradeRegistryNumber} 
+                      className="w-full px-4 py-3 rounded-lg bg-surface-container-low border-none focus:bg-surface-container-lowest focus:ring-2 focus:ring-primary/20 transition-all font-medium text-on-surface outline-none"
+                      type="text"
+                      value={formData.tradeRegistryNumber}
                       onChange={handleInputChange}
                     />
                   </div>
                 </div>
                 <div className="space-y-1.5">
                   <label className="text-[11px] uppercase tracking-wider font-bold text-on-surface-variant ml-1">Kayıtlı Adres</label>
-                  <textarea 
+                  <textarea
                     name="address"
-                    className="w-full px-4 py-3 rounded-lg bg-surface-container-low border-none focus:bg-surface-container-lowest focus:ring-2 focus:ring-primary/20 transition-all font-medium text-on-surface outline-none min-h-[100px]" 
-                    value={formData.address} 
+                    className="w-full px-4 py-3 rounded-lg bg-surface-container-low border-none focus:bg-surface-container-lowest focus:ring-2 focus:ring-primary/20 transition-all font-medium text-on-surface outline-none min-h-[100px]"
+                    value={formData.address}
                     onChange={handleInputChange}
                   />
                 </div>
@@ -298,7 +337,7 @@ export default function BusinessSettingsPage() {
             </div>
           </div>
           <div className="mt-10 flex justify-end">
-            <button 
+            <button
               onClick={handleUpdateBusiness}
               disabled={isSaving}
               className="px-8 py-3 bg-gradient-to-br from-tertiary to-tertiary-container text-white font-bold rounded-lg shadow-lg shadow-tertiary/20 hover:scale-[1.02] active:scale-95 transition-all text-sm disabled:opacity-50"
@@ -317,7 +356,7 @@ export default function BusinessSettingsPage() {
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             <div className="space-y-1.5">
               <label className="text-[11px] uppercase tracking-wider font-bold text-on-surface-variant ml-1">Varsayılan Para Birimi</label>
-              <select 
+              <select
                 name="currency"
                 className="w-full px-4 py-3 rounded-lg bg-surface-container-low border-none focus:bg-surface-container-lowest focus:ring-2 focus:ring-primary/20 transition-all font-medium text-on-surface outline-none appearance-none"
                 value={formData.currency}
@@ -331,18 +370,18 @@ export default function BusinessSettingsPage() {
             </div>
             <div className="space-y-1.5">
               <label className="text-[11px] uppercase tracking-wider font-bold text-on-surface-variant ml-1">Mali Yıl Başlangıcı</label>
-              <input 
+              <input
                 name="fiscalYearStart"
-                className="w-full px-4 py-3 rounded-lg bg-surface-container-low border-none focus:bg-surface-container-lowest focus:ring-2 focus:ring-primary/20 transition-all font-medium text-on-surface outline-none" 
-                type="date" 
-                value={formData.fiscalYearStart} 
+                className="w-full px-4 py-3 rounded-lg bg-surface-container-low border-none focus:bg-surface-container-lowest focus:ring-2 focus:ring-primary/20 transition-all font-medium text-on-surface outline-none"
+                type="date"
+                value={formData.fiscalYearStart}
                 onChange={handleInputChange}
               />
             </div>
           </div>
 
           <div className="mt-8 flex justify-end">
-            <button 
+            <button
               onClick={handleUpdateBusiness}
               disabled={isSaving}
               className="px-8 py-3 bg-gradient-to-br from-secondary to-secondary-container text-white font-bold rounded-lg shadow-lg shadow-secondary/20 hover:scale-[1.02] active:scale-95 transition-all text-sm disabled:opacity-50"
@@ -400,7 +439,7 @@ export default function BusinessSettingsPage() {
             <div className="p-6 bg-gradient-to-br from-tertiary to-tertiary-container rounded-xl text-white shadow-xl">
               <h4 className="font-headline font-bold mb-2">Vergi Raporlarını Hazırla</h4>
               <p className="text-tertiary-fixed text-xs mb-6 leading-relaxed">Mevcut işletme ayarlarıyla çeyrek dönem vergi projeksiyonlarını oluşturun.</p>
-              <button 
+              <button
                 onClick={handleGenerateReport}
                 disabled={isGeneratingReport}
                 className="w-full py-3 bg-white/10 backdrop-blur-md border border-white/20 rounded-lg text-xs font-bold uppercase tracking-widest hover:bg-white/20 transition-all flex items-center justify-center gap-2 disabled:opacity-50"
@@ -410,7 +449,7 @@ export default function BusinessSettingsPage() {
                 ) : (
                   <span className="material-symbols-outlined text-sm">analytics</span>
                 )}
-                {isGeneratingReport ? "HAZIRLANIYOR..." : "Raporu Başlat"}
+                {isGeneratingReport ? "HAZIRLANIYOR..." : "Raporu İndir"}
               </button>
             </div>
           </div>

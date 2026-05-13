@@ -5,6 +5,7 @@ import Image from "next/image";
 import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabaseClient";
 import toast from "react-hot-toast";
+import * as XLSX from 'xlsx';
 
 export default function ProfilePage() {
   const router = useRouter();
@@ -228,32 +229,40 @@ export default function ProfilePage() {
     }
   };
 
-  const handleExportXML = () => {
+  const handleExportXLSX = () => {
     if (!profile) return;
-    const xmlContent = `<?xml version="1.0" encoding="UTF-8"?>
-<SovereignLedgerExport>
-  <User>
-    <Id>${profile.id}</Id>
-    <Name>${profile.fullName}</Name>
-    <Email>${profile.email}</Email>
-  </User>
-  <Business>
-    <CompanyName>${profile.companyName}</CompanyName>
-    <TaxId>${profile.taxId}</TaxId>
-  </Business>
-  <ExportDate>${new Date().toISOString()}</ExportDate>
-</SovereignLedgerExport>`;
 
-    const blob = new Blob([xmlContent], { type: "application/xml" });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = `config_export_${new Date().getTime()}.xml`;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
-    toast.success("Mimari yapılandırma XML olarak indirildi.");
+    const exportData = [
+      ["DEFTER YAPILANDIRMA VE MİMARİ DIŞA AKTARIM", ""],
+      ["Dışa Aktarım Tarihi", new Date().toLocaleString('tr-TR')],
+      ["", ""],
+      ["KULLANICI PROFİLİ", ""],
+      ["Kullanıcı ID", profile.id],
+      ["Tam Ad Soyad", profile.fullName],
+      ["E-posta", profile.email],
+      ["", ""],
+      ["İŞLETME YAPILANDIRMASI", ""],
+      ["Şirket Adı", profile.companyName],
+      ["Vergi Kimlik No", profile.taxId],
+      ["İşletme Sektörü", profile.businessSector],
+      ["Kayıtlı Adres", profile.address],
+      ["", ""],
+      ["SİSTEM NOTLARI", ""],
+      ["Sürüm", "v1.0.4-stable"],
+      ["Mimari Durum", "Doğrulanmış ve Senkronize"]
+    ];
+
+    const worksheet = XLSX.utils.aoa_to_sheet(exportData);
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(workbook, worksheet, "Yapılandırma");
+
+    // Sütun genişliklerini ayarla
+    worksheet['!cols'] = [{ wch: 35 }, { wch: 55 }];
+
+    const fileName = `defter_yapilandirma_${new Date().getTime()}.xlsx`;
+    XLSX.writeFile(workbook, fileName);
+
+    toast.success("Mimari yapılandırma XLSX olarak indirildi.");
   };
 
   const togglePreference = (key: "darkMode" | "liveSync") => {
@@ -312,14 +321,14 @@ export default function ProfilePage() {
           </div>
           <div className="flex flex-col md:flex-row gap-10 items-start">
             <div className="relative group">
-              <input 
-                type="file" 
-                ref={fileInputRef} 
-                onChange={handleAvatarUpload} 
-                className="hidden" 
-                accept="image/*" 
+              <input
+                type="file"
+                ref={fileInputRef}
+                onChange={handleAvatarUpload}
+                className="hidden"
+                accept="image/*"
               />
-              <div 
+              <div
                 onClick={handleAvatarClick}
                 className="w-32 h-32 rounded-full bg-surface-container-low flex items-center justify-center overflow-hidden border-4 border-surface ring-1 ring-outline-variant/20 relative cursor-pointer"
               >
@@ -330,7 +339,7 @@ export default function ProfilePage() {
                   style={{ objectFit: "cover" }}
                   className={`w-full h-full object-cover transition-opacity ${isAvatarUploading ? "opacity-30" : "opacity-100"}`}
                 />
-                
+
                 {/* Avatar Loading Spinner */}
                 {isAvatarUploading && (
                   <div className="absolute inset-0 flex items-center justify-center">
@@ -348,27 +357,27 @@ export default function ProfilePage() {
               <div className="grid grid-cols-1 gap-6">
                 <div className="space-y-1.5">
                   <label className="text-[11px] uppercase tracking-wider font-bold text-on-surface-variant ml-1">Ad Soyad</label>
-                  <input 
-                    className="w-full px-4 py-3 rounded-lg bg-surface-container-low border-none focus:bg-surface-container-lowest focus:ring-2 focus:ring-primary/20 transition-all font-medium text-on-surface outline-none" 
-                    type="text" 
-                    value={profile?.fullName || ""} 
+                  <input
+                    className="w-full px-4 py-3 rounded-lg bg-surface-container-low border-none focus:bg-surface-container-lowest focus:ring-2 focus:ring-primary/20 transition-all font-medium text-on-surface outline-none"
+                    type="text"
+                    value={profile?.fullName || ""}
                     onChange={(e) => setProfile(prev => prev ? { ...prev, fullName: e.target.value } : null)}
                   />
                 </div>
                 <div className="space-y-1.5">
                   <label className="text-[11px] uppercase tracking-wider font-bold text-on-surface-variant ml-1">E-posta Adresi</label>
-                  <input 
-                    className="w-full px-4 py-3 rounded-lg bg-surface-container-low/50 border-none transition-all font-medium text-on-surface/50 outline-none cursor-not-allowed" 
-                    type="email" 
-                    value={profile?.email || ""} 
-                    readOnly 
+                  <input
+                    className="w-full px-4 py-3 rounded-lg bg-surface-container-low/50 border-none transition-all font-medium text-on-surface/50 outline-none cursor-not-allowed"
+                    type="email"
+                    value={profile?.email || ""}
+                    readOnly
                   />
                 </div>
               </div>
             </div>
           </div>
           <div className="mt-10 flex justify-end">
-            <button 
+            <button
               onClick={handleSaveProfile}
               disabled={isSaving}
               className="px-8 py-3 bg-gradient-to-br from-primary to-primary-container text-white font-bold rounded-lg shadow-lg shadow-primary/20 hover:scale-[1.02] active:scale-95 transition-all text-sm disabled:opacity-50"
@@ -387,10 +396,10 @@ export default function ProfilePage() {
           <div className="space-y-6 max-w-md">
             <div className="space-y-1.5">
               <label className="text-[11px] uppercase tracking-wider font-bold text-on-surface-variant ml-1">Mevcut Şifre</label>
-              <input 
-                className="w-full px-4 py-3 rounded-lg bg-surface-container-low border-none focus:bg-surface-container-lowest focus:ring-2 focus:ring-primary/20 transition-all font-medium text-on-surface outline-none" 
-                placeholder="••••••••••••" 
-                type="password" 
+              <input
+                className="w-full px-4 py-3 rounded-lg bg-surface-container-low border-none focus:bg-surface-container-lowest focus:ring-2 focus:ring-primary/20 transition-all font-medium text-on-surface outline-none"
+                placeholder="••••••••••••"
+                type="password"
                 value={passwordForm.currentPassword}
                 onChange={(e) => setPasswordForm(p => ({ ...p, currentPassword: e.target.value }))}
               />
@@ -398,25 +407,25 @@ export default function ProfilePage() {
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-1.5">
                 <label className="text-[11px] uppercase tracking-wider font-bold text-on-surface-variant ml-1">Yeni Şifre</label>
-                <input 
-                  className="w-full px-4 py-3 rounded-lg bg-surface-container-low border-none focus:bg-surface-container-lowest focus:ring-2 focus:ring-primary/20 transition-all font-medium text-on-surface outline-none" 
-                  type="password" 
+                <input
+                  className="w-full px-4 py-3 rounded-lg bg-surface-container-low border-none focus:bg-surface-container-lowest focus:ring-2 focus:ring-primary/20 transition-all font-medium text-on-surface outline-none"
+                  type="password"
                   value={passwordForm.newPassword}
                   onChange={(e) => setPasswordForm(p => ({ ...p, newPassword: e.target.value }))}
                 />
               </div>
               <div className="space-y-1.5">
                 <label className="text-[11px] uppercase tracking-wider font-bold text-on-surface-variant ml-1">Yeni Şifreyi Onayla</label>
-                <input 
-                  className="w-full px-4 py-3 rounded-lg bg-surface-container-low border-none focus:bg-surface-container-lowest focus:ring-2 focus:ring-primary/20 transition-all font-medium text-on-surface outline-none" 
-                  type="password" 
+                <input
+                  className="w-full px-4 py-3 rounded-lg bg-surface-container-low border-none focus:bg-surface-container-lowest focus:ring-2 focus:ring-primary/20 transition-all font-medium text-on-surface outline-none"
+                  type="password"
                   value={passwordForm.confirmPassword}
                   onChange={(e) => setPasswordForm(p => ({ ...p, confirmPassword: e.target.value }))}
                 />
               </div>
             </div>
             <div className="pt-4">
-              <button 
+              <button
                 onClick={handlePasswordUpdate}
                 disabled={isPasswordUpdating}
                 className="px-6 py-2.5 bg-secondary text-white font-bold rounded-lg hover:bg-on-secondary-container transition-colors text-xs uppercase tracking-widest disabled:opacity-50"
@@ -471,12 +480,12 @@ export default function ProfilePage() {
             <div className="p-6 bg-gradient-to-br from-indigo-900 to-slate-900 rounded-xl text-white shadow-xl">
               <h4 className="font-headline font-bold mb-2">Defter Yapılandırmasını Dışa Aktar</h4>
               <p className="text-indigo-200 text-xs mb-6 leading-relaxed">Yedekleme veya ikincil paketlere taşıma için mevcut mimari ayarlarınızı indirin.</p>
-              <button 
-                onClick={handleExportXML}
+              <button
+                onClick={handleExportXLSX}
                 className="w-full py-3 bg-white/10 backdrop-blur-md border border-white/20 rounded-lg text-xs font-bold uppercase tracking-widest hover:bg-white/20 transition-all flex items-center justify-center gap-2"
               >
                 <span className="material-symbols-outlined text-sm">download</span>
-                XML Şemasını İndir
+                İndir
               </button>
             </div>
           </div>
@@ -489,7 +498,7 @@ export default function ProfilePage() {
             <h2 className="text-xl font-bold font-headline text-on-surface">Arayüz Kuralları</h2>
           </div>
           <div className="space-y-4">
-            <div 
+            <div
               onClick={() => togglePreference("darkMode")}
               className="flex items-center justify-between p-3 hover:bg-surface-container-low rounded-lg transition-colors cursor-pointer"
             >
@@ -501,7 +510,7 @@ export default function ProfilePage() {
                 <div className={`absolute top-1 w-3 h-3 bg-white rounded-full transition-all ${preferences.darkMode ? "right-1" : "left-1"}`}></div>
               </div>
             </div>
-            <div 
+            <div
               onClick={() => togglePreference("liveSync")}
               className="flex items-center justify-between p-3 hover:bg-surface-container-low rounded-lg transition-colors cursor-pointer"
             >

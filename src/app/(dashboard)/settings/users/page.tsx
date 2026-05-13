@@ -14,6 +14,7 @@ interface UserProfile {
   created_at: string;
   email?: string;
   status?: string;
+  profile_image?: string;
 }
 
 export default function UserListPage() {
@@ -25,13 +26,25 @@ export default function UserListPage() {
   const fetchUsers = async () => {
     setIsLoading(true);
     try {
+      const { data: { user: authUser } } = await supabase.auth.getUser();
+      if (!authUser) return;
+
+      const { data: myProfile } = await supabase
+        .from("profiles")
+        .select("company_name")
+        .eq("id", authUser.id)
+        .single();
+
+      const company = myProfile?.company_name || "Belirtilmemiş";
+
       const { data, error } = await supabase
         .from("profiles")
         .select("*")
+        .eq("company_name", company)
         .order("created_at", { ascending: false });
 
       if (error) throw error;
-      setUsers(data || []);
+      setUsers((data || []) as UserProfile[]);
     } catch (err: any) {
       toast.error("Kullanıcılar yüklenirken hata oluştu: " + err.message);
     } finally {
@@ -86,34 +99,27 @@ export default function UserListPage() {
     }
   };
 
-  // Stats calculation
   const totalUsers = users.length;
-  const activeUsers = users.filter(u => u.status !== 'pending').length;
-  const pendingInvites = users.filter(u => u.status === 'pending').length;
+  const activeUsers = users.length; // Simplified for now
+  const pendingInvites = 0;
   const adminCount = users.filter(u => u.role === 'admin' || u.role === 'Yönetici').length;
 
   return (
-    <>
-      {/* Page Header Section */}
-      <section className="mb-10 flex items-end justify-between">
+    <div className="space-y-8 animate-in fade-in duration-700">
+      {/* Header with Action */}
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
-          <nav className="flex items-center gap-2 mb-2">
-            <span className="text-[11px] uppercase tracking-wider text-slate-400 font-label">Yönetim</span>
-            <span className="material-symbols-outlined text-[12px] text-slate-300">chevron_right</span>
-            <span className="text-[11px] uppercase tracking-wider text-indigo-600 font-bold font-label">Ekip Üyeleri</span>
-          </nav>
-          <h2 className="text-4xl font-extrabold font-headline text-slate-900 tracking-tight">Kullanıcı Yönetimi</h2>
-          <p className="text-slate-500 mt-1 max-w-lg font-body">Tüm finans ekibiniz için organizasyonel erişimi, rolleri ve güvenlik izinlerini yönetin.</p>
+          <h2 className="text-2xl font-black text-slate-900 font-headline tracking-tight">Ekip Üyeleri</h2>
+          <p className="text-sm text-slate-500 font-body">Sisteme erişimi olan tüm personelleri yönetin.</p>
         </div>
         <Link 
-          href="/users/new"
-          className="px-6 py-3 bg-gradient-to-br from-primary to-primary-container text-white font-bold rounded-xl shadow-lg shadow-indigo-200 flex items-center gap-2 hover:opacity-95 transition-all active:scale-[0.98]"
+          href="/settings/users/new"
+          className="flex items-center gap-2 bg-indigo-600 text-white px-6 py-3 rounded-xl font-bold text-sm shadow-lg shadow-indigo-200 hover:bg-indigo-700 hover:scale-[1.02] active:scale-95 transition-all"
         >
-          <span className="material-symbols-outlined">person_add</span>
-          Üye Davet Et
+          <span className="material-symbols-outlined text-[18px]">person_add</span>
+          Yeni Üye Ekle
         </Link>
-      </section>
-
+      </div>
       {/* Stats Overview */}
       <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
         <div className="bg-surface-container-low p-6 rounded-2xl flex flex-col justify-between transition-all hover:shadow-md">
@@ -310,7 +316,7 @@ export default function UserListPage() {
             Yönetici Kontrolleri
           </h4>
           <p className="text-xs text-slate-500 mt-2 mb-4 leading-relaxed font-body">Finansal kayıtlara, kullanıcı yönetimine, faturalandırmaya ve sistem ayarlarına tam erişim.</p>
-          <Link href="/users/roles" className="text-xs font-bold text-indigo-600 flex items-center gap-1 group font-body">
+          <Link href="/settings/users/roles" className="text-xs font-bold text-indigo-600 flex items-center gap-1 group font-body">
             Politikayı Görüntüle <span className="material-symbols-outlined text-sm group-hover:translate-x-1 transition-transform">arrow_forward</span>
           </Link>
         </div>
@@ -323,7 +329,7 @@ export default function UserListPage() {
             Muhasebeci Görünümü
           </h4>
           <p className="text-xs text-slate-500 mt-2 mb-4 leading-relaxed font-body">Üye yönetimi olmadan defterlere, vergi raporlarına ve denetim günlüklerine özel erişim.</p>
-          <Link href="/users/roles" className="text-xs font-bold text-emerald-600 flex items-center gap-1 group font-body">
+          <Link href="/settings/users/roles" className="text-xs font-bold text-emerald-600 flex items-center gap-1 group font-body">
             Erişimi Yapılandır <span className="material-symbols-outlined text-sm group-hover:translate-x-1 transition-transform">arrow_forward</span>
           </Link>
         </div>
@@ -341,6 +347,6 @@ export default function UserListPage() {
           </button>
         </div>
       </div>
-    </>
+    </div>
   );
 }

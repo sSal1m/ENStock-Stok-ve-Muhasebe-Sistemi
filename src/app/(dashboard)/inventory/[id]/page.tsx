@@ -5,19 +5,22 @@ import { useParams, useRouter } from "next/navigation";
 import toast, { Toaster } from "react-hot-toast";
 import { supabase } from "@/lib/supabaseClient";
 import StockAdjustmentModal from "@/components/inventory/StockAdjustmentModal";
+import { useCurrencyConverter } from "@/hooks/useCurrencyConverter";
 
 // ─── Tipler ────────────────────────────────────────────────────────────────
-
 interface Product {
   id: string;
   sku: string;
   name: string;
   purchase_price: number;
   sale_price: number;
+  currency: string;
+  purchase_price_in_currency: number;
+  sale_price_in_currency: number;
   stock_quantity: number;
   critical_limit: number;
   tax_rate: number;
-  categories: { name: string } | { name: string }[] | null; // ✅ Dizi veya tek nesne
+  categories: ({ name: string } | { name: string }[]) | null; // ✅ Dizi veya tek nesne
 }
 
 interface StockMovement {
@@ -49,11 +52,7 @@ interface AllMovements {
 
 // ─── Yardımcılar ────────────────────────────────────────────────────────────
 
-function fmt(val: number): string {
-  return (
-    val.toLocaleString("tr-TR", { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + " ₺"
-  );
-}
+// fmt function is now handled by the hook
 
 function fmtDate(iso: string): { date: string; time: string } {
   const d = new Date(iso);
@@ -103,6 +102,9 @@ export default function ProductDetailPage() {
   const tableRef = useRef<HTMLDivElement>(null);
   const ITEMS_PER_PAGE = 5; // Client-side pagination için
 
+  // Döviz Durumu
+  const { rates, viewCurrency, setViewCurrency, convert, format: fmt } = useCurrencyConverter();
+
   // ── Kullanıcı ID'sini Al ────────────────────────────────────────────────
   useEffect(() => {
     async function getUser() {
@@ -121,10 +123,9 @@ export default function ProductDetailPage() {
     if (!id || !userId) return;
 
     try {
-      // 1. Ürün verilerini çek
       const { data: prod, error: prodErr } = await supabase
         .from("products")
-        .select("id, sku, name, purchase_price, sale_price, stock_quantity, critical_limit, tax_rate, categories(name)")
+        .select("id, sku, name, purchase_price, sale_price, currency, purchase_price_in_currency, sale_price_in_currency, stock_quantity, critical_limit, tax_rate, categories(name)")
         .eq("id", id)
         .eq("user_id", userId)
         .single();
@@ -220,6 +221,9 @@ export default function ProductDetailPage() {
   }, [id, userId, updateProductData]);
 
   // ── Hesaplamalar ──────────────────────────────────────────────────────────
+  // Çevrim Yardımcısı
+  // Convert function moved to hook
+
   const margin =
     product && product.purchase_price > 0
       ? ((product.sale_price - product.purchase_price) / product.purchase_price) * 100
@@ -292,11 +296,27 @@ export default function ProductDetailPage() {
   return (
     <div className="p-8 space-y-8 max-w-7xl mx-auto">
       {/* ── Ekmek Kırıntısı (Breadcrumb) ── */}
-      <nav className="flex items-center gap-2 text-sm font-medium text-slate-400">
-        <span className="cursor-pointer hover:text-primary transition-colors" onClick={() => router.push("/inventory")}>Envanter</span>
-        <span className="material-symbols-outlined text-sm">chevron_right</span>
-        <span className="text-on-surface font-semibold">Ürün Detayı</span>
-      </nav>
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+        <nav className="flex items-center gap-2 text-sm font-medium text-slate-400">
+          <span className="cursor-pointer hover:text-primary transition-colors" onClick={() => router.push("/inventory")}>Envanter</span>
+          <span className="material-symbols-outlined text-sm">chevron_right</span>
+          <span className="text-on-surface font-semibold">Ürün Detayı</span>
+        </nav>
+
+        <div className="flex items-center gap-2 bg-white border border-indigo-100 rounded-xl px-4 py-2 shadow-sm self-start md:self-auto">
+          <span className="text-[10px] font-bold text-slate-400 uppercase tracking-tighter">Görünüm:</span>
+          <select
+            value={viewCurrency}
+            onChange={(e) => setViewCurrency(e.target.value)}
+            className="bg-transparent border-none text-sm font-black text-primary outline-none focus:ring-0 cursor-pointer"
+          >
+            <option value="TRY">TRY (₺)</option>
+            <option value="USD">USD ($)</option>
+            <option value="EUR">EUR (€)</option>
+            <option value="GBP">GBP (£)</option>
+          </select>
+        </div>
+      </div>
 
       {/* ── Bölüm 1: Ürün Özeti ── */}
       <section className="bg-surface-container-low rounded-3xl p-8 relative overflow-hidden">
@@ -378,7 +398,7 @@ export default function ProductDetailPage() {
           </div>
           <p className="text-xs text-slate-500 font-medium mb-1">Alış Fiyatı</p>
           <h3 className="text-2xl font-bold tracking-tight text-on-surface">
-            {fmt(product.purchase_price)}
+            {fmt(convert(product.purchase_price), viewCurrency)}
           </h3>
         </div>
 
@@ -394,7 +414,7 @@ export default function ProductDetailPage() {
           </div>
           <p className="text-xs text-slate-500 font-medium mb-1">Satış Fiyatı</p>
           <h3 className="text-2xl font-bold tracking-tight text-on-surface">
-            {fmt(product.sale_price)}
+            {fmt(convert(product.sale_price), viewCurrency)}
           </h3>
         </div>
 
@@ -414,7 +434,7 @@ export default function ProductDetailPage() {
               %{margin.toFixed(1)}
             </h3>
             <span className={`text-xs font-bold ${margin >= 0 ? "text-emerald-600" : "text-error"}`}>
-              {margin >= 0 ? "+" : ""}{(product.sale_price - product.purchase_price).toLocaleString("tr-TR", { maximumFractionDigits: 0 })} ₺
+              {margin >= 0 ? "+" : ""}{fmt(convert(product.sale_price - product.purchase_price), viewCurrency)}
             </span>
           </div>
         </div>
@@ -431,7 +451,7 @@ export default function ProductDetailPage() {
           </div>
           <p className="text-xs text-primary/70 font-semibold mb-1">Toplam Stok Değeri</p>
           <h3 className="text-2xl font-black tracking-tight text-primary">
-            {fmt(totalStockValue)}
+            {fmt(convert(totalStockValue), viewCurrency)}
           </h3>
         </div>
       </section>
@@ -511,7 +531,7 @@ export default function ProductDetailPage() {
                         </td>
                         <td className="w-[130px] px-6 py-5 align-middle text-right">
                           <span className="text-sm font-medium text-slate-600">
-                            {m.unit_price != null ? fmt(m.unit_price) : "—"}
+                            {m.unit_price != null ? fmt(convert(m.unit_price), viewCurrency) : "—"}
                           </span>
                         </td>
                         <td className="w-auto px-6 py-5 align-middle">

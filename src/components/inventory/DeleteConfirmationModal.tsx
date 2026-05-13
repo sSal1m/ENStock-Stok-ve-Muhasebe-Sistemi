@@ -1,8 +1,8 @@
 "use client";
 
 import { useRef, useEffect, useState } from "react";
-import { supabase } from "@/lib/supabaseClient";
 import toast from "react-hot-toast";
+import { softDeleteProduct } from "@/app/(dashboard)/trash/actions";
 
 interface Props {
   isOpen: boolean;
@@ -49,26 +49,18 @@ export default function DeleteConfirmationModal({
     setError(null);
 
     try {
-      // 🔧 DEBUG: productId'nin doğru geldiğini kontrol et
-      console.log("🗑️ Siliniyor - Product ID:", productId, "User ID:", userId);
-      
       if (!productId || !userId) {
         throw new Error("Product ID veya User ID eksik!");
       }
 
-      const { error: deleteError } = await supabase
-        .from("products")
-        .delete()
-        .eq("id", productId)
-        .eq("user_id", userId);
+      // ✅ Soft Delete — ürünü çöp kutusuna taşı (deleted_at = now())
+      const result = await softDeleteProduct(productId, userId);
 
-      if (deleteError) {
-        console.error("❌ Silme Hatası:", deleteError);
-        throw deleteError;
+      if (!result.success) {
+        throw new Error(result.message);
       }
 
-      console.log("✅ Veritabanından silme başarılı");
-      toast.success(`"${productName}" başarıyla silindi!`, {
+      toast.success(`"${productName}" çöp kutusuna taşındı.`, {
         duration: 3000,
         icon: "🗑️",
       });
@@ -99,18 +91,18 @@ export default function DeleteConfirmationModal({
       <div className="absolute inset-0 bg-on-surface/30 backdrop-blur-sm" />
 
       {/* Modal kutusu */}
-      <div className="relative z-10 w-full max-w-md bg-white rounded-2xl shadow-2xl shadow-error/20 border border-error/20 animate-in fade-in slide-in-from-bottom-4 duration-200">
+      <div className="relative z-10 w-full max-w-md bg-white rounded-2xl shadow-2xl shadow-amber-500/10 border border-amber-200/50 animate-in fade-in slide-in-from-bottom-4 duration-200">
         {/* Başlık */}
-        <div className="flex items-start justify-between px-6 pt-6 pb-4 border-b border-error/20">
+        <div className="flex items-start justify-between px-6 pt-6 pb-4 border-b border-amber-100">
           <div className="flex items-center gap-3">
-            <div className="w-9 h-9 bg-error/10 text-error rounded-lg flex items-center justify-center">
+            <div className="w-9 h-9 bg-amber-50 text-amber-600 rounded-lg flex items-center justify-center">
               <span className="material-symbols-outlined text-lg">delete</span>
             </div>
             <div>
               <h3 className="text-base font-extrabold text-on-surface">
-                Ürünü Sil
+                Çöp Kutusuna Taşı
               </h3>
-              <p className="text-[11px] text-slate-400">Bu işlem geri alınamaz</p>
+              <p className="text-[11px] text-slate-400">30 gün içinde geri yüklenebilir</p>
             </div>
           </div>
           <button
@@ -132,24 +124,24 @@ export default function DeleteConfirmationModal({
           )}
 
           {/* Uyarı mesajı */}
-          <div className="flex items-start gap-3 p-3 bg-error/5 border border-error/20 rounded-xl">
-            <span className="material-symbols-outlined text-error text-xl flex-shrink-0 mt-0.5">
-              warning
+          <div className="flex items-start gap-3 p-3 bg-amber-50 border border-amber-200/50 rounded-xl">
+            <span className="material-symbols-outlined text-amber-500 text-xl flex-shrink-0 mt-0.5">
+              info
             </span>
             <div className="text-sm">
               <p className="font-bold text-on-surface mb-1">
-                "{productName}" ürününü silmek istediğinize emin misiniz?
+                &ldquo;{productName}&rdquo; ürününü çöp kutusuna taşımak istediğinize emin misiniz?
               </p>
               <p className="text-xs text-slate-500">
-                Bu ürün Supabase veritabanından kalıcı olarak kaldırılacaktır.
-                İlişkili veriler de etkilenebilir.
+                Ürün çöp kutusuna taşınacak ve <strong>30 gün</strong> boyunca geri yüklenebilir olacaktır.
+                Çöp kutusundayken fatura oluşturmada kullanılamaz.
               </p>
             </div>
           </div>
         </div>
 
         {/* Butonlar */}
-        <div className="px-6 py-4 bg-surface-container-low/30 border-t border-error/20 flex gap-3 justify-end">
+        <div className="px-6 py-4 bg-surface-container-low/30 border-t border-amber-100 flex gap-3 justify-end">
           <button
             onClick={onClose}
             disabled={deleting}
@@ -161,21 +153,21 @@ export default function DeleteConfirmationModal({
             ref={confirmButtonRef}
             onClick={handleDelete}
             disabled={deleting}
-            className="px-6 py-2 bg-error text-on-error font-bold text-sm rounded-lg hover:bg-error-container hover:text-on-error-container transition-colors disabled:opacity-70 flex items-center gap-2"
+            className="px-6 py-2 bg-amber-500 text-white font-bold text-sm rounded-lg hover:bg-amber-600 transition-colors disabled:opacity-70 flex items-center gap-2"
           >
             {deleting ? (
               <>
                 <span className="material-symbols-outlined animate-spin text-sm">
                   progress_activity
                 </span>
-                Siliniyor...
+                Taşınıyor...
               </>
             ) : (
               <>
                 <span className="material-symbols-outlined text-base">
                   delete
                 </span>
-                Sil
+                Çöp Kutusuna Taşı
               </>
             )}
           </button>

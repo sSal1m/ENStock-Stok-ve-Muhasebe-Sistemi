@@ -6,6 +6,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabaseClient";
 import toast from "react-hot-toast";
+import { inviteUserAction } from "./actions";
 
 export default function InviteUserPage() {
   const router = useRouter();
@@ -15,6 +16,7 @@ export default function InviteUserPage() {
     role: "accounting"
   });
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [inviteUrl, setInviteUrl] = useState<string | null>(null);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -27,23 +29,37 @@ export default function InviteUserPage() {
     const toastId = toast.loading("Davet gönderiliyor...");
 
     try {
-      // In a real app, this would use auth.inviteUserByEmail via an Edge Function.
-      // For this implementation, we add a row to 'profiles' to simulate the team member.
-      const { error } = await supabase
+      const { data: { user: authUser } } = await supabase.auth.getUser();
+      if (!authUser) throw new Error("Oturum bulunamadı.");
+
+      // 1. Get current user's company context
+      const { data: myProfile } = await supabase
         .from("profiles")
-        .insert([{
-          id: crypto.randomUUID(), // Simulated ID for demo purposes
-          full_name: formData.full_name,
-          role: formData.role,
-          company_name: "Sovereign Ledger Team", // Default for new team members
-          business_sector: "Financial Services",
-          created_at: new Date().toISOString()
-        }]);
+        .select("company_name")
+        .eq("id", authUser.id)
+        .single();
 
-      if (error) throw error;
+      const company = myProfile?.company_name || "Belirtilmemiş";
 
-      toast.success(`${formData.full_name} için davet başarıyla gönderildi!`, { id: toastId });
-      router.push("/users");
+      // 2. Call server action for real invitation email
+      const result = await inviteUserAction({
+        email: formData.email,
+        full_name: formData.full_name,
+        role: formData.role,
+        company_name: company
+      });
+
+      if (!result.success) {
+        throw new Error(result.message);
+      }
+
+      toast.success(`${formData.full_name} sisteme başarıyla eklendi!`, { id: toastId });
+      
+      if (result.inviteUrl) {
+        setInviteUrl(result.inviteUrl);
+      } else {
+        router.push("/settings/users");
+      }
     } catch (err: any) {
       toast.error("Hata oluştu: " + err.message, { id: toastId });
     } finally {
@@ -53,19 +69,12 @@ export default function InviteUserPage() {
 
   return (
     <div className="max-w-5xl mx-auto w-full">
-      {/* Breadcrumbs */}
-      <nav className="flex items-center gap-2 text-xs font-medium text-outline mb-8 uppercase tracking-widest font-label">
-        <Link href="/users" className="hover:text-primary transition-colors">EKİP YÖNETİMİ</Link>
-        <span className="material-symbols-outlined text-[10px]">chevron_right</span>
-        <span className="text-on-surface">YENİ ÜYE DAVETİ</span>
-      </nav>
-
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-10 items-start">
         {/* Form Section */}
         <div className="lg:col-span-7 space-y-8">
           <div className="space-y-2">
-            <h2 className="text-4xl font-extrabold tracking-tight text-on-surface font-headline">Ekibe Katılmaya Davet Et</h2>
-            <p className="text-on-surface-variant leading-relaxed font-body">Yeni çalışma arkadaşınızın bilgilerini girin ve Sovereign Ledger ekosistemine dahil olması için bir davet gönderin.</p>
+            <h2 className="text-3xl font-extrabold tracking-tight text-on-surface font-headline">Ekibe Katılmaya Davet Et</h2>
+            <p className="text-on-surface-variant leading-relaxed font-body">Yeni çalışma arkadaşınızın bilgilerini girin ve ekosistemine dahil olması için bir davet gönderin.</p>
           </div>
           <div className="bg-surface-container-lowest p-8 rounded-xl shadow-sm border border-outline-variant/10">
             <form className="space-y-6" onSubmit={handleSubmit}>
@@ -128,10 +137,63 @@ export default function InviteUserPage() {
                   disabled={isSubmitting}
                 >
                   <span className="material-symbols-outlined">{isSubmitting ? "sync" : "send"}</span>
-                  {isSubmitting ? "Gönderiliyor..." : "Davet Gönder"}
+                  {isSubmitting ? "Gönderiliyor..." : "Davet Oluştur"}
                 </button>
               </div>
             </form>
+
+            {/* Invite Link Panel (Shown after success) */}
+            {inviteUrl && (
+              <div className="mt-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
+                <div className="bg-indigo-50 border border-indigo-100 rounded-xl p-6 relative overflow-hidden">
+                  <div className="absolute top-0 right-0 p-4 opacity-5 pointer-events-none">
+                    <span className="material-symbols-outlined text-8xl">link</span>
+                  </div>
+                  
+                  <div className="flex items-start gap-4 mb-4">
+                    <div className="w-10 h-10 rounded-full bg-indigo-100 flex items-center justify-center flex-shrink-0">
+                      <span className="material-symbols-outlined text-indigo-600">check_circle</span>
+                    </div>
+                    <div>
+                      <h3 className="text-lg font-bold text-indigo-900 font-headline mb-1">Davet Bağlantısı Hazır!</h3>
+                      <p className="text-sm text-indigo-800/80 font-body leading-relaxed">
+                        Ücretsiz SMTP servislerindeki kotalar veya spam filtreleri nedeniyle yaşanabilecek teslimat sorunlarını aşmak için sistem, kopyalayıp doğrudan paylaşabileceğiniz güvenilir bir davet bağlantısı oluşturdu.
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="mt-4 flex gap-2">
+                    <div className="relative flex-1">
+                      <input 
+                        type="text" 
+                        readOnly 
+                        value={inviteUrl} 
+                        className="w-full bg-white border border-indigo-200 text-indigo-900 text-sm rounded-lg px-4 py-3 font-mono outline-none focus:ring-2 focus:ring-indigo-500/20"
+                      />
+                    </div>
+                    <button 
+                      onClick={() => {
+                        navigator.clipboard.writeText(inviteUrl);
+                        toast.success("Bağlantı kopyalandı!");
+                      }}
+                      className="bg-indigo-600 hover:bg-indigo-700 text-white px-6 py-3 rounded-lg font-bold text-sm transition-colors flex items-center gap-2 flex-shrink-0"
+                    >
+                      <span className="material-symbols-outlined text-sm">content_copy</span>
+                      Kopyala
+                    </button>
+                  </div>
+                  
+                  <div className="mt-6 pt-4 border-t border-indigo-100/50 flex justify-end">
+                    <button 
+                      onClick={() => router.push('/settings/users')}
+                      className="text-sm font-bold text-indigo-600 hover:text-indigo-800 transition-colors flex items-center gap-1 font-body"
+                    >
+                      Ekip Listesine Dön <span className="material-symbols-outlined text-sm">arrow_forward</span>
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
           </div>
         </div>
 
@@ -196,7 +258,7 @@ export default function InviteUserPage() {
             />
             <div className="absolute bottom-6 left-6 right-6 z-20">
               <div className="text-white font-bold text-lg leading-tight font-headline">Güçlü Bir Ekip, Sağlam Bir Gelecek.</div>
-              <div className="text-white/70 text-xs mt-1 font-body">Sovereign Ledger ile kontrol sizde.</div>
+              <div className="text-white/70 text-xs mt-1 font-body">Sistemle kontrol sizde.</div>
             </div>
           </div>
         </div>

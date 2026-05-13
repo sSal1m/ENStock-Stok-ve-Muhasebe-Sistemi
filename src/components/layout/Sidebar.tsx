@@ -2,7 +2,8 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import React from 'react';
+import React, { useState, useEffect } from 'react';
+import { supabase } from '@/lib/supabaseClient';
 
 interface NavLink {
   href: string;
@@ -10,18 +11,54 @@ interface NavLink {
   icon: string;
 }
 
+interface UserProfile {
+  company_name: string;
+}
+
 const navLinks: NavLink[] = [
   { href: '/dashboard', label: 'Gösterge Paneli', icon: 'dashboard' },
   { href: '/inventory', label: 'Stok', icon: 'inventory_2' },
   { href: '/contacts', label: 'Cari (Kişiler)', icon: 'contacts' },
+  { href: '/quotes', label: 'Teklifler', icon: 'description' },
   { href: '/invoices', label: 'Faturalar', icon: 'receipt' },
   { href: '/quotes', label: 'Teklifler', icon: 'request_quote' },
   { href: '/reports', label: 'Raporlar', icon: 'analytics' },
-  { href: '/settings', label: 'Ayarlar', icon: 'settings' },
+  { href: '/trash', label: 'Çöp Kutusu', icon: 'delete' },
+  { href: '/settings/profile', label: 'Ayarlar', icon: 'settings' },
 ];
 
 export default function Sidebar() {
   const pathname = usePathname();
+  const [profile, setProfile] = useState<UserProfile | null>(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    const fetchProfile = async () => {
+      try {
+        const { data: { user } } = await supabase.auth.getUser();
+        if (user) {
+          const { data } = await supabase
+            .from('profiles')
+            .select('company_name')
+            .eq('id', user.id)
+            .single();
+          
+          if (data) {
+            setProfile(data as UserProfile);
+          } else {
+            setProfile({ company_name: 'Şirketim' });
+          }
+        }
+      } catch (error) {
+        console.error('Sidebar profil yükleme hatası:', error);
+        setProfile({ company_name: 'Şirketim' });
+      } finally {
+        setLoading(false);
+      }
+    };
+    
+    fetchProfile();
+  }, []);
 
   const isActive = (href: string) => {
     return pathname === href || pathname.startsWith(href + '/');
@@ -31,7 +68,9 @@ export default function Sidebar() {
     <aside className="w-64 bg-surface border-r border-surface-container-high h-screen overflow-y-auto sticky top-0 shadow-sm flex flex-col">
       {/* Logo/Brand Section */}
       <div className="p-6 border-b border-surface-container-high">
-        <h1 className="text-xl font-bold text-primary">KOBİ Hesap</h1>
+        <h1 className="text-xl font-bold text-primary">
+          {loading ? 'Yükleniyor...' : (profile?.company_name || 'Şirketim')}
+        </h1>
         <p className="text-sm text-on-surface/60 mt-1">Muhasebe & Yönetim</p>
       </div>
 

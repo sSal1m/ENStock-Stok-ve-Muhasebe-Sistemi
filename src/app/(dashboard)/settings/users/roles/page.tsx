@@ -13,10 +13,10 @@ const MODULES = [
 ];
 
 const ROLES = [
-  { id: "admin", label: "Admin" },
+  { id: "admin", label: "Yönetici" },
   { id: "accounting", label: "Muhasebe" },
-  { id: "staff", label: "Personel" },
-  { id: "sales", label: "Satış" },
+  { id: "warehouse", label: "Depo Personeli" },
+  { id: "sales", label: "Satış Temsilcisi" },
 ];
 
 export default function RolesPermissionsPage() {
@@ -27,7 +27,23 @@ export default function RolesPermissionsPage() {
 
   const fetchRoleCounts = async () => {
     try {
-      const { data, error } = await supabase.from("profiles").select("role");
+      const { data: { user: authUser } } = await supabase.auth.getUser();
+      if (!authUser) return;
+
+      const { data: myProfile } = await supabase
+        .from("profiles")
+        .select("company_name")
+        .eq("id", authUser.id)
+        .single();
+
+      const company = myProfile?.company_name;
+      if (!company) return;
+
+      const { data, error } = await supabase
+        .from("profiles")
+        .select("role")
+        .eq("company_name", company);
+
       if (error) throw error;
       const counts: Record<string, number> = {};
       data.forEach(p => {
@@ -35,37 +51,88 @@ export default function RolesPermissionsPage() {
         counts[r] = (counts[r] || 0) + 1;
       });
       setRoleCounts(counts);
-    } catch (e) {
-      console.error("Error fetching counts:", e);
+    } catch (e: any) {
+      console.error("Error fetching role counts detail:", e);
     }
   };
 
-  const loadMatrix = () => {
-    const saved = localStorage.getItem("roles_permission_matrix");
-    if (saved) {
-      try {
-        setMatrix(JSON.parse(saved));
-      } catch (e) {
-        console.error("Matrix load error:", e);
-      }
-    } else {
-      // Default initial matrix
-      const initial: Record<string, any> = {};
-      ROLES.forEach(r => {
-        initial[r.id] = {};
-        MODULES.forEach(m => {
-          initial[r.id][m.id] = { view: true, create: r.id === 'admin', edit: r.id === 'admin', delete: r.id === 'admin' };
+  const loadMatrix = async () => {
+    try {
+      const { data, error } = await supabase.from("role_permissions").select("*");
+      if (error) throw error;
+
+      if (data && data.length > 0) {
+        const newMatrix: Record<string, any> = {};
+        // Initialize with default empty structures for all roles
+        ROLES.forEach(r => {
+          newMatrix[r.id] = {};
+          MODULES.forEach(m => {
+            newMatrix[r.id][m.id] = { view: false, create: false, edit: false, delete: false };
+          });
         });
-      });
-      setMatrix(initial);
+
+        // Fill with DB data
+        data.forEach(p => {
+          if (newMatrix[p.role]) {
+            newMatrix[p.role][p.module] = {
+              view: p.can_view,
+              create: p.can_create,
+              edit: p.can_edit,
+              delete: p.can_delete
+            };
+          }
+        });
+        setMatrix(newMatrix);
+      } else {
+        // Default initial matrix if DB is empty
+        const initial: Record<string, any> = {};
+        ROLES.forEach(r => {
+          initial[r.id] = {};
+          MODULES.forEach(m => {
+            let canView = false;
+            let canAll = false;
+            
+            if (r.id === 'admin') {
+              canView = true;
+              canAll = true;
+            } else if (r.id === 'accounting') {
+              if (['invoices', 'reports', 'contacts'].includes(m.id)) {
+                canView = true;
+                canAll = true;
+              }
+            } else if (r.id === 'staff' || r.id === 'warehouse') {
+              if (m.id === 'stock') canView = true;
+            } else if (r.id === 'sales') {
+              if (['stock', 'contacts', 'invoices'].includes(m.id)) {
+                canView = true;
+                // Sales can create/edit but not delete usually
+                if (m.id !== 'reports') canAll = true; 
+              }
+            }
+
+            initial[r.id][m.id] = { 
+              view: canView, 
+              create: canAll, 
+              edit: canAll, 
+              delete: r.id === 'admin' // Only admin deletes by default
+            };
+          });
+        });
+        setMatrix(initial);
+      }
+    } catch (e) {
+      console.error("Matrix load error:", e);
+      toast.error("Yetkiler yüklenirken bir hata oluştu.");
     }
   };
 
   useEffect(() => {
-    setIsLoading(true);
-    fetchRoleCounts();
-    loadMatrix();
-    setIsLoading(false);
+    async function init() {
+      setIsLoading(true);
+      await Promise.all([fetchRoleCounts(), loadMatrix()]);
+      setIsLoading(false);
+    }
+    init();
   }, []);
 
   const togglePermission = (moduleId: string, permKey: string) => {
@@ -82,9 +149,41 @@ export default function RolesPermissionsPage() {
     });
   };
 
-  const handleSave = () => {
-    localStorage.setItem("roles_permission_matrix", JSON.stringify(matrix));
-    toast.success("Yetki matrisi başarıyla kaydedildi.");
+  const handleSave = async () => {
+    const toastId = toast.loading("Yetkiler kaydediliyor...");
+    try {
+      const upsertData: any[] = [];
+      
+      Object.entries(matrix).forEach(([role, modules]) => {
+        Object.entries(modules as any).forEach(([module, perms]: [string, any]) => {
+          upsertData.push({
+            role,
+            module,
+            can_view: perms.view,
+            can_create: perms.create,
+            can_edit: perms.edit,
+            can_delete: perms.delete
+          });
+        });
+      });
+
+      const { error } = await supabase
+        .from("role_permissions")
+        .upsert(upsertData, { onConflict: 'role,module' });
+
+      if (error) throw error;
+      
+      toast.success("Yetki matrisi veritabanına başarıyla kaydedildi.", { id: toastId });
+    } catch (e: any) {
+      console.error("Save error full details:", e);
+      let errorMsg = e.message || "Bilinmeyen bir hata oluştu.";
+      
+      if (e.code === 'PGRST116' || e.message?.includes('relation "role_permissions" does not exist')) {
+        errorMsg = "Veritabanında 'role_permissions' tablosu bulunamadı. Lütfen SQL kodunu çalıştırın.";
+      }
+      
+      toast.error("Hata: " + errorMsg, { id: toastId, duration: 5000 });
+    }
   };
 
   const handleReset = () => {
@@ -97,7 +196,7 @@ export default function RolesPermissionsPage() {
         });
         return newMatrix;
       });
-      toast.success("Rol izinleri sıfırlandı.");
+      toast.success("Rol izinleri sıfırlandı. Kaydetmeyi unutmayın.");
     }
   };
 

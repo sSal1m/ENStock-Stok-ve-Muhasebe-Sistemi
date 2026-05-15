@@ -1,8 +1,8 @@
+
 "use client";
 
 import React, { useState } from "react";
 import Image from "next/image";
-import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabaseClient";
 import toast from "react-hot-toast";
@@ -142,54 +142,61 @@ export default function InviteUserPage() {
               </div>
             </form>
 
-            {/* Invite Link Panel (Shown after success) */}
+            {/* Davet Bağlantısı Paneli - Başarı Durumu */}
             {inviteUrl && (
-              <div className="mt-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
-                <div className="bg-indigo-50 border border-indigo-100 rounded-xl p-6 relative overflow-hidden">
-                  <div className="absolute top-0 right-0 p-4 opacity-5 pointer-events-none">
-                    <span className="material-symbols-outlined text-8xl">link</span>
+              <div className="mt-8 animate-in zoom-in-95 fade-in duration-500">
+                <div className="bg-gradient-to-br from-indigo-50 to-white border-2 border-indigo-100 rounded-2xl p-8 shadow-xl shadow-indigo-100/50 relative overflow-hidden">
+                  {/* Dekoratif Arka Plan İkonu */}
+                  <div className="absolute -right-4 -top-4 opacity-5 pointer-events-none rotate-12">
+                    <span className="material-symbols-outlined text-[140px]">link</span>
                   </div>
                   
-                  <div className="flex items-start gap-4 mb-4">
-                    <div className="w-10 h-10 rounded-full bg-indigo-100 flex items-center justify-center flex-shrink-0">
-                      <span className="material-symbols-outlined text-indigo-600">check_circle</span>
+                  <div className="flex items-start gap-6 relative z-10">
+                    <div className="w-14 h-14 rounded-2xl bg-indigo-600 flex items-center justify-center flex-shrink-0 shadow-lg shadow-indigo-200 animate-bounce-subtle">
+                      <span className="material-symbols-outlined text-white text-3xl">check</span>
                     </div>
-                    <div>
-                      <h3 className="text-lg font-bold text-indigo-900 font-headline mb-1">Davet Bağlantısı Hazır!</h3>
-                      <p className="text-sm text-indigo-800/80 font-body leading-relaxed">
-                        Ücretsiz SMTP servislerindeki kotalar veya spam filtreleri nedeniyle yaşanabilecek teslimat sorunlarını aşmak için sistem, kopyalayıp doğrudan paylaşabileceğiniz güvenilir bir davet bağlantısı oluşturdu.
+                    <div className="flex-1">
+                      <h3 className="text-xl font-bold text-indigo-900 font-headline mb-2">Harika! Davet Hazır.</h3>
+                      <p className="text-sm text-indigo-800/70 font-body leading-relaxed mb-6">
+                        Mail sunucusu kısıtlamalarına takılmadan ekibinizi büyütebilirsiniz. Aşağıdaki linki kopyalayıp yeni üyenize iletmeniz yeterli!
                       </p>
+                      
+                      <div className="flex flex-col sm:flex-row gap-3">
+                        <div className="relative flex-1 group">
+                          <input 
+                            type="text" 
+                            readOnly 
+                            value={inviteUrl} 
+                            className="w-full bg-white/80 backdrop-blur-sm border-2 border-indigo-100 text-indigo-900 text-sm rounded-xl px-5 py-4 font-mono outline-none ring-primary/10 transition-all focus:border-indigo-400 select-all"
+                          />
+                          <div className="absolute right-4 top-1/2 -translate-y-1/2 text-[10px] font-bold text-indigo-300 uppercase tracking-widest opacity-0 group-hover:opacity-100 transition-opacity">Magic Link</div>
+                        </div>
+                        <button 
+                          onClick={() => {
+                            navigator.clipboard.writeText(inviteUrl);
+                            toast.success("Bağlantı kopyalandı!");
+                          }}
+                          className="bg-indigo-600 hover:bg-indigo-700 active:scale-95 text-white px-8 py-4 rounded-xl font-bold text-sm transition-all flex items-center justify-center gap-2 flex-shrink-0 shadow-lg shadow-indigo-200"
+                        >
+                          <span className="material-symbols-outlined text-xl">content_copy</span>
+                          Linki Kopyala
+                        </button>
+                      </div>
+                      
+                      <div className="mt-8 pt-6 border-t border-indigo-100/50 flex items-center justify-between">
+                        <div className="flex items-center gap-2 text-[10px] font-bold text-indigo-300 uppercase tracking-widest">
+                          <span className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></span>
+                          Bağlantı Aktif
+                        </div>
+                        <button 
+                          onClick={() => router.push('/settings/users')}
+                          className="text-sm font-bold text-indigo-600 hover:text-indigo-800 transition-colors flex items-center gap-1 font-body group"
+                        >
+                          Ekip Listesine Dön 
+                          <span className="material-symbols-outlined text-sm group-hover:translate-x-1 transition-transform">arrow_forward</span>
+                        </button>
+                      </div>
                     </div>
-                  </div>
-
-                  <div className="mt-4 flex gap-2">
-                    <div className="relative flex-1">
-                      <input 
-                        type="text" 
-                        readOnly 
-                        value={inviteUrl} 
-                        className="w-full bg-white border border-indigo-200 text-indigo-900 text-sm rounded-lg px-4 py-3 font-mono outline-none focus:ring-2 focus:ring-indigo-500/20"
-                      />
-                    </div>
-                    <button 
-                      onClick={() => {
-                        navigator.clipboard.writeText(inviteUrl);
-                        toast.success("Bağlantı kopyalandı!");
-                      }}
-                      className="bg-indigo-600 hover:bg-indigo-700 text-white px-6 py-3 rounded-lg font-bold text-sm transition-colors flex items-center gap-2 flex-shrink-0"
-                    >
-                      <span className="material-symbols-outlined text-sm">content_copy</span>
-                      Kopyala
-                    </button>
-                  </div>
-                  
-                  <div className="mt-6 pt-4 border-t border-indigo-100/50 flex justify-end">
-                    <button 
-                      onClick={() => router.push('/settings/users')}
-                      className="text-sm font-bold text-indigo-600 hover:text-indigo-800 transition-colors flex items-center gap-1 font-body"
-                    >
-                      Ekip Listesine Dön <span className="material-symbols-outlined text-sm">arrow_forward</span>
-                    </button>
                   </div>
                 </div>
               </div>

@@ -10,8 +10,7 @@ import { inviteUserAction } from "./actions";
 
 export default function InviteUserPage() {
   const router = useRouter();
-  const [formData, setFormData] = useState({
-    full_name: "",
+  const [formData, setFormData] = useState<{ email: string; role: string }>({
     email: "",
     role: "accounting"
   });
@@ -20,8 +19,8 @@ export default function InviteUserPage() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!formData.full_name || !formData.email) {
-      toast.error("Lütfen tüm alanları doldurun.");
+    if (!formData.email) {
+      toast.error("Lütfen e-posta adresini girin.");
       return;
     }
 
@@ -32,28 +31,17 @@ export default function InviteUserPage() {
       const { data: { user: authUser } } = await supabase.auth.getUser();
       if (!authUser) throw new Error("Oturum bulunamadı.");
 
-      // 1. Get current user's company context
-      const { data: myProfile } = await supabase
-        .from("profiles")
-        .select("company_name")
-        .eq("id", authUser.id)
-        .single();
-
-      const company = myProfile?.company_name || "Belirtilmemiş";
-
       // 2. Call server action for real invitation email
       const result = await inviteUserAction({
         email: formData.email,
-        full_name: formData.full_name,
-        role: formData.role,
-        company_name: company
+        role: formData.role
       });
 
       if (!result.success) {
         throw new Error(result.message);
       }
 
-      toast.success(`${formData.full_name} sisteme başarıyla eklendi!`, { id: toastId });
+      toast.success(`${formData.email} sisteme başarıyla eklendi!`, { id: toastId });
       
       if (result.inviteUrl) {
         setInviteUrl(result.inviteUrl);
@@ -78,22 +66,6 @@ export default function InviteUserPage() {
           </div>
           <div className="bg-surface-container-lowest p-8 rounded-xl shadow-sm border border-outline-variant/10">
             <form className="space-y-6" onSubmit={handleSubmit}>
-              {/* Name Field */}
-              <div className="space-y-2">
-                <label className="block text-xs font-bold uppercase tracking-wider text-outline font-label" htmlFor="full_name">Ad Soyad</label>
-                <div className="relative">
-                  <span className="absolute left-4 top-1/2 -translate-y-1/2 material-symbols-outlined text-outline">person</span>
-                  <input
-                    className="w-full pl-12 pr-4 py-3 bg-surface-container-low border-none focus:ring-2 focus:ring-primary/20 rounded-lg text-on-surface transition-all font-body outline-none"
-                    id="full_name"
-                    placeholder="Örn: Mehmet Öz"
-                    type="text"
-                    required
-                    value={formData.full_name}
-                    onChange={(e) => setFormData({ ...formData, full_name: e.target.value })}
-                  />
-                </div>
-              </div>
               {/* Email Field */}
               <div className="space-y-2">
                 <label className="block text-xs font-bold uppercase tracking-wider text-outline font-label" htmlFor="email">E-posta Adresi</label>

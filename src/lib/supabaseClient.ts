@@ -1,4 +1,4 @@
-import { createClient } from '@supabase/supabase-js';
+import { createBrowserClient } from '@supabase/ssr';
 // 1. database.types.ts dosyasını oluşturduktan sonra aşağıdaki yorum satırını kaldırarak import edin:
 // import { Database } from '../database.types';
 
@@ -10,6 +10,6 @@ if (!supabaseUrl || !supabaseAnonKey) {
 }
 
 // 2. Database generic tipini (Database) oluşturduktan sonra aşağıdaki şekilde kullanabilirsiniz:
-// export const supabase = createClient<Database>(supabaseUrl, supabaseAnonKey);
+// export const supabase = createBrowserClient<Database>(supabaseUrl, supabaseAnonKey);
 
-export const supabase = createClient(supabaseUrl, supabaseAnonKey);
+export const supabase = createBrowserClient(supabaseUrl, supabaseAnonKey);

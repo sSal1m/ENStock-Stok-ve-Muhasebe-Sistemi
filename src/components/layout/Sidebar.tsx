@@ -8,6 +8,7 @@ import { supabase } from '@/lib/supabaseClient';
 import { usePermissions } from '@/hooks/usePermissions';
 
 interface NavLink {
+  id: string;
   href: string;
   label: string;
   icon: string;
@@ -18,15 +19,14 @@ interface UserProfile {
 }
 
 const navLinks: NavLink[] = [
-  { href: '/dashboard', label: 'Gösterge Paneli', icon: 'dashboard' },
-  { href: '/inventory', label: 'Stok', icon: 'inventory_2' },
-  { href: '/contacts', label: 'Cari (Kişiler)', icon: 'contacts' },
-  { href: '/quotes', label: 'Teklifler', icon: 'description' },
-  { href: '/invoices', label: 'Faturalar', icon: 'receipt' },
-  { href: '/quotes', label: 'Teklifler', icon: 'request_quote' },
-  { href: '/reports', label: 'Raporlar', icon: 'analytics' },
-  { href: '/trash', label: 'Çöp Kutusu', icon: 'delete' },
-  { href: '/settings/profile', label: 'Ayarlar', icon: 'settings' },
+  { id: 'dashboard', href: '/dashboard', label: 'Gösterge Paneli', icon: 'dashboard' },
+  { id: 'inventory', href: '/inventory', label: 'Stok', icon: 'inventory_2' },
+  { id: 'contacts', href: '/contacts', label: 'Cari (Kişiler)', icon: 'contacts' },
+  { id: 'quotes', href: '/quotes', label: 'Teklifler', icon: 'description' },
+  { id: 'invoices', href: '/invoices', label: 'Faturalar', icon: 'receipt' },
+  { id: 'reports', href: '/reports', label: 'Raporlar', icon: 'analytics' },
+  { id: 'trash', href: '/trash', label: 'Çöp Kutusu', icon: 'delete' },
+  { id: 'settings', href: '/settings/profile', label: 'Ayarlar', icon: 'settings' },
 ];
 
 export default function Sidebar() {
@@ -97,7 +97,7 @@ export default function Sidebar() {
 
           return (
             <Link
-              key={link.href}
+              key={link.id}
               href={link.href}
               className={`flex items-center gap-3 px-4 py-3 rounded-lg transition-all ${
                 isActive(link.href)

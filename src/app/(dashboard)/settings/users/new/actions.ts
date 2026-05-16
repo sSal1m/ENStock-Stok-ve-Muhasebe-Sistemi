@@ -140,7 +140,11 @@ export async function createInvitationAction(input: InvitationInput): Promise<In
     });
 
     revalidatePath("/settings/users");
-    return { success: true };
+    
+    const appUrl = process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000";
+    const inviteUrl = `${appUrl}/register/invite?email=${encodeURIComponent(email)}&code=${otpCode}`;
+
+    return { success: true, inviteUrl };
   } catch (error: any) {
     console.error("Create Invitation Error:", error);
     return { success: false, message: error.message || "Unexpected server error." };

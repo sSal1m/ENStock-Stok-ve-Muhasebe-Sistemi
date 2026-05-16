@@ -96,3 +96,127 @@ export async function cariEkleAction(formData: FormData): Promise<CariFormState>
     return { success: false, message: "Beklenmeyen bir sunucu hatası oluştu." };
   }
 }
+
+export async function cariGuncelleAction(formData: FormData): Promise<CariFormState> {
+  const id = (formData.get("id") as string)?.trim();
+  const tip = (formData.get("tip") as string)?.trim();
+  const unvan = (formData.get("unvan") as string)?.trim();
+  const vergiNo = (formData.get("vergi_no") as string)?.trim();
+  const vergiDairesi = (formData.get("vergi_dairesi") as string)?.trim();
+  const telefon = (formData.get("telefon") as string)?.trim();
+  const email = (formData.get("email") as string)?.trim();
+  const adres = (formData.get("adres") as string)?.trim();
+  const userId = (formData.get("user_id") as string)?.trim();
+
+  // Validation
+  if (!id) return { success: false, message: "Cari ID bulunamadı." };
+  if (!unvan || unvan.length < 2) return { success: false, message: "Firma/Şahıs adı en az 2 karakter olmalıdır." };
+  if (!userId) return { success: false, message: "Kullanıcı doğrulaması başarısız. Lütfen giriş yapın." };
+
+  const type = (tip === "Tedarikçi" || tip === "supplier") ? "supplier" : "customer";
+
+  try {
+    const { data: updatedContact, error } = await supabaseServer
+      .from("contacts")
+      .update({
+        type,
+        name: unvan,
+        tax_number: vergiNo || null,
+        tax_office: vergiDairesi || null,
+        phone: telefon || null,
+        email: email || null,
+        address: adres || null,
+      })
+      .eq("id", id)
+      .select()
+      .single();
+
+    if (error) {
+      console.error("Supabase UPDATE hatası:", error);
+      return { success: false, message: `Güncelleme hatası: ${error.message}` };
+    }
+
+    revalidatePath(`/contacts/${id}`);
+    revalidatePath("/contacts");
+
+    return { 
+      success: true, 
+      message: `"${unvan}" başarıyla güncellendi!`,
+      data: updatedContact
+    };
+  } catch (err) {
+    console.error("Beklenmeyen hata:", err);
+    return { success: false, message: "Beklenmeyen bir sunucu hatası oluştu." };
+  }
+}
+
+export async function islemYapAction(formData: FormData) {
+  const cariId = (formData.get("cari_id") as string)?.trim();
+  const islemTuru = (formData.get("islem_turu") as string)?.trim(); // "Tahsilat" | "Ödeme"
+  const tutarStr = (formData.get("tutar") as string)?.trim();
+  const notlar = (formData.get("notlar") as string)?.trim();
+  
+  if (!cariId || !islemTuru || !tutarStr) {
+    return { success: false, message: "Eksik bilgi girdiniz." };
+  }
+
+  const tutar = parseFloat(tutarStr);
+  if (isNaN(tutar) || tutar <= 0) {
+    return { success: false, message: "Geçerli bir tutar giriniz." };
+  }
+
+  try {
+    // 1. İşlemi cari_hareketler tablosuna kaydet
+    const { error: insertError } = await supabaseServer
+      .from("cari_hareketler")
+      .insert([
+        {
+          cari_id: cariId,
+          islem_turu: islemTuru,
+          tutar: tutar,
+          notlar: notlar || null,
+          tarih: new Date().toISOString()
+        }
+      ]);
+
+    if (insertError) {
+      console.error("cari_hareketler INSERT hatası:", insertError);
+      return { success: false, message: `İşlem kaydedilemedi: ${insertError.message}` };
+    }
+
+    // 2. Bakiyeyi güncelle
+    const bakiyeDegisimi = islemTuru === "Tahsilat" ? -tutar : tutar;
+
+    const { data: contact, error: fetchError } = await supabaseServer
+      .from("contacts")
+      .select("current_balance")
+      .eq("id", cariId)
+      .single();
+
+    if (fetchError) {
+      console.error("Cari bakiye okuma hatası:", fetchError);
+      return { success: false, message: "Bakiye okunamadı." };
+    }
+
+    const yeniBakiye = Number(contact.current_balance || 0) + bakiyeDegisimi;
+
+    const { error: updateError } = await supabaseServer
+      .from("contacts")
+      .update({ current_balance: yeniBakiye })
+      .eq("id", cariId);
+
+    if (updateError) {
+      console.error("Cari bakiye güncelleme hatası:", updateError);
+      return { success: false, message: "Bakiye güncellenemedi." };
+    }
+
+    revalidatePath(`/contacts/${cariId}`);
+    revalidatePath("/contacts");
+
+    return { success: true, message: "İşlem başarıyla kaydedildi." };
+
+  } catch (err) {
+    console.error("islemYapAction hatası:", err);
+    return { success: false, message: "Beklenmeyen bir hata oluştu." };
+  }
+}

@@ -47,6 +47,7 @@ export default function CreateInvoiceForm({ userId }: { userId: string }) {
   const router = useRouter();
   const searchParams = useSearchParams();
   const editInvoiceId = searchParams.get("id");  // ✅ Draft fatura ID'si
+  const preselectedContactId = searchParams.get("contact_id"); // ✅ URL'den gelen cari ID
   const [isEditMode, setIsEditMode] = useState(!!editInvoiceId);
   
   const [toasts, setToasts] = useState<Toast[]>([]);
@@ -178,6 +179,29 @@ export default function CreateInvoiceForm({ userId }: { userId: string }) {
 
     loadDraftInvoice();
   }, [editInvoiceId]);
+
+  // ✅ Load preselected contact
+  useEffect(() => {
+    if (preselectedContactId && !editInvoiceId) {
+      const loadContact = async () => {
+        try {
+          const { data, error } = await supabase
+            .from("contacts")
+            .select("id, name, tax_number, tax_office, type")
+            .eq("id", preselectedContactId)
+            .single();
+
+          if (!error && data) {
+            setSelectedContact(data as Contact);
+            setInvoiceType(data.type === "supplier" ? "purchase" : "sales");
+          }
+        } catch (error) {
+          console.error("Cari yükleme hatası:", error);
+        }
+      };
+      loadContact();
+    }
+  }, [preselectedContactId, editInvoiceId]);
 
   // Add toast notification
   const addToast = (type: Toast["type"], title: string, message: string) => {

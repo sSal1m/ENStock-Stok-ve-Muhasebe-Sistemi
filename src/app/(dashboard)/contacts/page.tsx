@@ -120,6 +120,10 @@ export default function ContactsPage() {
   const borc = contacts.filter((c) => c.current_balance < 0).reduce((s, c) => s + Math.abs(c.current_balance), 0);
   const aktif = contacts.length;
 
+  const totalVolume = alacak + borc;
+  const alacakPercent = totalVolume === 0 ? 0 : Math.round((alacak / totalVolume) * 100);
+  const borcPercent = totalVolume === 0 ? 0 : Math.round((borc / totalVolume) * 100);
+
   // ── Form Submit Handler ──
   const handleSubmit = (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
@@ -251,8 +255,8 @@ export default function ContactsPage() {
           <div className="mt-2 flex items-end gap-3">
             <p className="text-2xl font-extrabold text-emerald-600 tabular-nums leading-none">{fmt(convert(alacak), viewCurrency)}</p>
             <span className="mb-0.5 inline-flex items-center gap-0.5 text-[11px] font-bold text-emerald-500">
-              <span className="material-symbols-outlined text-[14px]">arrow_upward</span>
-              +12.5%
+              <span className="material-symbols-outlined text-[14px]">pie_chart</span>
+              %{alacakPercent}
             </span>
           </div>
         </div>
@@ -263,8 +267,8 @@ export default function ContactsPage() {
           <div className="mt-2 flex items-end gap-3">
             <p className="text-2xl font-extrabold text-error tabular-nums leading-none">{fmt(convert(borc), viewCurrency)}</p>
             <span className="mb-0.5 inline-flex items-center gap-0.5 text-[11px] font-bold text-error">
-              <span className="material-symbols-outlined text-[14px]">arrow_downward</span>
-              -4.2%
+              <span className="material-symbols-outlined text-[14px]">pie_chart</span>
+              %{borcPercent}
             </span>
           </div>
         </div>

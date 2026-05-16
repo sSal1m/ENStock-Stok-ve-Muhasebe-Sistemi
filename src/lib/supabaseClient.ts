@@ -2,8 +2,8 @@ import { createBrowserClient } from '@supabase/ssr';
 // 1. database.types.ts dosyasını oluşturduktan sonra aşağıdaki yorum satırını kaldırarak import edin:
 // import { Database } from '../database.types';
 
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
+const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
 
 if (!supabaseUrl || !supabaseAnonKey) {
   throw new Error('Supabase URL or Anon Key is missing in environment variables.');

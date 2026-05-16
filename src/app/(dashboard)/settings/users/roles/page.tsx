@@ -4,12 +4,49 @@ import React, { useState, useEffect } from "react";
 import Image from "next/image";
 import { supabase } from "@/lib/supabaseClient";
 import toast from "react-hot-toast";
+import { updateRolePermissionAction } from "./actions";
 
+// Modül yetki kuralları:
+//  view   → görüntüleme gösterilsin mi?
+//  create → ekleme gösterilsin mi?
+//  edit   → düzenleme gösterilsin mi?
+//  delete → silme gösterilsin mi?
 const MODULES = [
-  { id: "stock", title: "Stok Yönetimi", description: "Ürün ve Depo Hareketleri", icon: "inventory_2", color: "blue" },
-  { id: "contacts", title: "Cari Hesaplar", description: "Müşteri ve Tedarikçi Portföyü", icon: "groups", color: "indigo" },
-  { id: "invoices", title: "Faturalar", description: "Alış, Satış ve Gider Faturası", icon: "receipt_long", color: "purple" },
-  { id: "reports", title: "Raporlar", description: "Finansal Analiz ve Grafik", icon: "analytics", color: "emerald" },
+  {
+    id: "stock",
+    title: "Stok Yönetimi",
+    description: "Ürün ve Depo Hareketleri",
+    icon: "inventory_2",
+    color: "blue",
+    actions: { view: true, create: true, edit: true, delete: true },
+  },
+  {
+    id: "contacts",
+    title: "Cari Kart",
+    description: "Müşteri ve Tedarikçi Portföyü",
+    icon: "groups",
+    color: "indigo",
+    // Düzenleme fonksiyonu yok → edit sütunu tamamen gizli
+    actions: { view: true, create: true, edit: false, delete: true },
+  },
+  {
+    id: "invoices",
+    title: "Fatura",
+    description: "Alış, Satış ve Gider Faturası",
+    icon: "receipt_long",
+    color: "purple",
+    // Düzenleme fonksiyonu yok → edit sütunu tamamen gizli
+    actions: { view: true, create: true, edit: false, delete: true },
+  },
+  {
+    id: "reports",
+    title: "Raporlar",
+    description: "Finansal Analiz ve Grafik",
+    icon: "analytics",
+    color: "emerald",
+    // Sadece görüntüleme var; ekleme ve silme tamamen yok
+    actions: { view: true, create: false, edit: false, delete: false },
+  },
 ];
 
 const ROLES = [
@@ -135,18 +172,37 @@ export default function RolesPermissionsPage() {
     init();
   }, []);
 
-  const togglePermission = (moduleId: string, permKey: string) => {
+  const togglePermission = async (moduleId: string, permKey: 'view' | 'create' | 'edit' | 'delete') => {
+    // 1. Optimistic UI - Ekranda anında değişsin
+    const previousMatrix = { ...matrix };
+    let newPerms: any = {};
+
     setMatrix(prev => {
       const newMatrix = { ...prev };
       const rolePerms = { ...(newMatrix[activeRoleId] || {}) };
       const modulePerms = { ...(rolePerms[moduleId] || { view: false, create: false, edit: false, delete: false }) };
       
       modulePerms[permKey] = !modulePerms[permKey];
+      newPerms = { ...modulePerms }; // Sunucuya göndermek için kopyala
+      
       rolePerms[moduleId] = modulePerms;
       newMatrix[activeRoleId] = rolePerms;
-      
       return newMatrix;
     });
+
+    // 2. Server Action ile veritabanına anında yaz (Auto-Save)
+    const result = await updateRolePermissionAction(activeRoleId, moduleId, {
+      can_view: newPerms.view,
+      can_create: newPerms.create,
+      can_edit: newPerms.edit,
+      can_delete: newPerms.delete
+    });
+
+    if (!result.success) {
+      toast.error(result.error || "Yetki güncellenirken hata oluştu.");
+      // Hata olursa UI'ı eski haline döndür
+      setMatrix(previousMatrix);
+    }
   };
 
   const handleSave = async () => {
@@ -259,19 +315,33 @@ export default function RolesPermissionsPage() {
           <table className="w-full text-left border-separate border-spacing-y-4 px-6 font-body">
             <thead>
               <tr className="text-on-surface-variant">
-                <th className="py-4 px-6 font-label text-[11px] uppercase tracking-widest font-bold opacity-70">Modül Adı</th>
+                <th className="py-4 px-6 font-label text-[11px] uppercase tracking-widest font-bold opacity-70">Modul Adı</th>
                 <th className="py-4 px-6 font-label text-[11px] uppercase tracking-widest font-bold opacity-70 text-center">Görüntüle</th>
-                <th className="py-4 px-6 font-label text-[11px] uppercase tracking-widest font-bold opacity-70 text-center">Ekle</th>
-                <th className="py-4 px-6 font-label text-[11px] uppercase tracking-widest font-bold opacity-70 text-center">Düzenle</th>
-                <th className="py-4 px-6 font-label text-[11px] uppercase tracking-widest font-bold opacity-70 text-center">Sil</th>
+                {/* Ekleme: en az bir modülün create aksiyonu varsa sütunu göster */}
+                {MODULES.some(m => m.actions.create) && (
+                  <th className="py-4 px-6 font-label text-[11px] uppercase tracking-widest font-bold opacity-70 text-center">Ekle</th>
+                )}
+                {/* Düzenleme: en az bir modülün edit aksiyonu varsa sütunu göster */}
+                {MODULES.some(m => m.actions.edit) && (
+                  <th className="py-4 px-6 font-label text-[11px] uppercase tracking-widest font-bold opacity-70 text-center">Düzenleme</th>
+                )}
+                {/* Silme: en az bir modülün delete aksiyonu varsa sütunu göster */}
+                {MODULES.some(m => m.actions.delete) && (
+                  <th className="py-4 px-6 font-label text-[11px] uppercase tracking-widest font-bold opacity-70 text-center">Sil</th>
+                )}
                 <th className="py-4 px-6 font-label text-[11px] uppercase tracking-widest font-bold opacity-70 text-right">Durum</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-50/50">
               {MODULES.map(module => {
                 const perms = activeRolePerms[module.id] || { view: false, create: false, edit: false, delete: false };
-                const isFullAccess = perms.view && perms.create && perms.edit && perms.delete;
-                
+                // "Raporlar" için sadece view aktif ve disabled; diğerleri yoktur
+                const forceViewOnly = module.id === 'reports';
+                // Kural gereği "tam erişim" badge'i: sadece müvcut aksiyonlar değerlendirilir
+                const availableActions = (Object.keys(module.actions) as Array<keyof typeof module.actions>)
+                  .filter(k => module.actions[k]);
+                const isFullAccess = availableActions.every(k => perms[k]);
+
                 return (
                   <tr key={module.id} className="group hover:bg-slate-50/20 transition-all duration-200">
                     <td className="py-5 px-6 rounded-l-2xl">
@@ -290,18 +360,58 @@ export default function RolesPermissionsPage() {
                         </div>
                       </div>
                     </td>
+
+                    {/* Görüntüleme — her modülün var */}
                     <td className="py-5 px-6 text-center">
-                      <Switch checked={perms.view} onChange={() => togglePermission(module.id, 'view')} />
+                      <Switch
+                        checked={forceViewOnly ? true : perms.view}
+                        onChange={() => togglePermission(module.id, 'view')}
+                        disabled={forceViewOnly}
+                      />
                     </td>
-                    <td className="py-5 px-6 text-center">
-                      <Switch checked={perms.create} onChange={() => togglePermission(module.id, 'create')} />
-                    </td>
-                    <td className="py-5 px-6 text-center">
-                      <Switch checked={perms.edit} onChange={() => togglePermission(module.id, 'edit')} />
-                    </td>
-                    <td className="py-5 px-6 text-center">
-                      <Switch checked={perms.delete} onChange={() => togglePermission(module.id, 'delete')} />
-                    </td>
+
+                    {/* Ekleme — modül kuralına göre hücre gösterilir ya da boş kalır */}
+                    {MODULES.some(m => m.actions.create) && (
+                      <td className="py-5 px-6 text-center">
+                        {module.actions.create ? (
+                          <Switch
+                            checked={perms.create}
+                            onChange={() => togglePermission(module.id, 'create')}
+                          />
+                        ) : (
+                          <span className="text-slate-200 text-lg select-none" title="Bu modül için mevcut değil">—</span>
+                        )}
+                      </td>
+                    )}
+
+                    {/* Düzenleme — modül kuralına göre hücre gösterilir ya da boş kalır */}
+                    {MODULES.some(m => m.actions.edit) && (
+                      <td className="py-5 px-6 text-center">
+                        {module.actions.edit ? (
+                          <Switch
+                            checked={perms.edit}
+                            onChange={() => togglePermission(module.id, 'edit')}
+                          />
+                        ) : (
+                          <span className="text-slate-200 text-lg select-none" title="Bu modül için mevcut değil">—</span>
+                        )}
+                      </td>
+                    )}
+
+                    {/* Silme — modül kuralına göre hücre gösterilir ya da boş kalır */}
+                    {MODULES.some(m => m.actions.delete) && (
+                      <td className="py-5 px-6 text-center">
+                        {module.actions.delete ? (
+                          <Switch
+                            checked={perms.delete}
+                            onChange={() => togglePermission(module.id, 'delete')}
+                          />
+                        ) : (
+                          <span className="text-slate-200 text-lg select-none" title="Bu modül için mevcut değil">—</span>
+                        )}
+                      </td>
+                    )}
+
                     <td className="py-5 px-6 rounded-r-2xl text-right">
                       <span className={`text-[9px] font-bold px-3 py-1.5 rounded-full border transition-all ${
                         isFullAccess 
@@ -354,27 +464,41 @@ export default function RolesPermissionsPage() {
   );
 }
 
-function Switch({ checked, onChange }: { checked: boolean, onChange: () => void }) {
+function Switch({ checked, onChange, disabled = false }: { checked: boolean; onChange: () => void; disabled?: boolean }) {
   return (
     <div 
-      className="inline-flex items-center cursor-pointer relative select-none"
+      className={`inline-flex items-center relative select-none ${
+        disabled ? "cursor-not-allowed opacity-70" : "cursor-pointer"
+      }`}
       onClick={(e) => {
         e.preventDefault();
         e.stopPropagation();
-        onChange();
+        if (!disabled) onChange();
       }}
-      role="button"
-      aria-pressed={checked}
+      role="switch"
+      aria-checked={checked}
+      aria-disabled={disabled}
+      title={disabled ? "Bu ayar şimdilik kilitlidir" : undefined}
     >
       {/* Switch Background */}
       <div className={`block w-10 h-5 rounded-full transition-all duration-300 ease-in-out ${
-        checked ? 'bg-indigo-600 shadow-inner' : 'bg-slate-200'
+        checked
+          ? disabled ? 'bg-indigo-400 shadow-inner' : 'bg-indigo-600 shadow-inner'
+          : 'bg-slate-200'
       }`}></div>
       
       {/* Switch Dot */}
       <div className={`absolute top-0.5 left-0.5 bg-white w-4 h-4 rounded-full transition-all duration-300 ease-in-out shadow-md transform ${
         checked ? 'translate-x-5 scale-110' : 'translate-x-0 scale-100'
       }`}></div>
+
+      {/* Kilit ikonu — disabled ise */}
+      {disabled && (
+        <span
+          className="absolute -top-1.5 -right-1.5 material-symbols-outlined text-[10px] text-slate-400"
+          style={{ fontSize: 10 }}
+        >lock</span>
+      )}
     </div>
   );
 }

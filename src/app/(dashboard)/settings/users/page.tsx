@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import Image from "next/image";
 import Link from "next/link";
 import { supabase } from "@/lib/supabaseClient";
@@ -10,6 +10,7 @@ interface UserProfile {
   id: string;
   full_name: string;
   company_name: string;
+  business_id: string | null;
   role: string;
   updated_at: string;
   email?: string;
@@ -23,24 +24,36 @@ export default function UserListPage() {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editForm, setEditForm] = useState({ full_name: "", role: "" });
 
-  const fetchUsers = async () => {
+  const fetchUsers = useCallback(async () => {
     setIsLoading(true);
     try {
       const { data: { user: authUser } } = await supabase.auth.getUser();
       if (!authUser) return;
 
+      // Önce admin'in kendi profilinden business_id'yi al
       const { data: myProfile } = await supabase
         .from("profiles")
-        .select("company_name")
+        .select("business_id")
         .eq("id", authUser.id)
         .single();
 
-      const company = myProfile?.company_name || "Belirtilmemiş";
+      const businessId = myProfile?.business_id;
 
+      if (!businessId) {
+        // Fallback: business_id yoksa sadece kendi profilini göster
+        const { data: selfData } = await supabase
+          .from("profiles")
+          .select("*")
+          .eq("id", authUser.id);
+        setUsers((selfData || []) as UserProfile[]);
+        return;
+      }
+
+      // business_id eşleşen tüm profilleri getir (cache'siz)
       const { data, error } = await supabase
         .from("profiles")
         .select("*")
-        .eq("company_name", company)
+        .eq("business_id", businessId)
         .order("updated_at", { ascending: false });
 
       if (error) throw error;
@@ -50,11 +63,27 @@ export default function UserListPage() {
     } finally {
       setIsLoading(false);
     }
-  };
+  }, []);
 
   useEffect(() => {
     fetchUsers();
-  }, []);
+
+    // Realtime: profiles tablosuna INSERT/UPDATE gelince listeyi yenile
+    const channel = supabase
+      .channel("public:profiles:realtime")
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "profiles" },
+        () => {
+          fetchUsers();
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [fetchUsers]);
 
   const handleDelete = async (id: string) => {
     if (id === (await supabase.auth.getUser()).data.user?.id) {

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import toast, { Toaster } from "react-hot-toast";
 import { supabase } from "@/lib/supabaseClient";
@@ -286,6 +286,33 @@ export default function InventoryPage() {
       </div>
     );
   }
+
+  // ── Kategori Dağılımı Hesaplama ─────────────────────────────────────────
+  const categoryDistribution = useMemo(() => {
+    if (!products || products.length === 0) return [];
+    
+    const dist: Record<string, number> = {};
+    products.forEach(p => {
+      let catName = "Kategorisiz";
+      if (p.categories) {
+        if (Array.isArray(p.categories)) {
+          catName = p.categories[0]?.name || "Kategorisiz";
+        } else {
+          catName = (p.categories as { name: string }).name || "Kategorisiz";
+        }
+      }
+      dist[catName] = (dist[catName] || 0) + 1;
+    });
+
+    const total = products.length;
+    return Object.entries(dist)
+      .map(([label, count]) => ({
+        label,
+        percent: Math.round((count / total) * 100)
+      }))
+      .sort((a, b) => b.percent - a.percent)
+      .slice(0, 4); // Top 4 categories
+  }, [products]);
 
   // ── Sayfa İçeriği ─────────────────────────────────────────────────────────
   return (
@@ -689,21 +716,21 @@ export default function InventoryPage() {
             <h4 className="text-lg font-extrabold mb-1">Kategori Dağılımı</h4>
             <p className="text-xs opacity-80 mb-6">Envanter hacmi analizi</p>
             <div className="space-y-4">
-              {[
-                { label: "Elektronik", percent: 42 },
-                { label: "Mobilya", percent: 28 },
-                { label: "Diğer", percent: 30 },
-              ].map(({ label, percent }) => (
-                <div key={label}>
-                  <div className="flex justify-between text-[11px] font-bold mb-1 uppercase tracking-wider">
-                    <span>{label}</span>
-                    <span>%{percent}</span>
+              {categoryDistribution.length > 0 ? (
+                categoryDistribution.map(({ label, percent }) => (
+                  <div key={label}>
+                    <div className="flex justify-between text-[11px] font-bold mb-1 uppercase tracking-wider">
+                      <span className="truncate pr-2">{label}</span>
+                      <span>%{percent}</span>
+                    </div>
+                    <div className="h-1.5 bg-white/20 rounded-full overflow-hidden">
+                      <div className="bg-white h-full" style={{ width: `${percent}%` }} />
+                    </div>
                   </div>
-                  <div className="h-1.5 bg-white/20 rounded-full overflow-hidden">
-                    <div className="bg-white h-full" style={{ width: `${percent}%` }} />
-                  </div>
-                </div>
-              ))}
+                ))
+              ) : (
+                <div className="text-[11px] font-bold opacity-80 mt-4">Veri bulunmuyor</div>
+              )}
             </div>
           </div>
           <div className="absolute -right-10 -bottom-10 opacity-20 transform -rotate-12">

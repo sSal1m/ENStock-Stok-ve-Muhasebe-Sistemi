@@ -1,47 +1,41 @@
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
 import { createServerClient } from "@supabase/ssr";
-
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
-const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
+import type { CookieOptions } from "@supabase/ssr";
 
 export function proxy(request: NextRequest) {
-  const { pathname } = request.nextUrl;
-
-  const isDashboardRoute =
-    pathname.startsWith("/dashboard") ||
-    pathname.startsWith("/inventory") ||
-    pathname.startsWith("/contacts") ||
-    pathname.startsWith("/invoices") ||
-    pathname.startsWith("/reports") ||
-    pathname.startsWith("/settings");
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
+  const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
 
   const response = NextResponse.next();
 
   const supabase = createServerClient(supabaseUrl, supabaseAnonKey, {
     cookies: {
-      get(name) {
-        return request.cookies.get(name)?.value;
+      getAll() {
+        return request.cookies.getAll();
       },
-      set(name, value, options) {
-        response.cookies.set({ name, value, ...options });
-      },
-      remove(name, options) {
-        response.cookies.set({ name, value: "", ...options, maxAge: 0 });
+      setAll(
+        cookiesToSet: { name: string; value: string; options: CookieOptions }[]
+      ) {
+        cookiesToSet.forEach(({ name, value, options }) => {
+          response.cookies.set({ name, value, ...options });
+        });
       },
     },
   });
 
-  // Keep the session fresh by reading the user; cookies are updated on the response.
+  // Oturumu taze tut — auth cookie'leri response'a yansıtılır.
   void supabase.auth.getUser();
-
-  if (isDashboardRoute) {
-    return response;
-  }
 
   return response;
 }
 
 export const config = {
-  matcher: ["/((?!api|_next/static|_next/image|favicon.ico).*)"],
+  matcher: [
+    /*
+     * API rotaları, _next/static, _next/image, favicon ve public dosyaları hariç
+     * tüm istekleri eşleştir.
+     */
+    "/((?!api|_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)",
+  ],
 };

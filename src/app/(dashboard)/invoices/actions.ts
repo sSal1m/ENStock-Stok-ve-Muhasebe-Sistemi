@@ -631,8 +631,9 @@ export async function createInvoiceAction(request: CreateInvoiceRequest): Promis
       }
 
       // ═══════════════════════════════════════════
-      // STEP 6: UPDATE CONTACT BALANCE
+      // STEP 6: UPDATE CONTACT BALANCE + CREATE CONTACT LOG
       // ═══════════════════════════════════════════
+      // ✅ inventory_logs pattern: bakiye UPDATE + contact_logs INSERT
       if (shouldProcessStock) {  // ✅ Only if transitioning from draft->paid
         const balanceChange = invoice_type === "sales" ? totalAmount : -totalAmount;
         
@@ -645,8 +646,10 @@ export async function createInvoiceAction(request: CreateInvoiceRequest): Promis
         if (fetchError) {
           console.error("❌ [STEP 6] Error fetching contact balance:", fetchError);
         } else if (currentContact) {
-          const newBalance = Number(currentContact.current_balance || 0) + balanceChange;
+          const previousBalance = Number(currentContact.current_balance || 0);
+          const newBalance = previousBalance + balanceChange;
           
+          // ✅ UPDATE contact balance
           const { error: updateError } = await supabaseServer
             .from("contacts")
             .update({ current_balance: newBalance })
@@ -658,11 +661,41 @@ export async function createInvoiceAction(request: CreateInvoiceRequest): Promis
               contact_id,
             });
           } else {
-            console.log("✅ [STEP 6] Contact balance updated:", {
-              contact_id,
-              newBalance,
-              change: balanceChange,
-            });
+            // ✅ INSERT contact_logs record (audit trail)
+            const actionType = invoice_type === "sales" ? "invoice_sale" : "invoice_purchase";
+            const note = `Fatura ${newInvoice.invoice_number} - ${invoice_type === "sales" ? "Satış" : "Alış"} İşlemi`;
+            
+            const { error: logError } = await supabaseServer
+              .from("contact_logs")
+              .insert([
+                {
+                  business_id: user_id,
+                  contact_id,
+                  invoice_id: invoiceIdToUse,
+                  action_type: actionType,
+                  amount_change: balanceChange,
+                  previous_balance: previousBalance,
+                  new_balance: newBalance,
+                  note,
+                  created_by: user_id,
+                },
+              ]);
+
+            if (logError) {
+              console.error("❌ [STEP 6] Error creating contact log:", {
+                code: logError?.code,
+                message: logError?.message,
+                contact_id,
+              });
+            } else {
+              console.log("✅ [STEP 6] Contact balance updated & logged:", {
+                contact_id,
+                previousBalance,
+                newBalance,
+                change: balanceChange,
+                actionType,
+              });
+            }
           }
         }
       } else {
@@ -724,6 +757,246 @@ export async function createInvoiceAction(request: CreateInvoiceRequest): Promis
         system: errorMessage,
         details: errorStack,
       },
+    };
+  }
+}
+
+/* ═══════════════════════════════════════════
+   UPDATE PROPOSAL ACTION
+   ═══════════════════════════════════════════ */
+
+export async function updateProposalAction(
+  formData: FormData
+): Promise<InvoiceActionState> {
+  try {
+    const userId = formData.get("user_id") as string;
+    const proposalId = formData.get("proposal_id") as string;
+    const proposalType = formData.get("proposal_type") as "sale" | "purchase";
+    const issueDate = formData.get("issue_date") as string;
+    const notes = formData.get("notes") as string;
+    const contactId = formData.get("contact_id") as string;
+    const lineItemsJson = formData.get("line_items") as string;
+
+    if (!userId || !proposalId || !proposalType || !contactId) {
+      return {
+        success: false,
+        message: "Eksik bilgi. Teklif ve cari bilgisi zorunludur.",
+      };
+    }
+
+    const lineItems: InvoiceLineItem[] = JSON.parse(lineItemsJson || "[]");
+    
+    if (lineItems.length === 0) {
+      return {
+        success: false,
+        message: "Teklifte en az bir ürün olması zorunludur.",
+      };
+    }
+
+    // Calculate totals
+    let totalBeforeTax = 0;
+    let totalTax = 0;
+    const processedItems = lineItems.map((item) => {
+      const lineBefore = item.quantity * item.unit_price;
+      const lineVat = lineBefore * (item.vat_rate / 100);
+      totalBeforeTax += lineBefore;
+      totalTax += lineVat;
+      return {
+        product_id: item.product_id,
+        quantity: item.quantity,
+        unit_price: item.unit_price,
+        vat_rate: item.vat_rate,
+        line_total: lineBefore + lineVat,
+      };
+    });
+
+    const totalAmount = totalBeforeTax + totalTax;
+
+    // Delete old proposal items
+    await supabaseServer.from("invoice_items").delete().eq("invoice_id", proposalId);
+
+    // Insert new proposal items
+    const proposalItemsToInsert = processedItems.map((item) => ({
+      invoice_id: proposalId,
+      product_id: item.product_id,
+      quantity: item.quantity,
+      unit_price: item.unit_price,
+      vat_rate: item.vat_rate,
+      line_total: item.line_total,
+    }));
+
+    const { error: insertItemsError } = await supabaseServer
+      .from("invoice_items")
+      .insert(proposalItemsToInsert);
+
+    if (insertItemsError) {
+      return {
+        success: false,
+        message: "Teklif satırları eklenirken hata oluştu.",
+      };
+    }
+
+    // Update proposal
+    const { error: updateError } = await supabaseServer
+      .from("invoices")
+      .update({
+        contact_id: contactId,
+        issue_date: issueDate,
+        notes: notes || null,
+        total_amount: totalAmount,
+        tax_total: totalTax,
+        updated_at: new Date().toISOString(),
+      })
+      .eq("id", proposalId)
+      .eq("user_id", userId)
+      .eq("type", "proposal");
+
+    if (updateError) {
+      return {
+        success: false,
+        message: "Teklif güncellenirken hata oluştu: " + updateError.message,
+      };
+    }
+
+    revalidatePath("/proposals");
+    revalidatePath(`/proposals/${proposalId}`);
+
+    return {
+      success: true,
+      message: "Teklif başarıyla güncellendi.",
+      invoice_id: proposalId,
+    };
+  } catch (error) {
+    console.error("Update proposal error:", error);
+    return {
+      success: false,
+      message: `Beklenmeyen hata: ${(error as Error).message}`,
+    };
+  }
+}
+
+/* ═══════════════════════════════════════════
+   UPDATE INVOICE ACTION
+   ═══════════════════════════════════════════ */
+
+export async function updateInvoiceAction(
+  formData: FormData
+): Promise<InvoiceActionState> {
+  try {
+    const userId = formData.get("user_id") as string;
+    const invoiceId = formData.get("invoice_id") as string;
+    const invoiceType = formData.get("invoice_type") as "sale" | "purchase";
+    const issueDate = formData.get("issue_date") as string;
+    const notes = formData.get("notes") as string;
+    const contactId = formData.get("contact_id") as string;
+    const lineItemsJson = formData.get("line_items") as string;
+
+    if (!userId || !invoiceId || !invoiceType || !contactId) {
+      return {
+        success: false,
+        message: "Eksik bilgi. Fatura ve cari bilgisi zorunludur.",
+      };
+    }
+
+    const lineItems: InvoiceLineItem[] = JSON.parse(lineItemsJson || "[]");
+    
+    if (lineItems.length === 0) {
+      return {
+        success: false,
+        message: "Faturada en az bir ürün olması zorunludur.",
+      };
+    }
+
+    // Calculate totals
+    let totalBeforeTax = 0;
+    let totalTax = 0;
+    const processedItems = lineItems.map((item) => {
+      const lineBefore = item.quantity * item.unit_price;
+      const lineVat = lineBefore * (item.vat_rate / 100);
+      totalBeforeTax += lineBefore;
+      totalTax += lineVat;
+      return {
+        product_id: item.product_id,
+        quantity: item.quantity,
+        unit_price: item.unit_price,
+        vat_rate: item.vat_rate,
+        line_total: lineBefore + lineVat,
+      };
+    });
+
+    const totalAmount = totalBeforeTax + totalTax;
+
+    // Delete old invoice items
+    const { error: deleteItemsError } = await supabaseServer
+      .from("invoice_items")
+      .delete()
+      .eq("invoice_id", invoiceId);
+
+    if (deleteItemsError) {
+      console.error("Error deleting invoice items:", deleteItemsError);
+      return {
+        success: false,
+        message: "Fatura satırları silinirken hata oluştu.",
+      };
+    }
+
+    // Insert new invoice items
+    const invoiceItemsToInsert = processedItems.map((item) => ({
+      invoice_id: invoiceId,
+      product_id: item.product_id,
+      quantity: item.quantity,
+      unit_price: item.unit_price,
+      vat_rate: item.vat_rate,
+      line_total: item.line_total,
+    }));
+
+    const { error: insertItemsError } = await supabaseServer
+      .from("invoice_items")
+      .insert(invoiceItemsToInsert);
+
+    if (insertItemsError) {
+      console.error("Error inserting invoice items:", insertItemsError);
+      return {
+        success: false,
+        message: "Fatura satırları eklenirken hata oluştu.",
+      };
+    }
+
+    // Update invoice
+    const { error: updateError } = await supabaseServer
+      .from("invoices")
+      .update({
+        contact_id: contactId,
+        issue_date: issueDate,
+        notes: notes || null,
+        total_amount: totalAmount,
+        tax_total: totalTax,
+        updated_at: new Date().toISOString(),
+      })
+      .eq("id", invoiceId)
+      .eq("user_id", userId);
+
+    if (updateError) {
+      console.error("Invoice update error:", updateError);
+      return {
+        success: false,
+        message: "Fatura güncellenirken hata oluştu: " + updateError.message,
+      };
+    }
+
+    revalidatePath("/invoices");
+    revalidatePath(`/invoices/${invoiceId}`);
+
+    return {
+      success: true,
+      message: "Fatura başarıyla güncellendi.",
+      invoice_id: invoiceId,
+    };
+  } catch (error) {
+    console.error("Update invoice error:", error);
+    return {
+      success: false,
+      message: `Beklenmeyen hata: ${(error as Error).message}`,
     };
   }
 }

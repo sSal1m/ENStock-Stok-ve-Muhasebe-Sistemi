@@ -1,16 +1,13 @@
 "use client";
 
-import React, { useEffect, useMemo, useState } from "react";
-import Link from "next/link";
-import { useRouter } from "next/navigation";
+import React, { useEffect, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import { supabase } from "@/lib/supabaseClient";
 
 interface Contact {
   id: string;
   name: string;
   company_name?: string | null;
-  first_name?: string | null;
-  last_name?: string | null;
 }
 
 interface Product {
@@ -36,103 +33,6 @@ interface ToastMessage {
   message: string;
   title: string;
 }
-
-const Breadcrumbs = () => (
-  <nav className="flex text-label-sm text-slate-500 gap-2 items-center">
-    <Link className="hover:text-indigo-600" href="#">Panel</Link>
-    <span className="material-symbols-outlined text-xs">chevron_right</span>
-    <Link className="hover:text-indigo-600" href="/quotes">Satislar</Link>
-    <span className="material-symbols-outlined text-xs">chevron_right</span>
-    <span className="text-slate-900 font-bold">Yeni Teklif</span>
-  </nav>
-);
-
-const ClientSelection = ({
-  contacts,
-  contactId,
-  setContactId,
-  issueDate,
-  setIssueDate,
-  validityDays,
-  setValidityDays,
-  quoteNumber,
-  setQuoteNumber,
-}: any) => (
-  <div className="col-span-12 lg:col-span-8 bg-white border border-slate-200 rounded-xl p-6 shadow-sm">
-    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-      <div className="space-y-2">
-        <label className="font-label-md text-label-md text-on-surface">Musteri Sec</label>
-        <div className="relative">
-          <span className="absolute left-3 top-1/2 -translate-y-1/2 material-symbols-outlined text-slate-400">person_search</span>
-          <select
-            className="w-full pl-10 border-slate-300 rounded-lg text-body-sm focus:border-indigo-600 focus:ring-indigo-600 bg-slate-50"
-            value={contactId}
-            onChange={(e) => setContactId(e.target.value)}
-          >
-            <option value="">Musteri Seciniz...</option>
-            {contacts.map((c: Contact) => (
-              <option key={c.id} value={c.id}>
-                {c.name ||
-                  c.company_name ||
-                  [c.first_name, c.last_name].filter(Boolean).join(" ") ||
-                  "Bilinmeyen Musteri"}
-              </option>
-            ))}
-          </select>
-        </div>
-      </div>
-      <div className="grid grid-cols-2 gap-4">
-        <div className="space-y-2">
-          <label className="font-label-md text-label-md text-on-surface">Teklif Tarihi</label>
-          <input
-            className="w-full border-slate-300 rounded-lg text-body-sm focus:border-indigo-600 focus:ring-indigo-600 bg-slate-50"
-            type="date"
-            value={issueDate}
-            onChange={(e) => setIssueDate(e.target.value)}
-          />
-        </div>
-        <div className="space-y-2">
-          <label className="font-label-md text-label-md text-on-surface">Gecerlilik Suresi</label>
-          <select
-            className="w-full border-slate-300 rounded-lg text-body-sm focus:border-indigo-600 focus:ring-indigo-600 bg-slate-50"
-            value={validityDays}
-            onChange={(e) => setValidityDays(e.target.value)}
-          >
-            <option value="7 Gun">7 Gun</option>
-            <option value="15 Gun">15 Gun</option>
-            <option value="30 Gun">30 Gun</option>
-            <option value="Ozel">Ozel</option>
-          </select>
-        </div>
-      </div>
-      <div className="space-y-2 md:col-span-2">
-        <label className="font-label-md text-label-md text-on-surface">Teklif Numarasi</label>
-        <input
-          className="w-full border-slate-300 rounded-lg text-body-sm focus:border-indigo-600 focus:ring-indigo-600 bg-slate-50"
-          type="text"
-          value={quoteNumber}
-          onChange={(e) => setQuoteNumber(e.target.value)}
-        />
-      </div>
-    </div>
-  </div>
-);
-
-const QuickSummary = () => (
-  <div className="col-span-12 lg:col-span-4 bg-indigo-600 rounded-xl p-6 text-white shadow-lg relative overflow-hidden">
-    <div className="relative z-10">
-      <h3 className="text-title-lg mb-2">Hizli Ozet</h3>
-      <p className="text-body-sm opacity-80 mb-6">Mevcut teklif detaylari hemen yansitilir. Kalemleri ekleyerek baslayin.</p>
-      <div className="flex items-center gap-2">
-        <span className="material-symbols-outlined text-indigo-200">verified_user</span>
-        <span className="text-label-sm">Otomatik Kayit Aktif</span>
-      </div>
-    </div>
-    <div className="absolute -right-10 -bottom-10 opacity-10">
-      <span className="material-symbols-outlined" style={{ fontSize: "160px" }}>receipt_long</span>
-    </div>
-  </div>
-);
 
 const ProductSelect = ({
   item,
@@ -168,11 +68,11 @@ const ProductSelect = ({
 
   return (
     <div className="relative">
-      <div className="flex items-center w-full border border-slate-300 rounded-lg px-3 py-2 bg-slate-50 focus-within:border-indigo-600 focus-within:ring-1 focus-within:ring-indigo-600 transition-all">
-        <span className="material-symbols-outlined text-slate-400 mr-2 text-[20px]">inventory_2</span>
+      <div className="flex items-center w-full border border-slate-300 rounded px-3 py-2 bg-slate-50 focus-within:border-indigo-600 focus-within:ring-1 focus-within:ring-indigo-600 transition-all">
+        <span className="material-symbols-outlined text-slate-400 mr-2 text-sm">inventory_2</span>
         <input
-          className="w-full border-none p-0 focus:ring-0 text-body-sm bg-transparent placeholder:text-slate-400"
-          placeholder="Urun adi giriniz veya arayiniz..."
+          className="w-full border-none p-0 focus:ring-0 text-sm bg-transparent placeholder:text-slate-400"
+          placeholder="Ürün adı giriniz..."
           value={searchTerm}
           onChange={(e) => {
             const value = e.target.value;
@@ -197,7 +97,7 @@ const ProductSelect = ({
           }}
         />
         <span
-          className="material-symbols-outlined text-slate-400 cursor-pointer hover:text-indigo-600 transition-colors ml-2 text-[20px]"
+          className="material-symbols-outlined text-slate-400 cursor-pointer hover:text-indigo-600 transition-colors ml-2 text-sm"
           onClick={() => setIsOpen(!isOpen)}
         >
           {isOpen ? "expand_less" : "expand_more"}
@@ -205,7 +105,7 @@ const ProductSelect = ({
       </div>
 
       {(isOpen || showProductSuggestions[item.id]) && (filteredProducts.length > 0 || remoteSuggestions.length > 0) && (
-        <div className="absolute z-50 w-full mt-1 bg-white border border-slate-200 rounded-lg shadow-xl max-h-60 overflow-y-auto">
+        <div className="absolute z-50 w-full mt-1 bg-white border border-slate-200 rounded shadow-xl max-h-60 overflow-y-auto">
           {filteredProducts.map((p) => (
             <div
               key={p.id}
@@ -221,8 +121,8 @@ const ProductSelect = ({
                 setShowProductSuggestions((prev) => ({ ...prev, [item.id]: false }));
               }}
             >
-              <div className="text-body-sm font-medium text-slate-900">{p.name}</div>
-              <div className="text-label-sm text-slate-400 mt-0.5">
+              <div className="text-sm font-medium text-slate-900">{p.name}</div>
+              <div className="text-xs text-slate-400 mt-0.5">
                 Fiyat: ₺{p.sale_price} | KDV: %{p.tax_rate}
               </div>
             </div>
@@ -242,8 +142,8 @@ const ProductSelect = ({
                 setShowProductSuggestions((prev) => ({ ...prev, [item.id]: false }));
               }}
             >
-              <div className="text-body-sm font-medium text-slate-900">{p.name}</div>
-              <div className="text-label-sm text-slate-400 mt-0.5">
+              <div className="text-sm font-medium text-slate-900">{p.name}</div>
+              <div className="text-xs text-slate-400 mt-0.5">
                 Fiyat: ₺{p.sale_price} | KDV: %{p.tax_rate}
               </div>
             </div>
@@ -254,203 +154,10 @@ const ProductSelect = ({
   );
 };
 
-const QuoteItemsTable = ({
-  items,
-  updateItem,
-  addItem,
-  removeItem,
-  products,
-  productSuggestions,
-  showProductSuggestions,
-  setShowProductSuggestions,
-  onSearch,
-}: {
-  items: QuoteItem[];
-  updateItem: any;
-  addItem: any;
-  removeItem: any;
-  products: Product[];
-  productSuggestions: Record<string, Product[]>;
-  showProductSuggestions: Record<string, boolean>;
-  setShowProductSuggestions: React.Dispatch<React.SetStateAction<Record<string, boolean>>>;
-  onSearch: (id: string, term: string) => void;
-}) => (
-  <div className="col-span-12 bg-white border border-slate-200 rounded-xl shadow-sm overflow-visible">
-    <div className="p-6 border-b border-slate-200 flex justify-between items-center bg-slate-50/50 rounded-t-xl">
-      <h3 className="text-title-lg text-slate-900">Teklif Kalemleri</h3>
-      <button
-        onClick={addItem}
-        className="flex items-center gap-2 text-indigo-600 hover:text-indigo-700 text-label-md"
-      >
-        <span className="material-symbols-outlined">add_circle</span>
-        Satir Ekle
-      </button>
-    </div>
-    <div className="w-full">
-      <table className="w-full text-left">
-        <thead className="bg-slate-50 border-b border-slate-200">
-          <tr>
-            <th className="px-6 py-3 text-label-sm text-slate-500 uppercase tracking-wider w-12 text-center">#</th>
-            <th className="px-6 py-3 text-label-sm text-slate-500 uppercase tracking-wider">Urun/Hizmet</th>
-            <th className="px-6 py-3 text-label-sm text-slate-500 uppercase tracking-wider w-32">Miktar</th>
-            <th className="px-6 py-3 text-label-sm text-slate-500 uppercase tracking-wider w-24">Birim</th>
-            <th className="px-6 py-3 text-label-sm text-slate-500 uppercase tracking-wider w-40 text-right">Birim Fiyat</th>
-            <th className="px-6 py-3 text-label-sm text-slate-500 uppercase tracking-wider w-24 text-center">KDV (%)</th>
-            <th className="px-6 py-3 text-label-sm text-slate-500 uppercase tracking-wider w-40 text-right">Toplam</th>
-            <th className="px-6 py-3 w-16"></th>
-          </tr>
-        </thead>
-        <tbody className="divide-y divide-slate-100">
-          {items.map((item, index) => {
-            const total = item.quantity * item.price * (1 + item.vatRate / 100);
-            return (
-              <tr key={item.id} className="hover:bg-slate-50 transition-colors">
-                <td className="px-6 py-4 text-body-sm text-slate-500 text-center">{index + 1}</td>
-                <td className="px-6 py-4">
-                  <ProductSelect
-                    item={item}
-                    updateItem={updateItem}
-                    products={products}
-                    productSuggestions={productSuggestions}
-                    showProductSuggestions={showProductSuggestions}
-                    setShowProductSuggestions={setShowProductSuggestions}
-                    onSearch={onSearch}
-                  />
-                </td>
-                <td className="px-6 py-4">
-                  <input
-                    className="w-full border-slate-300 bg-slate-50 rounded-lg text-body-sm text-center focus:border-indigo-600 focus:ring-indigo-600"
-                    type="number"
-                    min="1"
-                    value={item.quantity || ""}
-                    onChange={(e) => updateItem(item.id, "quantity", e.target.value ? Number(e.target.value) : 0)}
-                  />
-                </td>
-                <td className="px-6 py-4 text-center">
-                  <span className="text-slate-600 text-body-sm font-medium">Adet</span>
-                </td>
-                <td className="px-6 py-4 text-right">
-                  <div className="relative">
-                    <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 font-medium">₺</span>
-                    <input
-                      className="w-full border-slate-300 bg-slate-50 rounded-lg text-body-sm text-right pl-8 focus:border-indigo-600 focus:ring-indigo-600"
-                      type="number"
-                      min="0"
-                      step="0.01"
-                      value={item.price === 0 && !item.name ? "" : item.price}
-                      onChange={(e) => updateItem(item.id, "price", e.target.value ? Number(e.target.value) : 0)}
-                    />
-                  </div>
-                </td>
-                <td className="px-6 py-4 text-center">
-                  <select
-                    className="w-full border-slate-300 bg-slate-50 rounded-lg text-body-sm text-center focus:border-indigo-600 focus:ring-indigo-600"
-                    value={item.vatRate}
-                    onChange={(e) => updateItem(item.id, "vatRate", Number(e.target.value))}
-                  >
-                    <option value="0">0</option>
-                    <option value="1">1</option>
-                    <option value="10">10</option>
-                    <option value="20">20</option>
-                  </select>
-                </td>
-                <td className="px-6 py-4 text-right font-semibold text-slate-900">
-                  ₺ {total.toLocaleString("tr-TR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                </td>
-                <td className="px-6 py-4 text-right">
-                  <button
-                    onClick={() => removeItem(item.id)}
-                    disabled={items.length === 1}
-                    className={`transition-colors ${items.length === 1 ? "text-slate-200 cursor-not-allowed" : "text-slate-400 hover:text-red-500"}`}
-                  >
-                    <span className="material-symbols-outlined">delete</span>
-                  </button>
-                </td>
-              </tr>
-            );
-          })}
-        </tbody>
-      </table>
-    </div>
-  </div>
-);
-
-const QuoteNotes = ({ notes, setNotes }: any) => (
-  <div className="col-span-12 lg:col-span-7 bg-white border border-slate-200 rounded-xl p-6 shadow-sm">
-    <h4 className="font-label-md text-label-md text-slate-900 mb-4">Teklif Notlari</h4>
-    <textarea
-      className="w-full h-32 border-slate-200 rounded-lg text-body-sm focus:ring-indigo-600 focus:border-indigo-600 placeholder:text-slate-400"
-      placeholder="Orn: Odeme teklif onayindan sonra 7 is gunu icinde pesin olarak yapilacaktir."
-      value={notes}
-      onChange={(e) => setNotes(e.target.value)}
-    ></textarea>
-  </div>
-);
-
-const QuoteTotals = ({ items }: { items: QuoteItem[] }) => {
-  const { subtotal, totalVat, grandTotal } = useMemo(() => {
-    const sub = items.reduce((sum, item) => sum + item.quantity * item.price, 0);
-    const vat = items.reduce((sum, item) => sum + item.quantity * item.price * (item.vatRate / 100), 0);
-    return {
-      subtotal: sub,
-      totalVat: vat,
-      grandTotal: sub + vat,
-    };
-  }, [items]);
-
-  return (
-    <div className="col-span-12 lg:col-span-5 bg-white border border-slate-200 rounded-xl p-6 shadow-sm space-y-4">
-      <div className="flex justify-between items-center pb-2 border-b border-slate-100">
-        <span className="text-body-sm text-slate-500">Ara Toplam</span>
-        <span className="text-body-md font-semibold text-slate-900">
-          ₺ {subtotal.toLocaleString("tr-TR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-        </span>
-      </div>
-      <div className="flex justify-between items-center pb-2 border-b border-slate-100">
-        <span className="text-body-sm text-slate-500">Toplam KDV</span>
-        <span className="text-body-md font-semibold text-slate-900">
-          ₺ {totalVat.toLocaleString("tr-TR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-        </span>
-      </div>
-      <div className="flex justify-between items-center pt-2">
-        <span className="text-title-lg text-slate-900">Genel Toplam</span>
-        <span className="text-title-lg font-bold text-indigo-600">
-          ₺ {grandTotal.toLocaleString("tr-TR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-        </span>
-      </div>
-    </div>
-  );
-};
-
-const QuoteActions = ({ onSave, isLoading }: any) => (
-  <div className="col-span-12 flex flex-col md:flex-row justify-between items-center gap-4 bg-white border border-slate-200 rounded-xl p-6 shadow-sm">
-    <button className="text-slate-500 hover:text-slate-900 text-label-md px-6 py-2.5 transition-colors">
-      Vazgec
-    </button>
-    <div className="flex gap-4 w-full md:w-auto">
-      <button className="flex-1 md:flex-none border border-slate-300 text-slate-700 hover:bg-slate-50 px-6 py-2.5 rounded-lg text-label-md transition-colors">
-        Taslak Olarak Kaydet
-      </button>
-      <button
-        onClick={onSave}
-        disabled={isLoading}
-        className={`flex-1 md:flex-none ${
-          isLoading ? "bg-indigo-400 cursor-not-allowed" : "bg-indigo-600 hover:bg-indigo-700"
-        } text-white px-8 py-2.5 rounded-lg text-label-md flex items-center justify-center gap-2 transition-colors`}
-      >
-        {isLoading ? (
-          <span className="material-symbols-outlined text-[20px] animate-spin">progress_activity</span>
-        ) : (
-          <span className="material-symbols-outlined text-[20px]">send</span>
-        )}
-        {isLoading ? "Yukleniyor..." : "Teklifi Kaydet ve Gonder"}
-      </button>
-    </div>
-  </div>
-);
-
 export default function NewQuotePage() {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const editQuoteId = searchParams.get("id");
 
   const [items, setItems] = useState<QuoteItem[]>([
     { id: "1", product_id: undefined, name: "", quantity: 1, unit: "Adet", price: 0, vatRate: 20 },
@@ -466,6 +173,7 @@ export default function NewQuotePage() {
   const [notes, setNotes] = useState("");
 
   const [isLoading, setIsLoading] = useState(false);
+  const [isEditMode] = useState(!!editQuoteId);
   const [successMsg, setSuccessMsg] = useState("");
   const [errorMsg, setErrorMsg] = useState("");
   const [toasts, setToasts] = useState<ToastMessage[]>([]);
@@ -496,10 +204,53 @@ export default function NewQuotePage() {
 
       const { data: productsData } = await supabase.from("products").select("*").order("name");
       if (productsData) setProducts(productsData as Product[]);
+
+      if (editQuoteId) {
+        const { data: quoteData } = await supabase
+          .from("quotes")
+          .select("*")
+          .eq("id", editQuoteId)
+          .single();
+
+        if (quoteData) {
+          setContactId(quoteData.contact_id);
+          setQuoteNumber(quoteData.quote_number);
+          setIssueDate(quoteData.issue_date || new Date().toISOString().split("T")[0]);
+          setNotes(quoteData.notes || "");
+          const dayNum = quoteData.validity_days;
+          const validityStr = dayNum === 7 ? "7 Gun" : dayNum === 15 ? "15 Gun" : dayNum === 30 ? "30 Gun" : "Ozel";
+          setValidityDays(validityStr);
+
+          const { data: itemsData } = await supabase
+            .from("quote_items")
+            .select("*")
+            .eq("quote_id", editQuoteId);
+
+          if (itemsData && itemsData.length > 0 && productsData) {
+            setItems(itemsData.map((item: any) => {
+              const product = productsData.find((p: Product) => p.id === item.product_id);
+              return {
+                id: item.id,
+                product_id: item.product_id,
+                name: product?.name || item.name || "",
+                quantity: item.quantity,
+                unit: "Adet",
+                price: item.unit_price,
+                vatRate: item.vat_rate || 20,
+              };
+            }));
+          }
+        }
+      }
     };
 
     init();
-  }, [router]);
+  }, [editQuoteId, router]);
+
+  const parseValidityDays = (days: string): number => {
+    const match = days.match(/\d+/);
+    return match ? parseInt(match[0], 10) : 15;
+  };
 
   const addToast = (type: ToastMessage["type"], title: string, message: string) => {
     const id = Math.random().toString(36).slice(2, 10);
@@ -547,27 +298,21 @@ export default function NewQuotePage() {
 
   const handleSave = async () => {
     if (!contactId) {
-      setErrorMsg("Lutfen bir musteri seciniz.");
-      addToast("error", "Hata", "Lutfen bir musteri seciniz.");
+      setErrorMsg("Lütfen bir müşteri seçiniz.");
+      addToast("error", "Hata", "Lütfen bir müşteri seçiniz.");
       return;
     }
 
     if (!quoteNumber.trim()) {
-      setErrorMsg("Lutfen teklif numarasi giriniz.");
-      addToast("error", "Hata", "Lutfen teklif numarasi giriniz.");
-      return;
-    }
-
-    if (items.some((item) => !(item.name || "").trim())) {
-      setErrorMsg("Lutfen tum teklif kalemlerinin urun adini giriniz.");
-      addToast("error", "Hata", "Lutfen tum teklif kalemlerinin urun adini giriniz.");
+      setErrorMsg("Lütfen teklif numarası giriniz.");
+      addToast("error", "Hata", "Lütfen teklif numarası giriniz.");
       return;
     }
 
     const validItems = items.filter((item) => item.product_id || (item.name || "").trim());
     if (validItems.length === 0) {
-      setErrorMsg("Lutfen en az bir gecerli urun secin.");
-      addToast("error", "Hata", "Lutfen en az bir gecerli urun secin.");
+      setErrorMsg("Lütfen en az bir geçerli ürün seçin.");
+      addToast("error", "Hata", "Lütfen en az bir geçerli ürün seçin.");
       return;
     }
 
@@ -578,7 +323,7 @@ export default function NewQuotePage() {
     try {
       const { data: { user }, error: userError } = await supabase.auth.getUser();
       if (userError) throw userError;
-      if (!user) throw new Error("Oturum acmis kullanici bulunamadi. Lutfen giris yapin.");
+      if (!user) throw new Error("Oturum açmış kullanıcı bulunamadı. Lütfen giriş yapın.");
       setUserId(user.id);
 
       const subtotal = validItems.reduce((sum, item) => sum + item.quantity * item.price, 0);
@@ -593,23 +338,50 @@ export default function NewQuotePage() {
         .toString()
         .padStart(3, "0")}`;
 
-      const { data: quoteData, error: quoteError } = await supabase
-        .from("quotes")
-        .insert({
-          user_id: user.id,
-          contact_id: contactId,
-          quote_number: quoteNumber.trim() || fallbackQuoteNumber,
-          issue_date: issueDate,
-          subtotal,
-          tax_total,
-          total_amount,
-          notes,
-          status: "Pending",
-        })
-        .select()
-        .single();
+      let quoteData;
 
-      if (quoteError) throw quoteError;
+      if (editQuoteId) {
+        const { data: updated, error: updateError } = await supabase
+          .from("quotes")
+          .update({
+            contact_id: contactId,
+            quote_number: quoteNumber.trim(),
+            issue_date: issueDate,
+            subtotal,
+            tax_total,
+            total_amount,
+            notes,
+            validity_days: parseValidityDays(validityDays),
+          })
+          .eq("id", editQuoteId)
+          .select()
+          .single();
+
+        if (updateError) throw updateError;
+        quoteData = updated;
+
+        await supabase.from("quote_items").delete().eq("quote_id", editQuoteId);
+      } else {
+        const { data: created, error: quoteError } = await supabase
+          .from("quotes")
+          .insert({
+            user_id: user.id,
+            contact_id: contactId,
+            quote_number: quoteNumber.trim() || fallbackQuoteNumber,
+            issue_date: issueDate,
+            subtotal,
+            tax_total,
+            total_amount,
+            notes,
+            status: "Pending",
+            validity_days: parseValidityDays(validityDays),
+          })
+          .select()
+          .single();
+
+        if (quoteError) throw quoteError;
+        quoteData = created;
+      }
 
       const itemsToInsert = validItems.map((item) => ({
         quote_id: quoteData.id,
@@ -623,91 +395,305 @@ export default function NewQuotePage() {
       const { error: itemsError } = await supabase.from("quote_items").insert(itemsToInsert);
       if (itemsError) throw itemsError;
 
-      setSuccessMsg("Teklif basariyla kaydedildi! Yonlendiriliyorsunuz...");
-      addToast("success", "Basarili", "Teklif basariyla olusturuldu.");
+      const message = editQuoteId ? "Teklif başarıyla güncellendi!" : "Teklif başarıyla oluşturuldu!";
+      setSuccessMsg(message + " Yönlendiriliyorsunuz...");
+      addToast("success", "Başarılı", message);
       setTimeout(() => {
         router.push("/quotes");
       }, 1200);
     } catch (err: any) {
       console.error("Save error:", err);
-      setErrorMsg(err.message || "Teklif kaydedilirken beklenmeyen bir hata olustu.");
-      addToast("error", "Hata", err.message || "Teklif kaydedilirken bir hata olustu.");
+      setErrorMsg(err.message || "Teklif kaydedilirken beklenmeyen bir hata oluştu.");
+      addToast("error", "Hata", err.message || "Teklif kaydedilirken bir hata oluştu.");
     } finally {
       setIsLoading(false);
     }
   };
 
   return (
-    <div className="p-margin-page min-h-screen text-on-background">
-      <div className="fixed top-6 right-6 z-50 flex flex-col gap-4 max-w-md">
+    <div className="min-h-screen bg-slate-100 p-6">
+      {/* Toast Container */}
+      <div className="fixed top-6 right-6 z-50 flex flex-col gap-3 max-w-md pointer-events-none">
         {toasts.map((toast) => (
           <div
             key={toast.id}
-            className={`p-4 rounded-xl shadow-lg border flex items-center justify-between gap-4 transition-all
-            ${toast.type === "success" ? "bg-green-50 border-green-200 text-green-800" : ""}
-            ${toast.type === "error" ? "bg-red-50 border-red-200 text-red-800" : ""}`}
+            className={`p-4 rounded-lg shadow-lg border pointer-events-auto transition-all ${
+              toast.type === "success" ? "bg-green-50 border-green-200 text-green-800" : ""
+            } ${toast.type === "error" ? "bg-red-50 border-red-200 text-red-800" : ""}`}
           >
-            <div>
-              <p className="font-bold text-sm">{toast.title}</p>
-              <p className="text-sm opacity-90">{toast.message}</p>
-            </div>
+            <p className="font-semibold text-sm">{toast.title}</p>
+            <p className="text-sm opacity-90">{toast.message}</p>
           </div>
         ))}
       </div>
 
-      <div className="max-w-container-max mx-auto space-y-stack-lg">
-        <div className="flex items-center justify-between gap-6">
-          <Breadcrumbs />
-          <button
-            onClick={handleSave}
-            disabled={isLoading}
-            className="px-6 py-2.5 bg-purple-600 hover:bg-purple-700 text-white font-semibold rounded-lg shadow-sm transition-all disabled:opacity-50"
-          >
-            {isLoading ? "Kaydediliyor..." : "Teklifi Kaydet"}
-          </button>
+      <div className="max-w-7xl mx-auto space-y-6">
+        {/* Header */}
+        <div className="flex items-center justify-between">
+          <div>
+            <h1 className="text-3xl font-bold text-slate-900">
+              {isEditMode ? "Teklifi Düzenle" : "Yeni Teklif"}
+            </h1>
+            <p className="text-slate-500 mt-1 text-sm">
+              {isEditMode ? "Mevcut teklif bilgilerini güncelleyin" : "Yeni bir teklif oluşturun"}
+            </p>
+          </div>
         </div>
 
+        {/* Messages */}
         {successMsg && (
-          <div className="bg-emerald-50 text-emerald-700 p-4 rounded-xl border border-emerald-200 flex items-center gap-3">
+          <div className="bg-emerald-50 text-emerald-700 p-4 rounded-lg border border-emerald-200 flex items-center gap-3">
             <span className="material-symbols-outlined">check_circle</span>
             <span className="font-medium">{successMsg}</span>
           </div>
         )}
-
         {errorMsg && (
-          <div className="bg-red-50 text-red-700 p-4 rounded-xl border border-red-200 flex items-center gap-3">
+          <div className="bg-red-50 text-red-700 p-4 rounded-lg border border-red-200 flex items-center gap-3">
             <span className="material-symbols-outlined">error</span>
             <span className="font-medium">{errorMsg}</span>
           </div>
         )}
 
-        <div className="grid grid-cols-12 gap-gutter">
-          <ClientSelection
-            contacts={contacts}
-            contactId={contactId}
-            setContactId={setContactId}
-            issueDate={issueDate}
-            setIssueDate={setIssueDate}
-            validityDays={validityDays}
-            setValidityDays={setValidityDays}
-            quoteNumber={quoteNumber}
-            setQuoteNumber={setQuoteNumber}
-          />
-          <QuickSummary />
-          <QuoteItemsTable
-            items={items}
-            addItem={addItem}
-            removeItem={removeItem}
-            updateItem={updateItem}
-            products={products}
-            productSuggestions={productSuggestions}
-            showProductSuggestions={showProductSuggestions}
-            setShowProductSuggestions={setShowProductSuggestions}
-            onSearch={handleProductSearch}
-          />
-          <QuoteNotes notes={notes} setNotes={setNotes} />
-          <QuoteTotals items={items} />
-          <QuoteActions onSave={handleSave} isLoading={isLoading} />
+        {/* TOP ROW: 2 Column Grid - Müşteri & Teklif Detayları */}
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+          {/* Left Card: Müşteri Seçimi */}
+          <div className="lg:col-span-2 bg-white rounded-lg shadow-sm border border-slate-200 p-6 space-y-6">
+            <div className="space-y-4">
+              <h3 className="font-semibold text-slate-900">MÜŞTERİ / CARİ SEÇIMI</h3>
+              
+              <div className="relative">
+                <span className="absolute left-3 top-1/2 -translate-y-1/2 material-symbols-outlined text-slate-400 text-lg">search</span>
+                <input
+                  type="text"
+                  placeholder="Ünvan veya Vergi No yazın..."
+                  className="w-full pl-10 px-4 py-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent text-sm"
+                />
+              </div>
+
+              <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 text-sm text-blue-800 flex items-start gap-2">
+                <span className="material-symbols-outlined text-lg flex-shrink-0 mt-0.5">info</span>
+                <span>Lütfen teklif kesilebilecek cariyi aşağıdan seçiniz</span>
+              </div>
+
+              <select
+                value={contactId}
+                onChange={(e) => setContactId(e.target.value)}
+                className="w-full px-4 py-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent bg-white text-sm"
+              >
+                <option value="">Müşteri Seçiniz...</option>
+                {contacts.map((c) => (
+                  <option key={c.id} value={c.id}>
+                    {c.name || c.company_name || "Bilinmeyen"}
+                  </option>
+                ))}
+              </select>
+            </div>
+          </div>
+
+          {/* Right Card: Teklif Detayları */}
+          <div className="bg-white rounded-lg shadow-sm border border-slate-200 p-6 space-y-4">
+            <h3 className="font-semibold text-slate-900">TEKLİF DETAYLARI</h3>
+            
+            <div className="space-y-3">
+              <div className="space-y-1.5">
+                <label className="text-xs font-semibold text-slate-600 uppercase tracking-wider">TEKLİF NO</label>
+                <input
+                  type="text"
+                  value={quoteNumber}
+                  onChange={(e) => setQuoteNumber(e.target.value)}
+                  className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent text-sm bg-slate-50"
+                />
+              </div>
+
+              <div className="space-y-1.5">
+                <label className="text-xs font-semibold text-slate-600 uppercase tracking-wider">TEKLİF TARİHİ</label>
+                <input
+                  type="date"
+                  value={issueDate}
+                  onChange={(e) => setIssueDate(e.target.value)}
+                  className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent text-sm"
+                />
+              </div>
+
+              <div className="space-y-1.5">
+                <label className="text-xs font-semibold text-slate-600 uppercase tracking-wider">GEÇERLİLİK SÜRESİ</label>
+                <select
+                  value={validityDays}
+                  onChange={(e) => setValidityDays(e.target.value)}
+                  className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent bg-white text-sm"
+                >
+                  <option value="7 Gun">7 Gün</option>
+                  <option value="15 Gun">15 Gün</option>
+                  <option value="30 Gun">30 Gün</option>
+                  <option value="Ozel">Özel</option>
+                </select>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* MIDDLE ROW: Full-Width Table Card */}
+        <div className="bg-white rounded-lg shadow-sm border border-slate-200 p-6 space-y-4">
+          <div className="flex justify-between items-center">
+            <h3 className="text-lg font-semibold text-slate-900">TEKLİF KALEMLERİ</h3>
+            <button
+              onClick={addItem}
+              className="flex items-center gap-2 text-indigo-600 hover:text-indigo-700 font-medium text-sm"
+            >
+              <span className="material-symbols-outlined text-lg">add_circle</span>
+              + Yeni Satır Ekle
+            </button>
+          </div>
+
+          <div className="overflow-x-auto border border-slate-200 rounded-lg">
+            <table className="w-full">
+              <thead className="bg-slate-50 border-b border-slate-200">
+                <tr>
+                  <th className="px-4 py-3 text-left text-xs font-semibold text-slate-600 uppercase tracking-wider">#</th>
+                  <th className="px-4 py-3 text-left text-xs font-semibold text-slate-600 uppercase tracking-wider">HİZMET / ÜRÜN</th>
+                  <th className="px-4 py-3 text-left text-xs font-semibold text-slate-600 uppercase tracking-wider w-20">MİKTAR</th>
+                  <th className="px-4 py-3 text-right text-xs font-semibold text-slate-600 uppercase tracking-wider w-28">BİRİM FİYAT (₺)</th>
+                  <th className="px-4 py-3 text-center text-xs font-semibold text-slate-600 uppercase tracking-wider w-16">KDV %</th>
+                  <th className="px-4 py-3 text-right text-xs font-semibold text-slate-600 uppercase tracking-wider w-28">SATIR TOPLAMI</th>
+                  <th className="px-4 py-3 w-8"></th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100">
+                {items.map((item, idx) => {
+                  const total = item.quantity * item.price * (1 + item.vatRate / 100);
+                  return (
+                    <tr key={item.id} className="hover:bg-slate-50">
+                      <td className="px-4 py-3 text-sm text-slate-500">{idx + 1}</td>
+                      <td className="px-4 py-3">
+                        <ProductSelect
+                          item={item}
+                          updateItem={updateItem}
+                          products={products}
+                          productSuggestions={productSuggestions}
+                          showProductSuggestions={showProductSuggestions}
+                          setShowProductSuggestions={setShowProductSuggestions}
+                          onSearch={handleProductSearch}
+                        />
+                      </td>
+                      <td className="px-4 py-3">
+                        <input
+                          type="number"
+                          min="1"
+                          value={item.quantity || ""}
+                          onChange={(e) => updateItem(item.id, "quantity", e.target.value ? Number(e.target.value) : 0)}
+                          className="w-full px-2 py-2 border border-slate-300 rounded text-sm focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+                        />
+                      </td>
+                      <td className="px-4 py-3">
+                        <input
+                          type="number"
+                          min="0"
+                          step="0.01"
+                          value={item.price === 0 && !item.name ? "" : item.price}
+                          onChange={(e) => updateItem(item.id, "price", e.target.value ? Number(e.target.value) : 0)}
+                          className="w-full px-2 py-2 border border-slate-300 rounded text-sm text-right focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+                        />
+                      </td>
+                      <td className="px-4 py-3">
+                        <select
+                          value={item.vatRate}
+                          onChange={(e) => updateItem(item.id, "vatRate", Number(e.target.value))}
+                          className="w-full px-2 py-2 border border-slate-300 rounded text-sm text-center focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+                        >
+                          <option value="0">0</option>
+                          <option value="1">1</option>
+                          <option value="10">10</option>
+                          <option value="20">20</option>
+                        </select>
+                      </td>
+                      <td className="px-4 py-3 text-right font-semibold text-slate-900 text-sm">
+                        ₺{total.toLocaleString("tr-TR", { maximumFractionDigits: 2 })}
+                      </td>
+                      <td className="px-4 py-3 text-center">
+                        <button
+                          onClick={() => removeItem(item.id)}
+                          disabled={items.length === 1}
+                          className="text-slate-400 hover:text-red-500 disabled:text-slate-200 disabled:cursor-not-allowed transition-colors"
+                        >
+                          <span className="material-symbols-outlined text-lg">delete</span>
+                        </button>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        {/* BOTTOM ROW: Flex Layout - Notlar + Toplam + Butonlar */}
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+          {/* Left: Notlar */}
+          <div className="lg:col-span-2 bg-white rounded-lg shadow-sm border border-slate-200 p-6 space-y-4">
+            <h3 className="font-semibold text-slate-900">TEKLİF NOTLARI</h3>
+            <textarea
+              value={notes}
+              onChange={(e) => setNotes(e.target.value)}
+              placeholder="Müşteriye iletilmesini istediğiniz özel notları buraya gileyein..."
+              className="w-full px-4 py-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent h-32 resize-none text-sm"
+            />
+          </div>
+
+          {/* Right: Totals Summary + Buttons */}
+          <div className="space-y-4">
+            {/* Totals Card */}
+            <div className="bg-white rounded-lg shadow-sm border border-slate-200 p-6 space-y-3">
+              {(() => {
+                const sub = items.reduce((sum, item) => sum + item.quantity * item.price, 0);
+                const tax = items.reduce((sum, item) => sum + item.quantity * item.price * (item.vatRate / 100), 0);
+                const total = sub + tax;
+                return (
+                  <>
+                    <div className="flex justify-between text-sm">
+                      <span className="text-slate-600">Ara Toplam</span>
+                      <span className="font-semibold text-slate-900">₺{sub.toLocaleString("tr-TR", { maximumFractionDigits: 2 })}</span>
+                    </div>
+                    <div className="flex justify-between text-sm">
+                      <span className="text-slate-600">KDV Toplamı</span>
+                      <span className="font-semibold text-slate-900">₺{tax.toLocaleString("tr-TR", { maximumFractionDigits: 2 })}</span>
+                    </div>
+                    <div className="border-t border-slate-200 pt-3 flex justify-between">
+                      <span className="font-semibold text-slate-900">Genel Toplam</span>
+                      <span className="text-xl font-bold text-indigo-600">₺{total.toLocaleString("tr-TR", { maximumFractionDigits: 2 })}</span>
+                    </div>
+                  </>
+                );
+              })()}
+            </div>
+
+            {/* Action Buttons */}
+            <div className="bg-white rounded-lg shadow-sm border border-slate-200 p-6 space-y-3">
+              <button
+                className="w-full flex items-center justify-center gap-2 px-4 py-2.5 border border-slate-300 text-slate-700 hover:bg-slate-50 font-medium text-sm rounded-lg transition-colors"
+              >
+                <span className="material-symbols-outlined text-lg">visibility</span>
+                Teklif Önizle
+              </button>
+              
+              <button
+                onClick={handleSave}
+                disabled={isLoading}
+                className="w-full flex items-center justify-center gap-2 px-4 py-2.5 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white font-medium text-sm rounded-lg transition-colors"
+              >
+                <span className="material-symbols-outlined text-lg">
+                  {isLoading ? "progress_activity" : "check_circle"}
+                </span>
+                {isLoading ? "Kaydediliyor..." : (isEditMode ? "Teklifi Güncelle" : "Teklifi Kaydet")}
+              </button>
+
+              <button
+                className="w-full flex items-center justify-center gap-2 px-4 py-2.5 border border-slate-300 text-slate-700 hover:bg-slate-50 font-medium text-sm rounded-lg transition-colors"
+              >
+                <span className="material-symbols-outlined text-lg">draft</span>
+                Taslak
+              </button>
+            </div>
+          </div>
         </div>
       </div>
     </div>

@@ -254,8 +254,7 @@ export default function ContactsPage() {
           <p className="text-xs font-bold uppercase tracking-widest text-slate-400">Toplam Alacak</p>
           <div className="mt-2 flex items-end gap-3">
             <p className="text-2xl font-extrabold text-emerald-600 tabular-nums leading-none">{fmt(convert(alacak), viewCurrency)}</p>
-            <span className="mb-0.5 inline-flex items-center gap-0.5 text-[11px] font-bold text-emerald-500">
-              <span className="material-symbols-outlined text-[14px]">pie_chart</span>
+            <span className="mb-0.5 text-[11px] font-bold text-emerald-500">
               %{alacakPercent}
             </span>
           </div>
@@ -266,8 +265,7 @@ export default function ContactsPage() {
           <p className="text-xs font-bold uppercase tracking-widest text-slate-400">Toplam Borç</p>
           <div className="mt-2 flex items-end gap-3">
             <p className="text-2xl font-extrabold text-error tabular-nums leading-none">{fmt(convert(borc), viewCurrency)}</p>
-            <span className="mb-0.5 inline-flex items-center gap-0.5 text-[11px] font-bold text-error">
-              <span className="material-symbols-outlined text-[14px]">pie_chart</span>
+            <span className="mb-0.5 text-[11px] font-bold text-error">
               %{borcPercent}
             </span>
           </div>

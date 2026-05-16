@@ -8,7 +8,6 @@ import Link from "next/link";
 import toast from "react-hot-toast";
 import { resolveTeamIds, applyTeamFilter } from "@/lib/teamUtils";
 
-
 interface Invoice {
   id: string;
   invoice_number: string;
@@ -26,9 +25,9 @@ interface Contact {
   name: string;
 }
 
-export default function InvoicesPage() {
+export default function ProposalsPage() {
   const { viewCurrency, setViewCurrency, convert, format } = useCurrencyConverter();
-  const [invoices, setInvoices] = useState<Invoice[]>([]);
+  const [proposals, setProposals] = useState<Invoice[]>([]);
   const [contacts, setContacts] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(true);
   const [filterType, setFilterType] = useState<"all" | "sales" | "purchase">("all");
@@ -37,33 +36,31 @@ export default function InvoicesPage() {
   const [currentPage, setCurrentPage] = useState(0);
   const ITEMS_PER_PAGE = 5;
 
-  const fetchInvoices = async () => {
+  const fetchProposals = async () => {
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) {
       setLoading(false);
       return;
     }
 
-    // Resolve team context
     const teamIds = await resolveTeamIds(user.id);
 
-    // Fetch invoices (team-scoped)
-    const { data: invoicesData, error: invoicesError } = await applyTeamFilter(
-      supabase.from("invoices").select("*").is("deleted_at", null),
+    // Fetch proposals (type = 'proposal')
+    const { data: proposalsData, error: proposalsError } = await applyTeamFilter(
+      supabase.from("invoices").select("*").eq("type", "proposal").is("deleted_at", null),
       teamIds
     ).order("issue_date", { ascending: false });
 
-    if (invoicesError) {
-      console.error("Error fetching invoices:", invoicesError);
+    if (proposalsError) {
+      console.error("Error fetching proposals:", proposalsError);
       setLoading(false);
       return;
     }
 
-    setInvoices((invoicesData || []) as Invoice[]);
+    setProposals((proposalsData || []) as Invoice[]);
 
-    // Fetch contacts for mapping
-    if (invoicesData && invoicesData.length > 0) {
-      const contactIds = [...new Set(invoicesData.map((i: any) => i.contact_id))];
+    if (proposalsData && proposalsData.length > 0) {
+      const contactIds = [...new Set(proposalsData.map((i: any) => i.contact_id))];
       const { data: contactsData } = await supabase
         .from("contacts")
         .select("id, name")
@@ -80,11 +77,11 @@ export default function InvoicesPage() {
   };
 
   useEffect(() => {
-    fetchInvoices();
+    fetchProposals();
   }, []);
 
-  const filtered = invoices.filter((invoice) => {
-    const typeMatch = filterType === "all" || invoice.type === (filterType === "sales" ? "sale" : filterType === "purchase" ? "purchase" : invoice.type);
+  const filtered = proposals.filter((proposal) => {
+    const typeMatch = filterType === "all" || proposal.type === (filterType === "sales" ? "sale" : filterType === "purchase" ? "purchase" : proposal.type);
     
     if (!searchTerm.trim()) {
       return typeMatch;
@@ -92,26 +89,25 @@ export default function InvoicesPage() {
     
     const searchLower = searchTerm.toLowerCase().trim();
     const searchMatch =
-      invoice.invoice_number.toLowerCase().includes(searchLower) ||
-      (contacts[invoice.contact_id]?.toLowerCase().includes(searchLower) ?? false);
+      proposal.invoice_number.toLowerCase().includes(searchLower) ||
+      (contacts[proposal.contact_id]?.toLowerCase().includes(searchLower) ?? false);
     return typeMatch && searchMatch;
   });
 
   const calculateInView = (amountTry: number) => {
-    return convert(amountTry); // Hook'un convert fonksiyonunu kullanıyoruz (TRY -> viewCurrency)
+    return convert(amountTry);
   };
 
-  const totalAmount = filtered.reduce((sum, inv) => sum + calculateInView(inv.total_amount), 0);
-  const vatAmount = filtered.reduce((sum, inv) => sum + calculateInView(inv.tax_total), 0);
+  const totalAmount = filtered.reduce((sum, prop) => sum + calculateInView(prop.total_amount), 0);
+  const vatAmount = filtered.reduce((sum, prop) => sum + calculateInView(prop.tax_total), 0);
 
-  const handleDownloadPdf = async (invoice: Invoice) => {
-    setDownloadingPdfId(invoice.id);
+  const handleDownloadPdf = async (proposal: Invoice) => {
+    setDownloadingPdfId(proposal.id);
     const toastId = toast.loading("PDF hazırlanıyor...");
     try {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error("Kullanıcı bulunamadı");
 
-      // 1. Get Business Info
       let companyName = "Şirket Adı Belirtilmemiş";
       let companyAddress = "";
       let companyTaxId = "";
@@ -129,11 +125,8 @@ export default function InvoicesPage() {
         }
       }
 
-      // 2. Get Contact Info
-      const { data: contactData } = await supabase.from("contacts").select("*").eq("id", invoice.contact_id).single();
-      
-      // 3. Get Invoice Items and Products
-      const { data: itemsData } = await supabase.from("invoice_items").select("*").eq("invoice_id", invoice.id);
+      const { data: contactData } = await supabase.from("contacts").select("*").eq("id", proposal.contact_id).single();
+      const { data: itemsData } = await supabase.from("invoice_items").select("*").eq("invoice_id", proposal.id);
       
       const formattedItems = [];
       if (itemsData && itemsData.length > 0) {
@@ -149,29 +142,28 @@ export default function InvoicesPage() {
         }
       }
 
-      // Generate Data Object
       const pdfData = {
         companyName,
         companyAddress,
         companyTaxId,
-        invoiceNumber: invoice.invoice_number,
-        issueDate: invoice.issue_date,
-        currency: invoice.currency || "TRY",
-        status: invoice.status,
+        invoiceNumber: proposal.invoice_number,
+        issueDate: proposal.issue_date,
+        currency: proposal.currency || "TRY",
+        status: proposal.status,
         contactName: contactData?.name || "Cari Belirtilmemiş",
         contactTaxNumber: contactData?.tax_number,
         contactTaxOffice: contactData?.tax_office,
         items: formattedItems,
-        subtotal: invoice.total_amount - invoice.tax_total,
-        vatTotal: invoice.tax_total,
-        grandTotal: invoice.total_amount,
+        subtotal: proposal.total_amount - proposal.tax_total,
+        vatTotal: proposal.tax_total,
+        grandTotal: proposal.total_amount,
       };
 
-      const { data: fullInvoice } = await supabase.from("invoices").select("notes").eq("id", invoice.id).single();
-      if (fullInvoice && fullInvoice.notes) (pdfData as any).notes = fullInvoice.notes;
+      const { data: fullProposal } = await supabase.from("invoices").select("notes").eq("id", proposal.id).single();
+      if (fullProposal && fullProposal.notes) (pdfData as any).notes = fullProposal.notes;
 
       const { generateInvoicePdf } = await import("@/lib/generateInvoicePdf");
-      await generateInvoicePdf(pdfData, invoice.status === "draft" ? "quotation" : "invoice");
+      await generateInvoicePdf(pdfData, "quotation");
       toast.success("PDF başarıyla oluşturuldu.", { id: toastId });
 
     } catch (err: any) {
@@ -182,28 +174,25 @@ export default function InvoicesPage() {
     }
   };
 
-  // Pagination
-  const paginatedInvoices = filtered.slice(
+  const paginatedProposals = filtered.slice(
     currentPage * ITEMS_PER_PAGE,
     (currentPage + 1) * ITEMS_PER_PAGE
   );
 
   return (
     <div className="w-full p-8 max-w-[1600px] mx-auto bg-slate-50 min-h-screen">
-      {/* Content Area */}
       <div className="w-full space-y-8">
         {/* Page Header */}
         <div className="flex flex-col md:flex-row md:items-end justify-between gap-6 pb-6 border-b border-slate-200">
           <div>
             <h1 className="text-3xl font-extrabold text-slate-900 tracking-tight mb-2">
-              Faturalar
+              Teklifler
             </h1>
             <p className="text-slate-600">
-              Tüm faturalarınızı yönetin ve takip edin
+              Tüm tekliflerinizi yönetin ve takip edin
             </p>
           </div>
           <div className="flex flex-wrap items-center gap-3">
-             {/* Döviz Görünüm Seçici */}
              <div className="flex items-center gap-2 bg-white border-2 border-purple-100 rounded-xl px-4 py-2.5 shadow-sm">
                 <span className="text-[10px] font-bold text-slate-400 uppercase tracking-tighter">Görünüm:</span>
                 <select
@@ -219,11 +208,11 @@ export default function InvoicesPage() {
               </div>
 
             <Link
-              href="/invoices/new"
+              href="/proposals/new"
               className="flex items-center gap-2 px-8 py-3.5 rounded-lg font-semibold text-sm text-white bg-gradient-to-r from-purple-600 to-purple-700 shadow-lg shadow-purple-200 hover:shadow-xl hover:shadow-purple-300 active:scale-[0.98] transition-all"
             >
               <span className="material-symbols-outlined">add_circle</span>
-              Yeni Fatura
+              Yeni Teklif
             </Link>
           </div>
         </div>
@@ -275,14 +264,13 @@ export default function InvoicesPage() {
               <span className="material-symbols-outlined text-slate-400">search</span>
               <input
                 className="w-full bg-transparent border-none focus:ring-0 py-2 text-sm placeholder:text-slate-400"
-                placeholder="Fatura no veya cari adı yazın..."
+                placeholder="Teklif no veya cari adı yazın..."
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
               />
             </div>
           </div>
 
-          {/* Stat Cards */}
           <div className="bg-gradient-to-br from-orange-50 to-orange-100 rounded-lg p-6 border border-orange-200 shadow-sm">
             <div className="flex items-start justify-between">
               <div>
@@ -312,105 +300,105 @@ export default function InvoicesPage() {
           </div>
         </div>
 
-        {/* Invoices Table */}
+        {/* Proposals Table */}
         {loading ? (
           <div className="flex items-center justify-center py-20">
             <div className="flex flex-col items-center gap-4">
               <div className="w-14 h-14 border-4 border-purple-200 border-t-purple-600 rounded-full animate-spin"></div>
-              <p className="text-slate-600 text-sm">Faturalar yükleniyor...</p>
+              <p className="text-slate-600 text-sm">Teklifler yükleniyor...</p>
             </div>
           </div>
         ) : filtered.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-24 bg-white rounded-2xl shadow-sm border border-slate-200">
             <div className="w-28 h-28 bg-gradient-to-br from-purple-100 to-purple-50 rounded-lg flex items-center justify-center mb-8 shadow-sm">
-              <span className="material-symbols-outlined text-7xl text-purple-400">receipt_long</span>
+              <span className="material-symbols-outlined text-7xl text-purple-400">description</span>
             </div>
-            <h3 className="text-2xl font-bold text-slate-900 mb-2">Henüz fatura kesilmemiş</h3>
-            <p className="text-slate-600 mb-8 max-w-sm text-center">Yeni bir fatura oluşturmak için aşağıdaki butona tıklayın</p>
+            <h3 className="text-2xl font-bold text-slate-900 mb-2">Henüz teklif oluşturulmamış</h3>
+            <p className="text-slate-600 mb-8 max-w-sm text-center">Yeni bir teklif oluşturmak için aşağıdaki butona tıklayın</p>
             <Link
-              href="/invoices/new"
+              href="/proposals/new"
               className="inline-flex items-center justify-center gap-2 px-8 py-4 rounded-lg font-semibold text-base text-white bg-gradient-to-r from-purple-600 to-purple-700 shadow-lg shadow-purple-200 hover:shadow-xl hover:shadow-purple-300 active:scale-95 transition-all"
             >
               <span className="material-symbols-outlined">add_circle</span>
-              İlk Faturayı Oluştur
+              İlk Teklifi Oluştur
             </Link>
           </div>
         ) : (
           <div className="space-y-4">
             <div className="bg-white rounded-3xl overflow-hidden shadow-sm border border-indigo-50">
               <div className="overflow-x-auto">
-                <table className="w-full text-left border-collapse table-fixed">
+                <table className="w-full text-left border-collapse">
                   <thead>
                     <tr className="bg-surface-container-low/50">
-                      <th className="w-[160px] px-6 py-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest align-middle">Fatura No</th>
-                      <th className="w-[150px] px-6 py-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest align-middle">Cari Adı</th>
-                      <th className="w-[100px] px-6 py-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest align-middle">Tür</th>
-                      <th className="w-[120px] px-6 py-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest align-middle">Tarih</th>
-                      <th className="w-[130px] px-6 py-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest align-middle text-right">Tutar</th>
-                      <th className="w-[120px] px-6 py-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest align-middle">Durum</th>
-                      <th className="w-[100px] px-6 py-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest align-middle text-center">İşlemler</th>
+                      <th className="px-6 py-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest align-middle">Teklif No</th>
+                      <th className="px-6 py-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest align-middle">Cari Adı</th>
+                      <th className="px-6 py-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest align-middle">Tür</th>
+                      <th className="px-6 py-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest align-middle">Tarih</th>
+                      <th className="px-6 py-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest align-middle text-right">Tutar</th>
+                      <th className="px-6 py-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest align-middle">Durum</th>
+                      <th className="px-6 py-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest align-middle text-center">İşlemler</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-indigo-50/50">
-                    {paginatedInvoices.map((invoice) => (
-                      <tr key={invoice.id} className="hover:bg-indigo-50/30 transition-colors align-middle">
-                        <td className="w-[160px] px-6 py-5 align-middle">
+                    {paginatedProposals.map((proposal) => (
+                      <tr key={proposal.id} className="hover:bg-indigo-50/30 transition-colors align-middle">
+                        <td className="px-6 py-5 align-middle">
                           <p className="text-sm font-semibold text-on-surface">
-                            {invoice.invoice_number}
+                            {proposal.invoice_number}
                           </p>
                         </td>
-                        <td className="w-[150px] px-6 py-5 align-middle">
-                          <p className="text-sm font-medium text-slate-700 truncate">{contacts[invoice.contact_id] || "—"}</p>
+                        <td className="px-6 py-5 align-middle">
+                          <p className="text-sm font-medium text-slate-700 truncate">{contacts[proposal.contact_id] || "—"}</p>
                         </td>
-                        <td className="w-[100px] px-6 py-5 align-middle">
+                        <td className="px-6 py-5 align-middle">
                           <span
                             className={`text-xs font-semibold px-3 py-1.5 rounded-full inline-flex items-center gap-1 ${
-                              invoice.type === "sale"
+                              proposal.type === "sale"
                                 ? "bg-emerald-50 text-emerald-700"
                                 : "bg-indigo-50 text-indigo-700"
                             }`}
                           >
                             <span className="material-symbols-outlined text-sm">
-                              {invoice.type === "sale" ? "trending_up" : "trending_down"}
+                              {proposal.type === "sale" ? "trending_up" : "trending_down"}
                             </span>
-                            {invoice.type === "sale" ? "Satış" : "Alış"}
+                            {proposal.type === "sale" ? "Satış" : "Alış"}
                           </span>
                         </td>
-                        <td className="w-[120px] px-6 py-5 align-middle">
+                        <td className="px-6 py-5 align-middle">
                           <p className="text-sm text-slate-700 font-medium">
-                            {new Date(invoice.issue_date).toLocaleDateString("tr-TR")}
+                            {new Date(proposal.issue_date).toLocaleDateString("tr-TR")}
                           </p>
                         </td>
-                        <td className="w-[130px] px-6 py-5 align-middle text-right">
-                          <p className="text-sm font-semibold text-on-surface">{format(calculateInView(invoice.total_amount))}</p>
+                        <td className="px-6 py-5 align-middle text-right">
+                          <p className="text-sm font-semibold text-on-surface">{format(calculateInView(proposal.total_amount))}</p>
                         </td>
-                        <td className="w-[120px] px-6 py-5 align-middle">
+                        <td className="px-6 py-5 align-middle">
                           <span
                             className={`text-xs font-semibold px-3 py-1.5 rounded-full inline-flex items-center gap-1 ${
-                            invoice.status === "draft" ? "bg-slate-100 text-slate-700" : invoice.status === "pending" ? "bg-amber-50 text-amber-700" : "bg-emerald-50 text-emerald-700"
+                            proposal.status === "draft" ? "bg-slate-100 text-slate-700" : proposal.status === "pending" ? "bg-amber-50 text-amber-700" : "bg-emerald-50 text-emerald-700"
                           }`}>
                             <span className="material-symbols-outlined text-sm">
-                              {invoice.status === "draft" ? "description" : invoice.status === "pending" ? "schedule" : "check_circle"}
+                              {proposal.status === "draft" ? "description" : proposal.status === "pending" ? "schedule" : "check_circle"}
                             </span>
-                            {invoice.status === "draft" ? "TASLAK" : invoice.status === "pending" ? "BEKLIYOR" : "ÖDENDİ"}
+                            {proposal.status === "draft" ? "TASLAK" : proposal.status === "pending" ? "BEKLIYOR" : "KABUL"}
                           </span>
                         </td>
-                        <td className="w-[100px] px-6 py-5 text-center">
+                        <td className="px-6 py-5 text-center">
                           <div className="flex items-center justify-center gap-1">
                             <button
-                              onClick={() => handleDownloadPdf(invoice)}
-                              disabled={downloadingPdfId === invoice.id}
+                              onClick={() => handleDownloadPdf(proposal)}
+                              disabled={downloadingPdfId === proposal.id}
                               className="inline-flex items-center justify-center w-10 h-10 rounded-lg text-emerald-600 hover:bg-emerald-100 transition-all disabled:opacity-50"
                               title="PDF Olarak İndir"
                             >
-                              <span className={`material-symbols-outlined ${downloadingPdfId === invoice.id ? 'animate-pulse' : ''}`}>
-                                {downloadingPdfId === invoice.id ? 'sync' : 'picture_as_pdf'}
+                              <span className={`material-symbols-outlined ${downloadingPdfId === proposal.id ? 'animate-pulse' : ''}`}>
+                                {downloadingPdfId === proposal.id ? 'sync' : 'picture_as_pdf'}
                               </span>
                             </button>
                             <Link
-                              href={`/invoices/new?id=${invoice.id}`}
+                              href={`/proposals/new?id=${proposal.id}`}
                               className="inline-flex items-center justify-center w-10 h-10 rounded-lg text-primary hover:bg-primary/10 transition-all"
-                              title="Faturayı düzenle"
+                              title="Teklifi düzenle"
                             >
                               <span className="material-symbols-outlined">edit</span>
                             </Link>
@@ -418,10 +406,10 @@ export default function InvoicesPage() {
                               onClick={async () => {
                                 const { data: { user } } = await supabase.auth.getUser();
                                 if (!user) { toast.error("Oturum açma gerekli."); return; }
-                                const result = await softDeleteInvoice(invoice.id, user.id);
+                                const result = await softDeleteInvoice(proposal.id, user.id);
                                 if (result.success) {
-                                  toast.success(`Fatura çöp kutusuna taşındı.`, { icon: "🗑️" });
-                                  setInvoices(prev => prev.filter(x => x.id !== invoice.id));
+                                  toast.success(`Teklif çöp kutusuna taşındı.`, { icon: "🗑️" });
+                                  setProposals(prev => prev.filter(x => x.id !== proposal.id));
                                 } else {
                                   toast.error(result.message);
                                 }
@@ -444,24 +432,22 @@ export default function InvoicesPage() {
                 <p className="text-xs text-slate-500">
                   {filtered.length === 0
                     ? "Kayıt bulunamadı"
-                    : `${paginatedInvoices.length} / ${filtered.length} fatura gösteriliyor (Sayfa ${currentPage + 1})`}
+                    : `${paginatedProposals.length} / ${filtered.length} teklif gösteriliyor (Sayfa ${currentPage + 1})`}
                 </p>
                 <div className="flex gap-2">
                   <button
-                    onClick={() => setCurrentPage(currentPage - 1)}
+                    onClick={() => setCurrentPage(prev => Math.max(0, prev - 1))}
                     disabled={currentPage === 0}
-                    className="px-4 py-2 text-xs font-bold rounded-lg border border-indigo-50 transition-all bg-white flex items-center gap-2 disabled:text-slate-300 disabled:cursor-not-allowed disabled:opacity-50 enabled:text-primary enabled:hover:bg-indigo-50"
+                    className="px-4 py-2 text-sm font-semibold text-slate-600 bg-white border border-slate-300 rounded-lg hover:bg-slate-100 disabled:opacity-50 transition-all"
                   >
-                    <span className="material-symbols-outlined text-sm">arrow_back</span>
-                    Önceki
+                    ← Önceki
                   </button>
                   <button
-                    onClick={() => setCurrentPage(currentPage + 1)}
+                    onClick={() => setCurrentPage(prev => (prev + 1) * ITEMS_PER_PAGE < filtered.length ? prev + 1 : prev)}
                     disabled={(currentPage + 1) * ITEMS_PER_PAGE >= filtered.length}
-                    className="px-4 py-2 text-xs font-bold rounded-lg border border-indigo-50 transition-all bg-white flex items-center gap-2 disabled:text-slate-300 disabled:cursor-not-allowed disabled:opacity-50 enabled:text-primary enabled:hover:bg-indigo-50"
+                    className="px-4 py-2 text-sm font-semibold text-slate-600 bg-white border border-slate-300 rounded-lg hover:bg-slate-100 disabled:opacity-50 transition-all"
                   >
-                    <span className="material-symbols-outlined text-sm">arrow_forward</span>
-                    Sonraki
+                    Sonraki →
                   </button>
                 </div>
               </div>

@@ -54,5 +54,5 @@ export async function checkPermission(module: string, action: ActionType): Promi
     .single();
 
   // İstediğimiz aksiyon sütunu (örn: can_create) true ise yetkilidir
-  return permission ? !!permission[action] : false;
+  return permission ? !!(permission as any)[action] : false;
 }

@@ -44,7 +44,7 @@ export function usePermission(module: string, action: ActionType) {
           .eq('module', module)
           .single();
 
-        setHasPermission(permission ? !!permission[action] : false);
+        setHasPermission(permission ? !!(permission as any)[action] : false);
       } catch (err) {
         console.error("Yetki kontrolü hatası:", err);
         setHasPermission(false);

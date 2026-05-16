@@ -2,7 +2,7 @@
 
 import { useState, useRef, useCallback, useEffect } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { createInvoiceAction, searchContacts, searchProducts, getNextInvoiceNumber, type InvoiceLineItem } from "@/app/(dashboard)/invoices/actions";
+import { createInvoiceAction, searchContacts, searchProducts, getNextInvoiceNumber, updateProposalAction, type InvoiceLineItem } from "@/app/(dashboard)/invoices/actions";
 import { supabase } from "@/lib/supabaseClient";
 import Toast from "@/components/invoices/Toast";
 import { useCurrencyConverter } from "@/hooks/useCurrencyConverter";
@@ -43,10 +43,29 @@ interface Toast {
   title: string;
 }
 
-export default function CreateInvoiceForm({ userId }: { userId: string }) {
+interface InvoiceFormInitialData {
+  id: string;
+  invoice_number: string;
+  contact_id: string;
+  type: "sales" | "purchase";
+  issue_date: string;
+  notes?: string;
+  line_items?: InvoiceLineItem[];
+  currency?: string;
+}
+
+export default function CreateInvoiceForm({ 
+  userId,
+  initialData,
+  forceProposalMode,
+}: { 
+  userId: string;
+  initialData?: InvoiceFormInitialData;
+  forceProposalMode?: boolean;
+}) {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const editInvoiceId = searchParams.get("id");  // ✅ Draft fatura ID'si
+  const editInvoiceId = searchParams.get("id") || initialData?.id;  // ✅ Draft fatura ID'si
   const preselectedContactId = searchParams.get("contact_id"); // ✅ URL'den gelen cari ID
   const [isEditMode, setIsEditMode] = useState(!!editInvoiceId);
   
@@ -85,17 +104,38 @@ export default function CreateInvoiceForm({ userId }: { userId: string }) {
     prevCurrencyRef.current = currency;
   }, [currency, rates, convertFull]);
 
+  // Initialize with existing data if editing
+  useEffect(() => {
+    if (initialData) {
+      setInvoiceNumber(initialData.invoice_number);
+      setInvoiceType(initialData.type);
+      setIssueDate(initialData.issue_date);
+      setNotes(initialData.notes || "");
+      if (initialData.line_items) {
+        setLineItems(initialData.line_items.map((item, idx) => ({
+          ...item,
+          id: `${idx}`,
+        })));
+      }
+      if (initialData.currency) {
+        setCurrency(initialData.currency);
+      }
+    }
+  }, [initialData]);
+
   // Initialize invoice number
   useEffect(() => {
     const initData = async () => {
-
-      if (!editInvoiceId) {
+      if (!editInvoiceId && !initialData) {
         const nextNum = await getNextInvoiceNumber(userId, invoiceType);
         setInvoiceNumber(nextNum);
       }
     };
     initData();
-  }, [userId, invoiceType, editInvoiceId]);
+  }, [userId, invoiceType, editInvoiceId, initialData]);
+
+  // Proposal mode: set invoice type to proposal for database
+  const finalInvoiceType = forceProposalMode ? ("sales" as "sales" | "purchase") : invoiceType;
 
   // ✅ Load draft invoice data if editing
   useEffect(() => {
@@ -365,6 +405,36 @@ export default function CreateInvoiceForm({ userId }: { userId: string }) {
     setIsLoading(true);
 
     try {
+      // ✅ Proposal edit mode
+      if (forceProposalMode && editInvoiceId) {
+        const formData = new FormData();
+        formData.set("user_id", userId);
+        formData.set("proposal_id", editInvoiceId);
+        formData.set("contact_id", selectedContact!.id);
+        formData.set("issue_date", issueDate);
+        formData.set("notes", notes || "");
+        formData.set("line_items", JSON.stringify(lineItems.map((item) => ({
+          product_id: item.product_id,
+          quantity: Number(item.quantity),
+          unit_price: Number(item.unit_price),
+          vat_rate: Number(item.vat_rate),
+        }))));
+
+        const response = await updateProposalAction(formData);
+        if (response.success) {
+          addToast("success", "📝 Teklif Güncellendi", response.message);
+          setTimeout(() => {
+            router.push("/proposals");
+          }, 2000);
+        } else {
+          const errorDetails = response.errors ? Object.values(response.errors).join(" | ") : "";
+          const fullMessage = errorDetails ? `${response.message} (${errorDetails})` : response.message;
+          addToast("error", "❌ Hata Oluştu", fullMessage);
+        }
+        setIsLoading(false);
+        return;
+      }
+
       const response = await createInvoiceAction({
         user_id: userId,
         contact_id: selectedContact!.id,
@@ -387,8 +457,9 @@ export default function CreateInvoiceForm({ userId }: { userId: string }) {
       if (response.success) {
         addToast("success", "📝 Taslak Kaydedildi", response.message);
         
+        const redirectPath = forceProposalMode ? "/proposals" : "/invoices";
         setTimeout(() => {
-          router.push("/invoices");
+          router.push(redirectPath);
         }, 2000);
       } else {
         const errorDetails = response.errors ? Object.values(response.errors).join(" | ") : "";
@@ -489,6 +560,36 @@ export default function CreateInvoiceForm({ userId }: { userId: string }) {
     setIsLoading(true);
 
     try {
+      // ✅ Proposal edit mode
+      if (forceProposalMode && editInvoiceId) {
+        const formData = new FormData();
+        formData.set("user_id", userId);
+        formData.set("proposal_id", editInvoiceId);
+        formData.set("contact_id", selectedContact!.id);
+        formData.set("issue_date", issueDate);
+        formData.set("notes", notes || "");
+        formData.set("line_items", JSON.stringify(lineItems.map((item) => ({
+          product_id: item.product_id,
+          quantity: Number(item.quantity),
+          unit_price: Number(item.unit_price),
+          vat_rate: Number(item.vat_rate),
+        }))));
+
+        const response = await updateProposalAction(formData);
+        if (response.success) {
+          addToast("success", "✅ Teklif Kesildi!", response.message);
+          setTimeout(() => {
+            router.push("/proposals");
+          }, 2000);
+        } else {
+          const errorDetails = response.errors ? Object.values(response.errors).join(" | ") : "";
+          const fullMessage = errorDetails ? `${response.message} (${errorDetails})` : response.message;
+          addToast("error", "❌ Hata Oluştu", fullMessage);
+        }
+        setIsLoading(false);
+        return;
+      }
+
       const response = await createInvoiceAction({
         user_id: userId,
         contact_id: selectedContact!.id,
@@ -511,8 +612,9 @@ export default function CreateInvoiceForm({ userId }: { userId: string }) {
       if (response.success) {
         addToast("success", "✅ Fatura Kesildi!", response.message);
         
+        const redirectPath = forceProposalMode ? "/proposals" : "/invoices";
         setTimeout(() => {
-          router.push("/invoices");
+          router.push(redirectPath);
         }, 2000);
       } else {
         const errorDetails = response.errors ? Object.values(response.errors).join(" | ") : "";

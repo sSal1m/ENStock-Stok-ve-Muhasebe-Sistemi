@@ -503,6 +503,39 @@ export default function QuotesPage() {
                             </button>
                           )}
                           <Link
+                            href={`/quotes/new?id=${quote.id}`}
+                            className="inline-flex items-center justify-center w-8 h-8 rounded-lg text-indigo-600 hover:bg-indigo-100 transition-all"
+                            title="Teklifi duzenle"
+                          >
+                            <span className="material-symbols-outlined text-lg">edit</span>
+                          </Link>
+                          <button
+                            onClick={async () => {
+                              setActionLoading(quote.id + "_delete");
+                              try {
+                                const { error } = await supabase
+                                  .from("quotes")
+                                  .delete()
+                                  .eq("id", quote.id);
+
+                                if (error) throw error;
+
+                                setQuotes(prev => prev.filter(q => q.id !== quote.id));
+                                toast.success("Teklif silindi.", { icon: "🗑️" });
+                              } catch (err: any) {
+                                console.error(err);
+                                toast.error(`Silme hatasi: ${err.message}`);
+                              } finally {
+                                setActionLoading(null);
+                              }
+                            }}
+                            disabled={actionLoading === quote.id + "_delete"}
+                            className="inline-flex items-center justify-center w-8 h-8 rounded-lg text-red-600 hover:bg-red-100 transition-all disabled:opacity-50"
+                            title="Teklifi sil"
+                          >
+                            <span className="material-symbols-outlined text-lg">delete</span>
+                          </button>
+                          <Link
                             href={`/quotes/${quote.id}`}
                             className="inline-flex items-center justify-center w-8 h-8 rounded-lg text-indigo-600 hover:bg-indigo-100 transition-all"
                             title="Teklif detaylarini goruntule"

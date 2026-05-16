@@ -155,8 +155,9 @@ export async function islemYapAction(formData: FormData) {
   const islemTuru = (formData.get("islem_turu") as string)?.trim(); // "Tahsilat" | "Ödeme"
   const tutarStr = (formData.get("tutar") as string)?.trim();
   const notlar = (formData.get("notlar") as string)?.trim();
+  const userId = (formData.get("user_id") as string)?.trim();
   
-  if (!cariId || !islemTuru || !tutarStr) {
+  if (!cariId || !islemTuru || !tutarStr || !userId) {
     return { success: false, message: "Eksik bilgi girdiniz." };
   }
 
@@ -166,43 +167,30 @@ export async function islemYapAction(formData: FormData) {
   }
 
   try {
-    // 1. İşlemi cari_hareketler tablosuna kaydet
-    const { error: insertError } = await supabaseServer
-      .from("cari_hareketler")
-      .insert([
-        {
-          cari_id: cariId,
-          islem_turu: islemTuru,
-          tutar: tutar,
-          notlar: notlar || null,
-          tarih: new Date().toISOString()
-        }
-      ]);
-
-    if (insertError) {
-      console.error("cari_hareketler INSERT hatası:", insertError);
-      return { success: false, message: `İşlem kaydedilemedi: ${insertError.message}` };
-    }
-
-    // 2. Bakiyeyi güncelle
-    const bakiyeDegisimi = islemTuru === "Tahsilat" ? -tutar : tutar;
-
+    // 1️⃣ GET CURRENT BALANCE
     const { data: contact, error: fetchError } = await supabaseServer
       .from("contacts")
       .select("current_balance")
       .eq("id", cariId)
       .single();
 
-    if (fetchError) {
+    if (fetchError || !contact) {
       console.error("Cari bakiye okuma hatası:", fetchError);
       return { success: false, message: "Bakiye okunamadı." };
     }
 
-    const yeniBakiye = Number(contact.current_balance || 0) + bakiyeDegisimi;
+    const previousBalance = Number(contact.current_balance || 0);
 
+    // 2️⃣ CALCULATE NEW BALANCE
+    // ✅ Tahsilat = -tutar (müşteri borcu azalır)
+    // ✅ Ödeme = +tutar (tedarikçiye borç artar)
+    const balanceChange = islemTuru === "Tahsilat" ? -tutar : tutar;
+    const newBalance = previousBalance + balanceChange;
+
+    // 3️⃣ UPDATE CONTACT BALANCE
     const { error: updateError } = await supabaseServer
       .from("contacts")
-      .update({ current_balance: yeniBakiye })
+      .update({ current_balance: newBalance })
       .eq("id", cariId);
 
     if (updateError) {
@@ -210,11 +198,41 @@ export async function islemYapAction(formData: FormData) {
       return { success: false, message: "Bakiye güncellenemedi." };
     }
 
+    // 4️⃣ INSERT CONTACT_LOGS (audit trail + single source of truth)
+    const actionType = islemTuru === "Tahsilat" ? "manual_collection" : "manual_payment";
+    const logNote = `${islemTuru} - ${notlar || "Açıklama yok"}`;
+
+    const { error: logError } = await supabaseServer
+      .from("contact_logs")
+      .insert([
+        {
+          business_id: userId,
+          contact_id: cariId,
+          action_type: actionType,
+          amount_change: balanceChange,
+          previous_balance: previousBalance,
+          new_balance: newBalance,
+          note: logNote,
+          created_by: userId,
+        },
+      ]);
+
+    if (logError) {
+      console.error("❌ contact_logs INSERT hatası:", logError);
+      // Not critical - balance already updated, log is just audit trail
+      return {
+        success: true,
+        message: "⚠️ İşlem kaydedildi ama log oluşturulamadı",
+      };
+    }
+
     revalidatePath(`/contacts/${cariId}`);
     revalidatePath("/contacts");
 
-    return { success: true, message: "İşlem başarıyla kaydedildi." };
-
+    return {
+      success: true,
+      message: `✅ ${islemTuru} ${tutar} TRY olarak kaydedildi (Yeni Bakiye: ${newBalance.toFixed(2)} TRY)`,
+    };
   } catch (err) {
     console.error("islemYapAction hatası:", err);
     return { success: false, message: "Beklenmeyen bir hata oluştu." };

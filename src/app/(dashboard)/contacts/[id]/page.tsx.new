@@ -46,8 +46,6 @@ type Tab = (typeof TABS)[number];
    HELPERS
    ═══════════════════════════════════════════ */
 
-// fmt function is now handled by the hook
-
 function fmtDate(iso: string): { date: string; time: string } {
   const d = new Date(iso);
   return {
@@ -55,8 +53,6 @@ function fmtDate(iso: string): { date: string; time: string } {
     time: d.toLocaleTimeString("tr-TR", { hour: "2-digit", minute: "2-digit" }),
   };
 }
-
-// durumStyle removed - contact_logs doesn't track status
 
 const actionTypeToDisplay = (actionType: string): { label: string; icon: string; color: string; category: Tab } => {
   switch (actionType) {
@@ -167,8 +163,6 @@ export default function ContactDetailPage() {
       ? allLogs
       : allLogs.filter((log) => actionTypeToDisplay(log.action_type).category === activeTab);
 
-  // convert function is now handled by the hook
-
   const bakiye = cari?.current_balance ?? 0;
   const isBorclu = bakiye < 0;
   const bakiyeLabel = isBorclu ? "Güncel Borç" : "Güncel Alacak";
@@ -176,7 +170,7 @@ export default function ContactDetailPage() {
   const bakiyeBg = isBorclu ? "bg-error-container/20 border-error/10" : "bg-emerald-50/60 border-emerald-100";
 
   // ✅ Bekleyen ve Gecikmiş hesaplamaları contact_logs'tan kaldırıldı (audit trail olarak tutuluyor)
-  const bekleyen = 0; // contact_logs'ta status bilgisi yok (all completed)
+  const bekleyen = 0;
   const gecikmis = 0;
 
   const handleEditSubmit = (e: React.FormEvent<HTMLFormElement>) => {
@@ -195,8 +189,8 @@ export default function ContactDetailPage() {
       if (result.success) {
         toast.success(result.message);
         setIsEditModalOpen(false);
-        await fetchData(false); // Reload data dynamically
-        await router.refresh(); // Invalidate Next.js cache
+        await fetchData(false);
+        await router.refresh();
       } else {
         toast.error(result.message);
       }
@@ -221,8 +215,8 @@ export default function ContactDetailPage() {
         toast.success(result.message);
         setIsTransactionModalOpen(false);
         txFormRef.current?.reset();
-        await fetchData(false); // Reload data dynamically without full page reload
-        await router.refresh(); // Invalidate Next.js cache
+        await fetchData(false);
+        await router.refresh();
       } else {
         toast.error(result.message);
       }
@@ -460,11 +454,13 @@ export default function ContactDetailPage() {
                           <span className="text-sm text-slate-500 italic line-clamp-2 break-words" title={log.note || ""}>{log.note || "—"}</span>
                         </td>
                         <td className="px-4 py-5 text-right font-black text-on-surface tabular-nums align-middle">
-                          {log.amount_change < 0 ? "-" : ""}{fmt(convert(Math.abs(log.amount_change)), viewCurrency)}
+                          <span className={log.amount_change < 0 ? "text-error" : "text-emerald-500"}>
+                            {log.amount_change > 0 ? "+" : ""}{fmt(convert(Math.abs(log.amount_change)), viewCurrency)}
+                          </span>
                         </td>
                       </tr>
                     );
-                })
+                  })
               )}
             </tbody>
           </table>
@@ -504,6 +500,7 @@ export default function ContactDetailPage() {
           </div>
         </div>
       </section>
+
       {/* ── MODALS ── */}
       {isEditModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 backdrop-blur-sm">

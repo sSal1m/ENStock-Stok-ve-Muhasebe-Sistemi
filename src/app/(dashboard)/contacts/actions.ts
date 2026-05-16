@@ -96,3 +96,145 @@ export async function cariEkleAction(formData: FormData): Promise<CariFormState>
     return { success: false, message: "Beklenmeyen bir sunucu hatası oluştu." };
   }
 }
+
+export async function cariGuncelleAction(formData: FormData): Promise<CariFormState> {
+  const id = (formData.get("id") as string)?.trim();
+  const tip = (formData.get("tip") as string)?.trim();
+  const unvan = (formData.get("unvan") as string)?.trim();
+  const vergiNo = (formData.get("vergi_no") as string)?.trim();
+  const vergiDairesi = (formData.get("vergi_dairesi") as string)?.trim();
+  const telefon = (formData.get("telefon") as string)?.trim();
+  const email = (formData.get("email") as string)?.trim();
+  const adres = (formData.get("adres") as string)?.trim();
+  const userId = (formData.get("user_id") as string)?.trim();
+
+  // Validation
+  if (!id) return { success: false, message: "Cari ID bulunamadı." };
+  if (!unvan || unvan.length < 2) return { success: false, message: "Firma/Şahıs adı en az 2 karakter olmalıdır." };
+  if (!userId) return { success: false, message: "Kullanıcı doğrulaması başarısız. Lütfen giriş yapın." };
+
+  const type = (tip === "Tedarikçi" || tip === "supplier") ? "supplier" : "customer";
+
+  try {
+    const { data: updatedContact, error } = await supabaseServer
+      .from("contacts")
+      .update({
+        type,
+        name: unvan,
+        tax_number: vergiNo || null,
+        tax_office: vergiDairesi || null,
+        phone: telefon || null,
+        email: email || null,
+        address: adres || null,
+      })
+      .eq("id", id)
+      .select()
+      .single();
+
+    if (error) {
+      console.error("Supabase UPDATE hatası:", error);
+      return { success: false, message: `Güncelleme hatası: ${error.message}` };
+    }
+
+    revalidatePath(`/contacts/${id}`);
+    revalidatePath("/contacts");
+
+    return { 
+      success: true, 
+      message: `"${unvan}" başarıyla güncellendi!`,
+      data: updatedContact
+    };
+  } catch (err) {
+    console.error("Beklenmeyen hata:", err);
+    return { success: false, message: "Beklenmeyen bir sunucu hatası oluştu." };
+  }
+}
+
+export async function islemYapAction(formData: FormData) {
+  const cariId = (formData.get("cari_id") as string)?.trim();
+  const islemTuru = (formData.get("islem_turu") as string)?.trim(); // "Tahsilat" | "Ödeme"
+  const tutarStr = (formData.get("tutar") as string)?.trim();
+  const notlar = (formData.get("notlar") as string)?.trim();
+  const userId = (formData.get("user_id") as string)?.trim();
+  
+  if (!cariId || !islemTuru || !tutarStr || !userId) {
+    return { success: false, message: "Eksik bilgi girdiniz." };
+  }
+
+  const tutar = parseFloat(tutarStr);
+  if (isNaN(tutar) || tutar <= 0) {
+    return { success: false, message: "Geçerli bir tutar giriniz." };
+  }
+
+  try {
+    // 1️⃣ GET CURRENT BALANCE
+    const { data: contact, error: fetchError } = await supabaseServer
+      .from("contacts")
+      .select("current_balance")
+      .eq("id", cariId)
+      .single();
+
+    if (fetchError || !contact) {
+      console.error("Cari bakiye okuma hatası:", fetchError);
+      return { success: false, message: "Bakiye okunamadı." };
+    }
+
+    const previousBalance = Number(contact.current_balance || 0);
+
+    // 2️⃣ CALCULATE NEW BALANCE
+    // ✅ Tahsilat = -tutar (müşteri borcu azalır)
+    // ✅ Ödeme = +tutar (tedarikçiye borç artar)
+    const balanceChange = islemTuru === "Tahsilat" ? -tutar : tutar;
+    const newBalance = previousBalance + balanceChange;
+
+    // 3️⃣ UPDATE CONTACT BALANCE
+    const { error: updateError } = await supabaseServer
+      .from("contacts")
+      .update({ current_balance: newBalance })
+      .eq("id", cariId);
+
+    if (updateError) {
+      console.error("Cari bakiye güncelleme hatası:", updateError);
+      return { success: false, message: "Bakiye güncellenemedi." };
+    }
+
+    // 4️⃣ INSERT CONTACT_LOGS (audit trail + single source of truth)
+    const actionType = islemTuru === "Tahsilat" ? "manual_collection" : "manual_payment";
+    const logNote = `${islemTuru} - ${notlar || "Açıklama yok"}`;
+
+    const { error: logError } = await supabaseServer
+      .from("contact_logs")
+      .insert([
+        {
+          business_id: userId,
+          contact_id: cariId,
+          action_type: actionType,
+          amount_change: balanceChange,
+          previous_balance: previousBalance,
+          new_balance: newBalance,
+          note: logNote,
+          created_by: userId,
+        },
+      ]);
+
+    if (logError) {
+      console.error("❌ contact_logs INSERT hatası:", logError);
+      // Not critical - balance already updated, log is just audit trail
+      return {
+        success: true,
+        message: "⚠️ İşlem kaydedildi ama log oluşturulamadı",
+      };
+    }
+
+    revalidatePath(`/contacts/${cariId}`);
+    revalidatePath("/contacts");
+
+    return {
+      success: true,
+      message: `✅ ${islemTuru} ${tutar} TRY olarak kaydedildi (Yeni Bakiye: ${newBalance.toFixed(2)} TRY)`,
+    };
+  } catch (err) {
+    console.error("islemYapAction hatası:", err);
+    return { success: false, message: "Beklenmeyen bir hata oluştu." };
+  }
+}

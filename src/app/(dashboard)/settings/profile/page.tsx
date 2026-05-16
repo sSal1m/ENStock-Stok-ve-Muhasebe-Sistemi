@@ -336,6 +336,7 @@ export default function ProfilePage() {
                   src={profile?.avatarUrl ? `${profile.avatarUrl}?t=${avatarTimestamp}` : "https://lh3.googleusercontent.com/aida-public/AB6AXuBY5E2U5beAf0HPxnaZY_3SyyRPUzvnCyIBK8R7co4UYzbP8LSzDQTFYaWAjCrWObJ8b8an_PNCxkbdT39Lj-JVfjvS2Fj7hG2tLorvbgm8FWpmecUaQcfKyPK5RmWc4WQm22snPKPqESke94N3ANzD_ghrflBmp4Uu8JyNsOumn9J2tQOUOJ2K0ByOZChQ2-WhrXGeWwyNHxoNccGXrcTJE4Wab5TSUy3z3WoK2c_up-8q-jkCY5Xuf5Yw1dFITHkM_Zc-pJ04TlI"}
                   alt="Avatar"
                   fill
+                  sizes="(max-width: 768px) 100vw, (max-width: 1200px) 50vw, 33vw"
                   style={{ objectFit: "cover" }}
                   className={`w-full h-full object-cover transition-opacity ${isAvatarUploading ? "opacity-30" : "opacity-100"}`}
                 />

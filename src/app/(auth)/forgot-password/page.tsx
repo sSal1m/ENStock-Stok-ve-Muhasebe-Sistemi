@@ -2,17 +2,10 @@
 
 import React, { useState } from 'react';
 import Link from 'next/link';
-import { createClient } from '@supabase/supabase-js';
 import toast from 'react-hot-toast';
+import { supabase } from '@/lib/supabaseClient';
 
 export default function ForgotPasswordPage() {
-  const [supabase] = React.useState(() =>
-    createClient(
-      process.env.NEXT_PUBLIC_SUPABASE_URL!,
-      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-    )
-  );
-
   const [email, setEmail] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [isSuccess, setIsSuccess] = useState(false);

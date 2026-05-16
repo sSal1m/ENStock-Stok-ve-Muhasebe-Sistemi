@@ -27,37 +27,13 @@ export default function DashboardLayout({
 
         if (user) {
           setIsAuthenticated(true);
-          
-          // Update status to active if it was pending
+
+          // Davet ile gelen kullanıcı pending durumunda ise aktif yap
           await supabase
             .from('profiles')
             .update({ status: 'active' })
             .eq('id', user.id)
             .eq('status', 'pending');
-          
-          // Route-based permission check
-          const pathname = window.location.pathname;
-          const getModuleId = (path: string) => {
-            if (path.includes('/inventory')) return 'stock';
-            if (path.includes('/contacts')) return 'contacts';
-            if (path.includes('/invoices')) return 'invoices';
-            if (path.includes('/reports')) return 'reports';
-            if (path.includes('/settings/users')) return 'users'; 
-            return null;
-          };
-
-          const moduleId = getModuleId(pathname);
-          
-          if (!permsLoading) {
-            if (moduleId === 'users' && role !== 'admin') {
-              router.push('/unauthorized');
-              return;
-            }
-            if (moduleId && moduleId !== 'users' && !hasPermission(moduleId, 'view')) {
-              router.push('/unauthorized');
-              return;
-            }
-          }
         } else {
           router.push('/login');
         }
@@ -70,7 +46,33 @@ export default function DashboardLayout({
     };
 
     checkAuth();
-  }, [router, permsLoading, hasPermission, role]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Permissions yüklenince route bazlı kontrol yap
+  useEffect(() => {
+    if (permsLoading || !isAuthenticated) return;
+
+    const pathname = window.location.pathname;
+    const getModuleId = (path: string) => {
+      if (path.includes('/inventory')) return 'stock';
+      if (path.includes('/contacts')) return 'contacts';
+      if (path.includes('/invoices')) return 'invoices';
+      if (path.includes('/reports')) return 'reports';
+      if (path.includes('/settings/users')) return 'users';
+      return null;
+    };
+
+    const moduleId = getModuleId(pathname);
+
+    if (moduleId === 'users' && role !== 'admin') {
+      router.push('/unauthorized');
+      return;
+    }
+    if (moduleId && moduleId !== 'users' && !hasPermission(moduleId, 'view')) {
+      router.push('/unauthorized');
+    }
+  }, [permsLoading, isAuthenticated, role, hasPermission, router]);
 
   if (isLoading || permsLoading) {
     return (

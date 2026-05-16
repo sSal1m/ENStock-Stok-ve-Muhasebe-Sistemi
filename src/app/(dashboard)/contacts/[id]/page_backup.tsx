@@ -46,8 +46,6 @@ type Tab = (typeof TABS)[number];
    HELPERS
    ═══════════════════════════════════════════ */
 
-// fmt function is now handled by the hook
-
 function fmtDate(iso: string): { date: string; time: string } {
   const d = new Date(iso);
   return {
@@ -55,8 +53,6 @@ function fmtDate(iso: string): { date: string; time: string } {
     time: d.toLocaleTimeString("tr-TR", { hour: "2-digit", minute: "2-digit" }),
   };
 }
-
-// durumStyle removed - contact_logs doesn't track status
 
 const actionTypeToDisplay = (actionType: string): { label: string; icon: string; color: string; category: Tab } => {
   switch (actionType) {
@@ -167,16 +163,14 @@ export default function ContactDetailPage() {
       ? allLogs
       : allLogs.filter((log) => actionTypeToDisplay(log.action_type).category === activeTab);
 
-  // convert function is now handled by the hook
-
   const bakiye = cari?.current_balance ?? 0;
   const isBorclu = bakiye < 0;
   const bakiyeLabel = isBorclu ? "Güncel Borç" : "Güncel Alacak";
   const bakiyeColor = isBorclu ? "text-error" : "text-emerald-600";
   const bakiyeBg = isBorclu ? "bg-error-container/20 border-error/10" : "bg-emerald-50/60 border-emerald-100";
 
-  // ✅ Bekleyen ve Gecikmiş hesaplamaları contact_logs'tan kaldırıldı (audit trail olarak tutuluyor)
-  const bekleyen = 0; // contact_logs'ta status bilgisi yok (all completed)
+  // ✅ Bekleyen ve Gecikmiş hesaplamaları contact_logs'tan kaldırıldı
+  const bekleyen = 0;
   const gecikmis = 0;
 
   const handleEditSubmit = (e: React.FormEvent<HTMLFormElement>) => {
@@ -195,8 +189,8 @@ export default function ContactDetailPage() {
       if (result.success) {
         toast.success(result.message);
         setIsEditModalOpen(false);
-        await fetchData(false); // Reload data dynamically
-        await router.refresh(); // Invalidate Next.js cache
+        await fetchData(false);
+        await router.refresh();
       } else {
         toast.error(result.message);
       }
@@ -221,8 +215,8 @@ export default function ContactDetailPage() {
         toast.success(result.message);
         setIsTransactionModalOpen(false);
         txFormRef.current?.reset();
-        await fetchData(false); // Reload data dynamically without full page reload
-        await router.refresh(); // Invalidate Next.js cache
+        await fetchData(false);
+        await router.refresh();
       } else {
         toast.error(result.message);
       }
@@ -304,14 +298,13 @@ export default function ContactDetailPage() {
         </div>
       </div>
 
-      {/* ── BENTO GRID Info + Balance ── */}
-      <section className="grid grid-cols-1 gap-6 lg:grid-cols-3">
+      {/* ── INFO & BALANCE ── */}
+      <section className="grid grid-cols-1 gap-6 lg:grid-cols-3 mt-8">
         <div className="lg:col-span-2 rounded-2xl bg-white border border-indigo-50/50 shadow-sm p-6">
           <div className="flex items-center gap-2 mb-6">
             <span className="material-symbols-outlined text-primary text-xl">badge</span>
             <h3 className="text-sm font-black text-on-surface uppercase tracking-widest">Cari Bilgileri</h3>
           </div>
-
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
             <div className="flex items-start gap-4">
               <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-indigo-50/50">
@@ -322,7 +315,6 @@ export default function ContactDetailPage() {
                 <p className="text-sm font-bold text-on-surface">{cari.phone || "—"}</p>
               </div>
             </div>
-
             <div className="flex items-start gap-4">
               <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-indigo-50/50">
                 <span className="material-symbols-outlined text-primary text-xl">mail</span>
@@ -332,19 +324,15 @@ export default function ContactDetailPage() {
                 <p className="text-sm font-bold text-on-surface">{cari.email || "—"}</p>
               </div>
             </div>
-
             <div className="flex items-start gap-4">
               <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-indigo-50/50">
                 <span className="material-symbols-outlined text-primary text-xl">account_balance</span>
               </div>
               <div>
                 <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Vergi Bilgisi</p>
-                <p className="text-sm font-bold text-on-surface">
-                  {cari.tax_office || "—"} / {cari.tax_number || "—"}
-                </p>
+                <p className="text-sm font-bold text-on-surface">{cari.tax_office || "—"} / {cari.tax_number || "—"}</p>
               </div>
             </div>
-
             <div className="flex items-start gap-4">
               <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-indigo-50/50">
                 <span className="material-symbols-outlined text-primary text-xl">location_on</span>
@@ -360,34 +348,21 @@ export default function ContactDetailPage() {
         <div className="rounded-2xl bg-white border border-indigo-50/50 shadow-sm p-6 flex flex-col">
           <div className="flex items-center gap-2 mb-6">
             <span className={`material-symbols-outlined text-xl ${isBorclu ? "text-error" : "text-emerald-500"}`}>account_balance_wallet</span>
-            <h3 className="text-sm font-black text-on-surface uppercase tracking-widest">Bakiye Özeti</h3>
+            <h3 className="text-sm font-black text-on-surface uppercase tracking-widest">Bakiye</h3>
           </div>
-
           <div className={`rounded-2xl border p-6 text-center mb-6 ${bakiyeBg}`}>
             <p className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-1">{bakiyeLabel}</p>
             <p className={`text-3xl font-black tabular-nums ${bakiyeColor}`}>{fmt(convert(Math.abs(bakiye)), viewCurrency)}</p>
           </div>
-
-          <div className="space-y-3 flex-1">
-            <div className="flex items-center justify-between rounded-xl bg-slate-50 border border-indigo-50/50 px-4 py-3">
-              <span className="text-xs font-bold text-slate-500">Bekleyen</span>
-              <span className="text-sm font-black text-on-surface tabular-nums">{fmt(convert(bekleyen), viewCurrency)}</span>
-            </div>
-            <div className="flex items-center justify-between rounded-xl bg-slate-50 border border-indigo-50/50 px-4 py-3">
-              <span className="text-xs font-bold text-slate-500">Gecikmiş</span>
-              <span className="text-sm font-black text-error tabular-nums">{fmt(convert(gecikmis), viewCurrency)}</span>
-            </div>
-          </div>
-
-          <button onClick={() => setIsTransactionModalOpen(true)} className="mt-6 flex w-full items-center justify-center gap-2 rounded-xl bg-primary py-3.5 text-sm font-black text-on-primary shadow-lg transition-all active:scale-95">
+          <button onClick={() => setIsTransactionModalOpen(true)} className="mt-auto flex w-full items-center justify-center gap-2 rounded-xl bg-primary py-3.5 text-sm font-black text-on-primary shadow-lg transition-all active:scale-95">
             <span className="material-symbols-outlined text-lg">payments</span>
             İşlem Yap
           </button>
         </div>
       </section>
 
-      {/* ── TRANSACTION HISTORY ── */}
-      <section className="rounded-2xl bg-white border border-indigo-50/50 shadow-sm overflow-hidden">
+      {/* ── TRANSACTION LOGS ── */}
+      <section className="mt-8 rounded-2xl bg-white border border-indigo-50/50 shadow-sm overflow-hidden">
         <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between px-8 pt-6 pb-2">
           <div className="flex items-center gap-2">
             <span className="material-symbols-outlined text-primary text-xl">history</span>
@@ -396,44 +371,36 @@ export default function ContactDetailPage() {
           <span className="text-xs font-bold text-slate-300">{filtered.length} İşlem</span>
         </div>
 
-        <div className="flex items-center gap-6 px-8 border-b border-indigo-50/50">
+        <div className="flex items-center gap-6 px-8 border-b border-indigo-50/50 overflow-x-auto">
           {TABS.map((tab) => (
             <button
               key={tab}
               onClick={() => setActiveTab(tab)}
-              className={`relative pb-3 text-xs font-black uppercase tracking-wider transition-all ${
+              className={`relative pb-3 text-xs font-black uppercase tracking-wider transition-all whitespace-nowrap ${
                 activeTab === tab ? "text-primary" : "text-slate-400 hover:text-slate-600"
               }`}
             >
               {tab}
-              {activeTab === tab && (
-                <span className="absolute bottom-0 left-0 right-0 h-1 rounded-full bg-primary" />
-              )}
+              {activeTab === tab && <span className="absolute bottom-0 left-0 right-0 h-1 rounded-full bg-primary" />}
             </button>
           ))}
         </div>
 
-        <div ref={tableRef} className={`overflow-x-auto transition-opacity duration-300 min-h-[400px] ${isAnimating ? "opacity-60" : "opacity-100"}`}>
-          <table className="table-auto w-full border-collapse">
+        <div ref={tableRef} className={`overflow-x-auto transition-opacity duration-300 min-h-[300px] ${isAnimating ? "opacity-60" : "opacity-100"}`}>
+          <table className="table-auto w-full">
             <thead>
-              <tr className="bg-surface-container-low/50 text-slate-500">
-                <th className="px-8 py-4 text-[10px] font-black uppercase tracking-[0.1em] align-middle">Tarih</th>
-                <th className="px-4 py-4 text-[10px] font-black uppercase tracking-[0.1em] align-middle">İşlem</th>
-                <th className="px-4 py-4 text-[10px] font-black uppercase tracking-[0.1em] align-middle">Açıklama / Not</th>
-                <th className="px-4 py-4 text-[10px] font-black uppercase tracking-[0.1em] text-right align-middle">Tutar Değişimi</th>
+              <tr className="bg-slate-50 text-slate-500 text-[10px] font-black uppercase">
+                <th className="px-6 py-3 text-left">Tarih</th>
+                <th className="px-4 py-3 text-left">İşlem Türü</th>
+                <th className="px-4 py-3 text-left">Not</th>
+                <th className="px-4 py-3 text-right">Tutar Değişimi</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-indigo-50/50">
-              {(!filtered || filtered.length === 0) ? (
+            <tbody className="divide-y divide-slate-100">
+              {filtered.length === 0 ? (
                 <tr>
-                  <td colSpan={4} className="px-8 py-16 text-center align-middle">
-                    <span className="material-symbols-outlined text-slate-200 text-5xl block mb-3">history</span>
-                    <p className="text-slate-400 font-semibold">
-                      {allLogs.length === 0 
-                        ? "Bu cari hesaba ait işlem bulunmamaktadır."
-                        : "Seçilen filtre için işlem bulunamadı."
-                      }
-                    </p>
+                  <td colSpan={4} className="px-6 py-12 text-center">
+                    <p className="text-slate-400 text-sm">İşlem bulunmadı</p>
                   </td>
                 </tr>
               ) : (
@@ -443,114 +410,113 @@ export default function ContactDetailPage() {
                     const { icon, color, label } = actionTypeToDisplay(log.action_type);
                     const { date, time } = fmtDate(log.created_at);
                     return (
-                      <tr key={log.id} className="group hover:bg-indigo-50/30 transition-colors align-middle">
-                        <td className="px-8 py-5 align-middle">
-                          <div className="flex flex-col">
-                            <span className="text-sm font-semibold text-slate-500">{date}</span>
-                            <span className="text-[10px] text-slate-400">{time}</span>
-                          </div>
+                      <tr key={log.id} className="hover:bg-slate-50 transition-colors">
+                        <td className="px-6 py-3 text-sm">
+                          <div className="font-semibold text-slate-700">{date}</div>
+                          <div className="text-xs text-slate-400">{time}</div>
                         </td>
-                        <td className="px-4 py-5 align-middle">
+                        <td className="px-4 py-3">
                           <div className="flex items-center gap-2">
                             <span className={`material-symbols-outlined text-lg ${color}`}>{icon}</span>
-                            <span className="text-sm font-bold text-on-surface">{label}</span>
+                            <span className="text-sm font-bold text-slate-700">{label}</span>
                           </div>
                         </td>
-                        <td className="px-4 py-5 align-middle">
-                          <span className="text-sm text-slate-500 italic line-clamp-2 break-words" title={log.note || ""}>{log.note || "—"}</span>
-                        </td>
-                        <td className="px-4 py-5 text-right font-black text-on-surface tabular-nums align-middle">
-                          {log.amount_change < 0 ? "-" : ""}{fmt(convert(Math.abs(log.amount_change)), viewCurrency)}
+                        <td className="px-4 py-3 text-sm text-slate-600">{log.note || "—"}</td>
+                        <td className="px-4 py-3 text-right">
+                          <span className={`font-bold tabular-nums ${log.amount_change < 0 ? "text-error" : "text-emerald-600"}`}>
+                            {log.amount_change > 0 ? "+" : ""}{fmt(convert(Math.abs(log.amount_change)), viewCurrency)}
+                          </span>
                         </td>
                       </tr>
                     );
-                })
+                  })
               )}
             </tbody>
           </table>
         </div>
 
-        <div className="p-6 bg-surface-container-low/30 border-t border-indigo-50 flex justify-between items-center">
-          <p className="text-xs text-slate-500">
-            {filtered.length === 0
-              ? "Kayıt bulunamadı"
-              : `${Math.min(filtered.length, (currentPage + 1) * ITEMS_PER_PAGE)} / ${filtered.length} kayıt gösteriliyor (Sayfa ${currentPage + 1})`}
-          </p>
-          <div className="flex gap-2">
-            <button
-              onClick={() => {
-                setIsAnimating(true);
-                setCurrentPage(currentPage - 1);
-                setTimeout(() => setIsAnimating(false), 300);
-              }}
-              disabled={currentPage === 0}
-              className="px-4 py-2 text-xs font-bold rounded-lg border border-indigo-50 transition-all bg-white flex items-center gap-2 disabled:text-slate-300 disabled:cursor-not-allowed disabled:opacity-50 enabled:text-primary enabled:hover:bg-indigo-50"
-            >
-              <span className="material-symbols-outlined text-sm">arrow_back</span>
-              Önceki
-            </button>
-            <button
-              onClick={() => {
-                setIsAnimating(true);
-                setCurrentPage(currentPage + 1);
-                setTimeout(() => setIsAnimating(false), 300);
-              }}
-              disabled={(currentPage + 1) * ITEMS_PER_PAGE >= filtered.length}
-              className="px-4 py-2 text-xs font-bold rounded-lg border border-indigo-50 transition-all bg-white flex items-center gap-2 disabled:text-slate-300 disabled:cursor-not-allowed disabled:opacity-50 enabled:text-primary enabled:hover:bg-indigo-50"
-            >
-              <span className="material-symbols-outlined text-sm">arrow_forward</span>
-              Sonraki
-            </button>
+        {filtered.length > 0 && (
+          <div className="px-6 py-4 bg-slate-50 border-t border-slate-100 flex justify-between items-center">
+            <span className="text-xs text-slate-500">
+              {Math.min(filtered.length, (currentPage + 1) * ITEMS_PER_PAGE)} / {filtered.length} kayıt (Sayfa {currentPage + 1})
+            </span>
+            <div className="flex gap-2">
+              <button
+                onClick={() => {
+                  setIsAnimating(true);
+                  setCurrentPage(currentPage - 1);
+                  setTimeout(() => setIsAnimating(false), 300);
+                }}
+                disabled={currentPage === 0}
+                className="px-3 py-1.5 text-xs font-bold rounded-lg border border-slate-200 bg-white text-slate-600 disabled:opacity-40 enabled:hover:bg-slate-100"
+              >
+                Önceki
+              </button>
+              <button
+                onClick={() => {
+                  setIsAnimating(true);
+                  setCurrentPage(currentPage + 1);
+                  setTimeout(() => setIsAnimating(false), 300);
+                }}
+                disabled={(currentPage + 1) * ITEMS_PER_PAGE >= filtered.length}
+                className="px-3 py-1.5 text-xs font-bold rounded-lg border border-slate-200 bg-white text-slate-600 disabled:opacity-40 enabled:hover:bg-slate-100"
+              >
+                Sonraki
+              </button>
+            </div>
           </div>
-        </div>
+        )}
       </section>
-      {/* ── MODALS ── */}
+
+      {/* ── EDIT MODAL ── */}
       {isEditModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 backdrop-blur-sm">
-          <div className="bg-white rounded-3xl w-full max-w-2xl p-8 shadow-2xl">
-            <div className="flex items-center justify-between mb-6">
-              <h2 className="text-xl font-black text-on-surface">Cari Bilgilerini Düzenle</h2>
-              <button onClick={() => setIsEditModalOpen(false)} className="text-slate-400 hover:text-error transition-colors">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
+          <div className="bg-white rounded-2xl w-full max-w-2xl p-6 shadow-xl">
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="text-lg font-black text-slate-900">Cari Bilgilerini Düzenle</h2>
+              <button onClick={() => setIsEditModalOpen(false)} className="text-slate-400 hover:text-slate-600">
                 <span className="material-symbols-outlined">close</span>
               </button>
             </div>
             <form ref={editFormRef} onSubmit={handleEditSubmit} className="space-y-4">
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <label className="mb-1.5 block text-xs font-bold uppercase tracking-widest text-slate-400">Cari Türü</label>
-                  <select name="tip" defaultValue={cari.type === "customer" ? "Müşteri" : "Tedarikçi"} className="w-full rounded-xl border border-indigo-100 bg-white px-4 py-2.5 text-sm outline-none focus:ring-2 focus:ring-primary">
-                    <option value="Müşteri">Müşteri</option>
-                    <option value="Tedarikçi">Tedarikçi</option>
+                  <label className="text-xs font-bold text-slate-600 block mb-1">Cari Türü</label>
+                  <select name="tip" defaultValue={cari.type === "customer" ? "Müşteri" : "Tedarikçi"} className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-primary outline-none">
+                    <option>Müşteri</option>
+                    <option>Tedarikçi</option>
                   </select>
                 </div>
                 <div>
-                  <label className="mb-1.5 block text-xs font-bold uppercase tracking-widest text-slate-400">Firma / Şahıs Adı</label>
-                  <input name="unvan" type="text" defaultValue={cari.name} required className="w-full rounded-xl border border-indigo-100 bg-white px-4 py-2.5 text-sm outline-none focus:ring-2 focus:ring-primary" />
+                  <label className="text-xs font-bold text-slate-600 block mb-1">Adı</label>
+                  <input name="unvan" type="text" defaultValue={cari.name} required className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-primary outline-none" />
                 </div>
                 <div>
-                  <label className="mb-1.5 block text-xs font-bold uppercase tracking-widest text-slate-400">Vergi No</label>
-                  <input name="vergi_no" type="text" defaultValue={cari.tax_number || ""} className="w-full rounded-xl border border-indigo-100 bg-white px-4 py-2.5 text-sm font-mono outline-none focus:ring-2 focus:ring-primary" />
+                  <label className="text-xs font-bold text-slate-600 block mb-1">Vergi No</label>
+                  <input name="vergi_no" type="text" defaultValue={cari.tax_number || ""} className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-primary outline-none" />
                 </div>
                 <div>
-                  <label className="mb-1.5 block text-xs font-bold uppercase tracking-widest text-slate-400">Vergi Dairesi</label>
-                  <input name="vergi_dairesi" type="text" defaultValue={cari.tax_office || ""} className="w-full rounded-xl border border-indigo-100 bg-white px-4 py-2.5 text-sm outline-none focus:ring-2 focus:ring-primary" />
+                  <label className="text-xs font-bold text-slate-600 block mb-1">Vergi Dairesi</label>
+                  <input name="vergi_dairesi" type="text" defaultValue={cari.tax_office || ""} className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-primary outline-none" />
                 </div>
                 <div>
-                  <label className="mb-1.5 block text-xs font-bold uppercase tracking-widest text-slate-400">Telefon</label>
-                  <input name="telefon" type="tel" defaultValue={cari.phone || ""} className="w-full rounded-xl border border-indigo-100 bg-white px-4 py-2.5 text-sm outline-none focus:ring-2 focus:ring-primary" />
+                  <label className="text-xs font-bold text-slate-600 block mb-1">Telefon</label>
+                  <input name="telefon" type="tel" defaultValue={cari.phone || ""} className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-primary outline-none" />
                 </div>
                 <div>
-                  <label className="mb-1.5 block text-xs font-bold uppercase tracking-widest text-slate-400">E-posta</label>
-                  <input name="email" type="email" defaultValue={cari.email || ""} className="w-full rounded-xl border border-indigo-100 bg-white px-4 py-2.5 text-sm outline-none focus:ring-2 focus:ring-primary" />
+                  <label className="text-xs font-bold text-slate-600 block mb-1">E-posta</label>
+                  <input name="email" type="email" defaultValue={cari.email || ""} className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-primary outline-none" />
                 </div>
                 <div className="col-span-2">
-                  <label className="mb-1.5 block text-xs font-bold uppercase tracking-widest text-slate-400">Adres</label>
-                  <textarea name="adres" rows={2} defaultValue={cari.address || ""} className="w-full rounded-xl border border-indigo-100 bg-white px-4 py-2.5 text-sm resize-none outline-none focus:ring-2 focus:ring-primary" />
+                  <label className="text-xs font-bold text-slate-600 block mb-1">Adres</label>
+                  <textarea name="adres" rows={2} defaultValue={cari.address || ""} className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm resize-none focus:ring-2 focus:ring-primary outline-none" />
                 </div>
               </div>
-              <div className="flex justify-end gap-3 mt-6">
-                <button type="button" onClick={() => setIsEditModalOpen(false)} className="px-5 py-2.5 rounded-xl font-bold text-slate-500 hover:bg-slate-50">İptal</button>
-                <button type="submit" disabled={isPendingEdit} className="px-6 py-2.5 rounded-xl font-black bg-primary text-on-primary shadow-lg hover:bg-opacity-90 disabled:opacity-50">
+              <div className="flex justify-end gap-2 mt-6">
+                <button type="button" onClick={() => setIsEditModalOpen(false)} className="px-4 py-2 text-sm font-bold text-slate-600 hover:bg-slate-100 rounded-lg">
+                  İptal
+                </button>
+                <button type="submit" disabled={isPendingEdit} className="px-4 py-2 text-sm font-bold bg-primary text-white rounded-lg disabled:opacity-60">
                   {isPendingEdit ? "Kaydediliyor..." : "Kaydet"}
                 </button>
               </div>
@@ -559,46 +525,49 @@ export default function ContactDetailPage() {
         </div>
       )}
 
+      {/* ── TRANSACTION MODAL ── */}
       {isTransactionModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 backdrop-blur-sm">
-          <div className="bg-white rounded-3xl w-full max-w-md p-8 shadow-2xl">
-            <div className="flex items-center justify-between mb-6">
-              <h2 className="text-xl font-black text-on-surface">İşlem Yap (Nakit)</h2>
-              <button onClick={() => setIsTransactionModalOpen(false)} className="text-slate-400 hover:text-error transition-colors">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
+          <div className="bg-white rounded-2xl w-full max-w-md p-6 shadow-xl">
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="text-lg font-black text-slate-900">Nakit İşlemi Ekle</h2>
+              <button onClick={() => setIsTransactionModalOpen(false)} className="text-slate-400 hover:text-slate-600">
                 <span className="material-symbols-outlined">close</span>
               </button>
             </div>
             <form ref={txFormRef} onSubmit={handleTxSubmit} className="space-y-4">
               <div>
-                <label className="mb-1.5 block text-xs font-bold uppercase tracking-widest text-slate-400">İşlem Türü</label>
-                <div className="flex gap-2 p-1 bg-slate-50 rounded-xl border border-indigo-100">
+                <label className="text-xs font-bold text-slate-600 block mb-2">İşlem Türü</label>
+                <div className="flex gap-2">
                   <button
                     type="button"
                     onClick={() => setIslemTipi("Tahsilat")}
-                    className={`flex-1 rounded-lg py-2 text-sm font-bold transition-all ${
-                      islemTipi === "Tahsilat" ? "bg-primary text-on-primary shadow-sm" : "text-slate-500 hover:bg-slate-100"
-                    }`}
-                  >Tahsilat (Giriş)</button>
+                    className={`flex-1 py-2 text-sm font-bold rounded-lg transition-all ${islemTipi === "Tahsilat" ? "bg-primary text-white" : "bg-slate-100 text-slate-600 hover:bg-slate-200"}`}
+                  >
+                    Tahsilat
+                  </button>
                   <button
                     type="button"
                     onClick={() => setIslemTipi("Ödeme")}
-                    className={`flex-1 rounded-lg py-2 text-sm font-bold transition-all ${
-                      islemTipi === "Ödeme" ? "bg-primary text-on-primary shadow-sm" : "text-slate-500 hover:bg-slate-100"
-                    }`}
-                  >Ödeme (Çıkış)</button>
+                    className={`flex-1 py-2 text-sm font-bold rounded-lg transition-all ${islemTipi === "Ödeme" ? "bg-primary text-white" : "bg-slate-100 text-slate-600 hover:bg-slate-200"}`}
+                  >
+                    Ödeme
+                  </button>
                 </div>
               </div>
               <div>
-                <label className="mb-1.5 block text-xs font-bold uppercase tracking-widest text-slate-400">Tutar (TRY)</label>
-                <input name="tutar" type="number" step="0.01" min="0" required placeholder="0.00" className="w-full rounded-xl border border-indigo-100 bg-white px-4 py-2.5 text-sm outline-none focus:ring-2 focus:ring-primary font-black" />
+                <label className="text-xs font-bold text-slate-600 block mb-1">Tutar (TRY)</label>
+                <input name="tutar" type="number" step="0.01" min="0" required placeholder="0.00" className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm font-bold focus:ring-2 focus:ring-primary outline-none" />
               </div>
               <div>
-                <label className="mb-1.5 block text-xs font-bold uppercase tracking-widest text-slate-400">Notlar / Açıklama</label>
-                <textarea name="notlar" rows={3} placeholder="İşlem ile ilgili notlarınız..." className="w-full rounded-xl border border-indigo-100 bg-white px-4 py-2.5 text-sm resize-none outline-none focus:ring-2 focus:ring-primary" />
+                <label className="text-xs font-bold text-slate-600 block mb-1">Notlar</label>
+                <textarea name="notlar" rows={3} placeholder="İşlem açıklaması..." className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm resize-none focus:ring-2 focus:ring-primary outline-none" />
               </div>
-              <div className="flex justify-end gap-3 mt-6">
-                <button type="button" onClick={() => setIsTransactionModalOpen(false)} className="px-5 py-2.5 rounded-xl font-bold text-slate-500 hover:bg-slate-50">İptal</button>
-                <button type="submit" disabled={isPendingTx} className="px-6 py-2.5 rounded-xl font-black bg-primary text-on-primary shadow-lg hover:bg-opacity-90 disabled:opacity-50">
+              <div className="flex justify-end gap-2 mt-6">
+                <button type="button" onClick={() => setIsTransactionModalOpen(false)} className="px-4 py-2 text-sm font-bold text-slate-600 hover:bg-slate-100 rounded-lg">
+                  İptal
+                </button>
+                <button type="submit" disabled={isPendingTx} className="px-4 py-2 text-sm font-bold bg-primary text-white rounded-lg disabled:opacity-60">
                   {isPendingTx ? "Kaydediliyor..." : "İşlemi Tamamla"}
                 </button>
               </div>

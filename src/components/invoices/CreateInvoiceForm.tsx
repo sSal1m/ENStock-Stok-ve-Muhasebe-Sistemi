@@ -29,7 +29,9 @@ interface Product {
   tax_rate: number;
 }
 
-interface LineItem extends InvoiceLineItem {
+interface LineItem extends Omit<InvoiceLineItem, 'quantity' | 'unit_price'> {
+  quantity: number | string;
+  unit_price: number | string;
   id: string;
   product_name?: string;
   stock_quantity?: number;
@@ -268,8 +270,8 @@ export default function CreateInvoiceForm({ userId }: { userId: string }) {
       {
         id: newId,
         product_id: "",
-        quantity: 1,
-        unit_price: 0,
+        quantity: "",
+        unit_price: "",
         vat_rate: 20,
         stock_quantity: 0,
       },
@@ -299,7 +301,7 @@ export default function CreateInvoiceForm({ userId }: { userId: string }) {
 
     lineItems.forEach((item) => {
       if (item.product_id) {
-        const lineSubtotal = item.quantity * item.unit_price;
+        const lineSubtotal = (Number(item.quantity) || 0) * (Number(item.unit_price) || 0);
         const lineVat = lineSubtotal * (item.vat_rate / 100);
         subtotal += lineSubtotal;
         vatTotal += lineVat;
@@ -422,12 +424,14 @@ export default function CreateInvoiceForm({ userId }: { userId: string }) {
         contactTaxNumber: selectedContact!.tax_number || undefined,
         contactTaxOffice: selectedContact!.tax_office || undefined,
         items: lineItems.map((item) => {
-          const lineSubtotal = item.quantity * item.unit_price;
+          const qty = Number(item.quantity) || 0;
+          const price = Number(item.unit_price) || 0;
+          const lineSubtotal = qty * price;
           const lineVat = lineSubtotal * (item.vat_rate / 100);
           return {
             productName: item.product_name || "Bilinmeyen Ürün",
-            quantity: item.quantity,
-            unitPrice: item.unit_price,
+            quantity: qty,
+            unitPrice: price,
             vatRate: item.vat_rate,
             lineTotal: lineSubtotal + lineVat,
           };
@@ -454,7 +458,7 @@ export default function CreateInvoiceForm({ userId }: { userId: string }) {
 
     // ✅ Stock check for sales
     if (invoiceType === "sales") {
-      const invalidItems = lineItems.filter((item) => (item.stock_quantity || 0) < item.quantity);
+      const invalidItems = lineItems.filter((item) => (item.stock_quantity || 0) < (Number(item.quantity) || 0));
       if (invalidItems.length > 0) {
         const itemList = invalidItems.map(i => i.product_name).join(", ");
         addToast("error", "❌ Yetersiz Stok", `${itemList} - stok yeterli değil`);
@@ -741,10 +745,12 @@ export default function CreateInvoiceForm({ userId }: { userId: string }) {
             </thead>
             <tbody className="divide-y divide-slate-200">
               {lineItems.map((item) => {
-                const lineSubtotal = item.quantity * item.unit_price;
+                const qty = Number(item.quantity) || 0;
+                const price = Number(item.unit_price) || 0;
+                const lineSubtotal = qty * price;
                 const lineVat = lineSubtotal * (item.vat_rate / 100);
                 const lineTotal = lineSubtotal + lineVat;
-                const hasStockWarning = invoiceType === "sales" && (item.stock_quantity || 0) < item.quantity;
+                const hasStockWarning = invoiceType === "sales" && (item.stock_quantity || 0) < qty;
 
                 return (
                   <tr key={item.id} className={`group hover:bg-slate-50 transition-colors ${hasStockWarning ? "bg-red-50" : ""}`}>

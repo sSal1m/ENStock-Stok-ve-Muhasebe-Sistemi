@@ -8,9 +8,11 @@ import {
   restoreProduct,
   restoreContact,
   restoreInvoice,
+  restoreQuote,
   permanentDeleteProduct,
   permanentDeleteContact,
   permanentDeleteInvoice,
+  permanentDeleteQuote,
   emptyTrash,
   type TrashItem,
 } from "./actions";
@@ -19,25 +21,28 @@ import {
    CONSTANTS
    ═══════════════════════════════════════════ */
 
-const TABS = ["Tümü", "Ürünler", "Cariler", "Faturalar"] as const;
+const TABS = ["Tümü", "Ürünler", "Cariler", "Faturalar", "Teklifler"] as const;
 type Tab = (typeof TABS)[number];
 
 const typeLabels: Record<TrashItem["type"], string> = {
   product: "Ürün",
   contact: "Cari",
   invoice: "Fatura",
+  quote: "Teklif",
 };
 
 const typeIcons: Record<TrashItem["type"], string> = {
   product: "inventory_2",
   contact: "contacts",
   invoice: "receipt",
+  quote: "request_quote",
 };
 
 const typeBgColors: Record<TrashItem["type"], string> = {
   product: "bg-indigo-50 text-indigo-600",
   contact: "bg-emerald-50 text-emerald-600",
   invoice: "bg-purple-50 text-purple-600",
+  quote: "bg-orange-50 text-orange-600",
 };
 
 /* ═══════════════════════════════════════════
@@ -80,6 +85,7 @@ export default function TrashPage() {
     if (activeTab === "Ürünler") return item.type === "product";
     if (activeTab === "Cariler") return item.type === "contact";
     if (activeTab === "Faturalar") return item.type === "invoice";
+    if (activeTab === "Teklifler") return item.type === "quote";
     return true;
   });
 
@@ -90,7 +96,8 @@ export default function TrashPage() {
       let result;
       if (item.type === "product") result = await restoreProduct(item.id, userId);
       else if (item.type === "contact") result = await restoreContact(item.id, userId);
-      else result = await restoreInvoice(item.id, userId);
+      else if (item.type === "invoice") result = await restoreInvoice(item.id, userId);
+      else result = await restoreQuote(item.id, userId);
 
       if (result.success) {
         toast.success(result.message, { icon: "♻️" });
@@ -108,7 +115,8 @@ export default function TrashPage() {
       let result;
       if (item.type === "product") result = await permanentDeleteProduct(item.id, userId);
       else if (item.type === "contact") result = await permanentDeleteContact(item.id, userId);
-      else result = await permanentDeleteInvoice(item.id, userId);
+      else if (item.type === "invoice") result = await permanentDeleteInvoice(item.id, userId);
+      else result = await permanentDeleteQuote(item.id, userId);
 
       if (result.success) {
         toast.success(result.message, { icon: "🗑️" });
@@ -184,7 +192,7 @@ export default function TrashPage() {
       </div>
 
       {/* ── İstatistik Kartları ── */}
-      <section className="grid grid-cols-1 gap-6 sm:grid-cols-4">
+      <section className="grid grid-cols-2 gap-6 sm:grid-cols-3 lg:grid-cols-5">
         <div className="bg-white p-6 rounded-2xl shadow-sm border border-indigo-50/50">
           <p className="text-xs font-bold uppercase tracking-widest text-slate-400">Toplam</p>
           <div className="mt-2 flex items-end gap-3">
@@ -213,6 +221,14 @@ export default function TrashPage() {
           <div className="mt-2 flex items-end gap-3">
             <p className="text-2xl font-extrabold text-purple-600 tabular-nums leading-none">
               {items.filter((i) => i.type === "invoice").length}
+            </p>
+          </div>
+        </div>
+        <div className="bg-white p-6 rounded-2xl shadow-sm border border-indigo-50/50">
+          <p className="text-xs font-bold uppercase tracking-widest text-slate-400">Teklifler</p>
+          <div className="mt-2 flex items-end gap-3">
+            <p className="text-2xl font-extrabold text-orange-600 tabular-nums leading-none">
+              {items.filter((i) => i.type === "quote").length}
             </p>
           </div>
         </div>

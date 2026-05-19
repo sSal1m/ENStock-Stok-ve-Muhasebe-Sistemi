@@ -6,10 +6,16 @@ import Link from "next/link";
 <<<<<<< HEAD
 import { useRouter } from "next/navigation";
 import { toast, Toaster } from "react-hot-toast";
+<<<<<<< Updated upstream
 =======
 import toast from "react-hot-toast";
 import { useRouter } from "next/navigation";
 >>>>>>> main
+=======
+import { supabase } from "@/lib/supabaseClient";
+import { useCurrencyConverter } from "@/hooks/useCurrencyConverter";
+import { softDeleteQuote } from "@/app/(dashboard)/trash/actions";
+>>>>>>> Stashed changes
 
 interface Quote {
   id: string;
@@ -23,20 +29,15 @@ interface Quote {
   contact_id: string;
 }
 
-const fmt = (val: number) =>
-  new Intl.NumberFormat("tr-TR", {
-    style: "currency",
-    currency: "TRY",
-    minimumFractionDigits: 2,
-  }).format(val);
-
 export default function QuotesPage() {
+  const { viewCurrency, setViewCurrency, convert, format } = useCurrencyConverter();
   const [quotes, setQuotes] = useState<Quote[]>([]);
   const [contacts, setContacts] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(true);
   const [filterType, setFilterType] = useState<"all" | "pending" | "approved" | "rejected">("all");
   const [searchTerm, setSearchTerm] = useState("");
   const [actionLoading, setActionLoading] = useState<string | null>(null);
+<<<<<<< Updated upstream
 =======
   issue_date: string;
   total_amount: number;
@@ -51,6 +52,9 @@ export default function QuotesPage() {
   const [quotes, setQuotes] = useState<Quote[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState("");
+=======
+  const [downloadingPdfId, setDownloadingPdfId] = useState<string | null>(null);
+>>>>>>> Stashed changes
   const [currentPage, setCurrentPage] = useState(0);
   const ITEMS_PER_PAGE = 5;
 >>>>>>> main
@@ -70,6 +74,7 @@ export default function QuotesPage() {
       .from("quotes")
       .select("*")
       .eq("user_id", user.id)
+      .is("deleted_at", null)
       .order("created_at", { ascending: false });
 
     if (quotesError) {
@@ -332,6 +337,86 @@ export default function QuotesPage() {
     }
   };
 
+  const handleDownloadPdf = async (quote: Quote) => {
+    setDownloadingPdfId(quote.id);
+    const toastId = toast.loading("PDF hazırlanıyor...");
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) throw new Error("Kullanıcı bulunamadı");
+
+      // 1. Get Business Info
+      let companyName = "Şirket Adı Belirtilmemiş";
+      let companyAddress = "";
+      let companyTaxId = "";
+      const localSettingsRaw = localStorage.getItem(`business_settings_${user.id}`);
+      if (localSettingsRaw) {
+        const localSettings = JSON.parse(localSettingsRaw);
+        companyName = localSettings.companyName || companyName;
+        companyAddress = localSettings.address || "";
+        companyTaxId = localSettings.taxId || "";
+      } else {
+        const { data: profile } = await supabase.from("profiles").select("company_name, tax_id").eq("id", user.id).single();
+        if (profile) {
+          companyName = profile.company_name || companyName;
+          companyTaxId = profile.tax_id || "";
+        }
+      }
+
+      // 2. Get Contact Info
+      const { data: contactData } = await supabase.from("contacts").select("*").eq("id", quote.contact_id).single();
+      
+      // 3. Get Quote Items and Products
+      const { data: itemsData } = await supabase.from("quote_items").select("*").eq("quote_id", quote.id);
+      
+      const formattedItems = [];
+      if (itemsData && itemsData.length > 0) {
+        for (const item of itemsData) {
+          const { data: product } = await supabase.from("products").select("name").eq("id", item.product_id).single();
+          const lineSubtotal = item.quantity * item.unit_price;
+          const lineVat = lineSubtotal * (item.vat_rate / 100);
+          formattedItems.push({
+            productName: product?.name || "Bilinmeyen Ürün",
+            quantity: Number(item.quantity),
+            unitPrice: Number(item.unit_price),
+            vatRate: Number(item.vat_rate),
+            lineTotal: Number(lineSubtotal + lineVat),
+          });
+        }
+      }
+
+      // Generate Data Object
+      const pdfData = {
+        companyName,
+        companyAddress,
+        companyTaxId,
+        invoiceNumber: quote.quote_number,
+        issueDate: quote.issue_date || quote.quote_date,
+        currency: "TRY",
+        status: quote.status,
+        contactName: contactData?.name || "Cari Belirtilmemiş",
+        contactTaxNumber: contactData?.tax_number,
+        contactTaxOffice: contactData?.tax_office,
+        items: formattedItems,
+        subtotal: quote.total_amount - quote.tax_total,
+        vatTotal: quote.tax_total,
+        grandTotal: quote.total_amount,
+      };
+
+      const { data: fullQuote } = await supabase.from("quotes").select("notes").eq("id", quote.id).single();
+      if (fullQuote && fullQuote.notes) (pdfData as any).notes = fullQuote.notes;
+
+      const { generateInvoicePdf } = await import("@/lib/generateInvoicePdf");
+      await generateInvoicePdf(pdfData, "quotation");
+      toast.success("PDF başarıyla oluşturuldu.", { id: toastId });
+
+    } catch (err: any) {
+      console.error("PDF Generate error:", err);
+      toast.error(`Aksiyon hatası: ${err.message}`, { id: toastId });
+    } finally {
+      setDownloadingPdfId(null);
+    }
+  };
+
   const filtered = quotes.filter((quote) => {
 <<<<<<< HEAD
     const statusLower = quote.status?.toLowerCase() || "";
@@ -347,8 +432,22 @@ export default function QuotesPage() {
     return (filterType === "all" || isMatch) && searchMatch;
   });
 
+<<<<<<< Updated upstream
   const totalAmount = filtered.reduce((sum, q) => sum + (q.total_amount || 0), 0);
   const vatAmount = filtered.reduce((sum, q) => sum + (q.tax_total || 0), 0);
+=======
+  const paginatedQuotes = filtered.slice(
+    currentPage * ITEMS_PER_PAGE,
+    (currentPage + 1) * ITEMS_PER_PAGE
+  );
+
+  const calculateInView = (amountTry: number) => {
+    return convert(amountTry);
+  };
+
+  const totalAmount = filtered.reduce((sum, q) => sum + calculateInView(q.total_amount || 0), 0);
+  const vatAmount = filtered.reduce((sum, q) => sum + calculateInView(q.tax_total || 0), 0);
+>>>>>>> Stashed changes
 
   return (
     <div className="w-full p-8 max-w-[1600px] mx-auto bg-slate-50 min-h-screen">
@@ -411,6 +510,7 @@ export default function QuotesPage() {
               Tüm tekliflerinizi yönetin ve takip edin
             </p>
           </div>
+<<<<<<< Updated upstream
 <<<<<<< HEAD
           <Link
             href="/quotes/new"
@@ -419,6 +519,32 @@ export default function QuotesPage() {
             <span className="material-symbols-outlined">add_circle</span>
             + Yeni Teklif
           </Link>
+=======
+          <div className="flex flex-wrap items-center gap-3">
+             {/* Döviz Görünüm Seçici */}
+             <div className="flex items-center gap-2 bg-white border-2 border-purple-100 rounded-xl px-4 py-2.5 shadow-sm">
+                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-tighter">Görünüm:</span>
+                <select
+                  value={viewCurrency}
+                  onChange={(e) => setViewCurrency(e.target.value)}
+                  className="bg-transparent border-none text-sm font-black text-purple-600 outline-none focus:ring-0 cursor-pointer"
+                >
+                  <option value="TRY">TRY (₺)</option>
+                  <option value="USD">USD ($)</option>
+                  <option value="EUR">EUR (€)</option>
+                  <option value="GBP">GBP (£)</option>
+                </select>
+              </div>
+
+            <Link
+              href="/quotes/new"
+              className="flex items-center gap-2 px-8 py-3.5 rounded-lg font-semibold text-sm text-white bg-gradient-to-r from-purple-600 to-purple-700 shadow-lg shadow-purple-200 hover:shadow-xl hover:shadow-purple-300 active:scale-[0.98] transition-all"
+            >
+              <span className="material-symbols-outlined">add_circle</span>
+              + Yeni Teklif
+            </Link>
+          </div>
+>>>>>>> Stashed changes
         </div>
 
         {/* Filter Bar */}
@@ -493,7 +619,7 @@ export default function QuotesPage() {
                 <p className="text-xs font-semibold text-orange-600 uppercase tracking-wide mb-2">
                   Toplam KDV
                 </p>
-                <p className="font-bold text-2xl text-orange-700">{fmt(vatAmount)}</p>
+                <p className="font-bold text-2xl text-orange-700">{format(vatAmount)}</p>
               </div>
               <div className="w-12 h-12 bg-orange-200/50 rounded-lg flex items-center justify-center">
                 <span className="material-symbols-outlined text-xl text-orange-600">receipt_long</span>
@@ -507,7 +633,7 @@ export default function QuotesPage() {
                 <p className="text-xs font-semibold text-green-600 uppercase tracking-wide mb-2">
                   Toplam Tutar
                 </p>
-                <p className="font-bold text-2xl text-green-700">{fmt(totalAmount)}</p>
+                <p className="font-bold text-2xl text-green-700">{format(totalAmount)}</p>
               </div>
               <div className="w-12 h-12 bg-green-200/50 rounded-lg flex items-center justify-center">
                 <span className="material-symbols-outlined text-xl text-green-600">payments</span>
@@ -599,7 +725,9 @@ export default function QuotesPage() {
                   <th className="px-6 py-4 text-xs font-semibold uppercase tracking-wide text-slate-600">
                     Durum
                   </th>
-                  <th className="px-6 py-4 w-auto"></th>
+                  <th className="px-6 py-4 text-xs font-semibold uppercase tracking-wide text-slate-600 text-center">
+                    İşlemler
+                  </th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-200">
@@ -612,6 +740,7 @@ export default function QuotesPage() {
                   const displayDate = quote.issue_date || quote.quote_date;
 
                   return (
+<<<<<<< Updated upstream
                   <tr key={quote.id} className="group hover:bg-slate-50 transition-colors">
                     <td className="px-6 py-4">
                       <p className="text-sm font-semibold text-slate-900">
@@ -684,6 +813,123 @@ export default function QuotesPage() {
                     </td>
                   </tr>
                 )})}
+=======
+                    <tr key={quote.id} className="group hover:bg-slate-50 transition-colors">
+                      <td className="px-6 py-4">
+                        <p className="text-sm font-semibold text-slate-900">{quote.quote_number}</p>
+                      </td>
+                      <td className="px-6 py-4">
+                        <p className="text-sm font-medium text-slate-700">
+                          {contacts[quote.contact_id] || quote.contacts?.name || "-"}
+                        </p>
+                      </td>
+                      <td className="px-6 py-4">
+                        <p className="text-sm text-slate-700 font-medium">
+                          {displayDate ? new Date(displayDate).toLocaleDateString("tr-TR") : "-"}
+                        </p>
+                      </td>
+                      <td className="px-6 py-4 text-right">
+                        <p className="text-sm font-semibold text-slate-900">{format(calculateInView(quote.total_amount))}</p>
+                      </td>
+                      <td className="px-6 py-4">
+                        <span
+                          className={`text-xs font-semibold px-3 py-1.5 rounded-lg flex items-center gap-1 w-fit ${
+                            isPending
+                              ? "bg-orange-100 text-orange-700"
+                              : isApproved
+                              ? "bg-green-100 text-green-700"
+                              : isRejected
+                              ? "bg-red-100 text-red-700"
+                              : "bg-slate-100 text-slate-700"
+                          }`}
+                        >
+                          <span className="material-symbols-outlined text-sm">
+                            {isPending
+                              ? "schedule"
+                              : isApproved
+                              ? "check_circle"
+                              : isRejected
+                              ? "cancel"
+                              : "info"}
+                          </span>
+                          {isPending
+                            ? "Beklemede"
+                            : isApproved
+                            ? "Onaylandi"
+                            : isRejected
+                            ? "Reddedildi"
+                            : quote.status}
+                        </span>
+                      </td>
+                      <td className="px-6 py-4 text-center">
+                        <div className="flex items-center justify-center gap-2">
+                          {isPending && (
+                            <button
+                              onClick={() => handleApprove(quote.id)}
+                              disabled={actionLoading === quote.id}
+                              className="inline-flex items-center justify-center gap-1.5 px-3 py-1.5 h-10 rounded-lg text-emerald-700 bg-emerald-100 hover:bg-emerald-200 transition-all disabled:opacity-50 font-medium text-xs shadow-sm border border-emerald-200 whitespace-nowrap"
+                            >
+                              <span className={`material-symbols-outlined text-base ${actionLoading === quote.id ? "animate-spin" : ""}`}>
+                                {actionLoading === quote.id ? "progress_activity" : "check"}
+                              </span>
+                              Onayla
+                            </button>
+                          )}
+                          {isApproved && (
+                            <button
+                              onClick={() => handleConvertToInvoice(quote)}
+                              disabled={actionLoading === quote.id + "_convert"}
+                              className="inline-flex items-center justify-center gap-1.5 px-3 py-1.5 h-10 rounded-lg text-purple-700 bg-purple-100 hover:bg-purple-200 transition-all disabled:opacity-50 font-medium text-xs shadow-sm border border-purple-200 whitespace-nowrap"
+                            >
+                              <span className={`material-symbols-outlined text-base ${actionLoading === quote.id + "_convert" ? "animate-spin" : ""}`}>
+                                {actionLoading === quote.id + "_convert" ? "progress_activity" : "receipt_long"}
+                              </span>
+                              Faturaya Dönüştür
+                            </button>
+                          )}
+                          
+                          <div className="w-px h-6 bg-slate-200 mx-1 hidden xl:block"></div>
+
+                          <button
+                            onClick={() => handleDownloadPdf(quote)}
+                            disabled={downloadingPdfId === quote.id}
+                            className="inline-flex items-center justify-center w-10 h-10 rounded-lg text-emerald-600 hover:bg-emerald-100 transition-all disabled:opacity-50"
+                            title="PDF Olarak İndir"
+                          >
+                            <span className={`material-symbols-outlined ${downloadingPdfId === quote.id ? 'animate-pulse' : ''}`}>
+                              {downloadingPdfId === quote.id ? 'sync' : 'picture_as_pdf'}
+                            </span>
+                          </button>
+                          <Link
+                            href={`/quotes/new?id=${quote.id}`}
+                            className="inline-flex items-center justify-center w-10 h-10 rounded-lg text-indigo-600 hover:bg-indigo-100 transition-all"
+                            title="Teklifi duzenle"
+                          >
+                            <span className="material-symbols-outlined">edit</span>
+                          </Link>
+                          <button
+                            onClick={async () => {
+                              const { data: { user } } = await supabase.auth.getUser();
+                              if (!user) { toast.error("Oturum acma gerekli."); return; }
+                              const result = await softDeleteQuote(quote.id, user.id);
+                              if (result.success) {
+                                toast.success("Teklif çöp kutusuna taşındı.", { icon: "🗑️" });
+                                setQuotes(prev => prev.filter(q => q.id !== quote.id));
+                              } else {
+                                toast.error(result.message);
+                              }
+                            }}
+                            className="inline-flex items-center justify-center w-10 h-10 rounded-lg text-amber-500 hover:bg-amber-50 transition-all"
+                            title="Çöp Kutusuna Taşı"
+                          >
+                            <span className="material-symbols-outlined">delete</span>
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
+>>>>>>> Stashed changes
               </tbody>
             </table>
 =======

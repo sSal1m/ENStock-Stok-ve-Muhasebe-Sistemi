@@ -357,12 +357,98 @@ export async function permanentDeleteInvoice(invoiceId: string, userId: string) 
 }
 
 /* ═══════════════════════════════════════════
+   SOFT DELETE / GERİ YÜKLE / KALICI SİL — Teklif
+   ═══════════════════════════════════════════ */
+
+export async function softDeleteQuote(quoteId: string, userId: string) {
+  try {
+    const { data: quote, error: fetchError } = await supabaseServer
+      .from("quotes")
+      .select("id")
+      .eq("id", quoteId)
+      .eq("user_id", userId)
+      .single();
+
+    if (fetchError || !quote) {
+      console.error("Teklif bulunamadı:", fetchError);
+      return { success: false, message: "Teklif bulunamadı." };
+    }
+
+    const { error } = await supabaseServer
+      .from("quotes")
+      .update({ deleted_at: new Date().toISOString() })
+      .eq("id", quoteId)
+      .eq("user_id", userId);
+
+    if (error) {
+      console.error("Soft delete quote error:", error);
+      return { success: false, message: `Silme hatası: ${error.message}` };
+    }
+
+    revalidatePath("/quotes");
+    revalidatePath("/trash");
+    return { success: true, message: "Teklif çöp kutusuna taşındı." };
+  } catch (err) {
+    console.error("Unexpected soft delete quote error:", err);
+    return { success: false, message: "Beklenmeyen bir hata oluştu." };
+  }
+}
+
+export async function restoreQuote(quoteId: string, userId: string) {
+  try {
+    const { error } = await supabaseServer
+      .from("quotes")
+      .update({ deleted_at: null })
+      .eq("id", quoteId)
+      .eq("user_id", userId);
+
+    if (error) {
+      console.error("Restore quote error:", error);
+      return { success: false, message: `Geri yükleme hatası: ${error.message}` };
+    }
+
+    revalidatePath("/quotes");
+    revalidatePath("/trash");
+    return { success: true, message: "Teklif başarıyla geri yüklendi." };
+  } catch (err) {
+    console.error("Unexpected restore quote error:", err);
+    return { success: false, message: "Beklenmeyen bir hata oluştu." };
+  }
+}
+
+export async function permanentDeleteQuote(quoteId: string, userId: string) {
+  try {
+    await supabaseServer
+      .from("quote_items")
+      .delete()
+      .eq("quote_id", quoteId);
+
+    const { error } = await supabaseServer
+      .from("quotes")
+      .delete()
+      .eq("id", quoteId)
+      .eq("user_id", userId);
+
+    if (error) {
+      console.error("Permanent delete quote error:", error);
+      return { success: false, message: `Kalıcı silme hatası: ${error.message}` };
+    }
+
+    revalidatePath("/trash");
+    return { success: true, message: "Teklif kalıcı olarak silindi." };
+  } catch (err) {
+    console.error("Unexpected permanent delete quote error:", err);
+    return { success: false, message: "Beklenmeyen bir hata oluştu." };
+  }
+}
+
+/* ═══════════════════════════════════════════
    ÇÖP KUTUSUNDAKİ KAYITLARI GETİR
    ═══════════════════════════════════════════ */
 
 export interface TrashItem {
   id: string;
-  type: "product" | "contact" | "invoice";
+  type: "product" | "contact" | "invoice" | "quote";
   name: string;
   detail: string;
   deleted_at: string;
@@ -456,6 +542,33 @@ export async function getTrashItems(userId: string): Promise<{ success: boolean;
       }
     }
 
+    // 4. Silinen Teklifler
+    const { data: quotes, error: quotesError } = await applyTeamFilterServer(
+      supabaseServer
+        .from("quotes")
+        .select("id, quote_number, total_amount, deleted_at")
+        .not("deleted_at", "is", null),
+      teamIds
+    ).order("deleted_at", { ascending: false });
+
+    if (quotesError) {
+      console.error("Trash quotes fetch error:", quotesError);
+    } else if (quotes) {
+      for (const q of quotes) {
+        const deletedDate = new Date(q.deleted_at);
+        const diffDays = Math.floor((now.getTime() - deletedDate.getTime()) / (1000 * 60 * 60 * 24));
+        const daysRemaining = Math.max(30 - diffDays, 0);
+        items.push({
+          id: q.id,
+          type: "quote",
+          name: q.quote_number || "Teklif",
+          detail: `Teklif — ${Number(q.total_amount).toLocaleString("tr-TR", { style: "currency", currency: "TRY" })}`,
+          deleted_at: q.deleted_at,
+          days_remaining: daysRemaining,
+        });
+      }
+    }
+
     // Silinme tarihine göre sırala (en son silinen üstte)
     items.sort((a, b) => new Date(b.deleted_at).getTime() - new Date(a.deleted_at).getTime());
 
@@ -504,6 +617,23 @@ export async function emptyTrash(userId: string) {
       teamIds
     );
     if (contError) console.error("Empty trash contacts error:", contError);
+
+    // 5. Teklif kalemlerini sil
+    const { data: deletedQuotes } = await applyTeamFilterServer(
+      supabaseServer.from("quotes").select("id").not("deleted_at", "is", null),
+      teamIds
+    );
+    if (deletedQuotes && deletedQuotes.length > 0) {
+      const quoteIds = deletedQuotes.map((q: any) => q.id);
+      await supabaseServer.from("quote_items").delete().in("quote_id", quoteIds);
+    }
+
+    // 6. Teklifler
+    const { error: quoteError } = await applyTeamFilterServer(
+      supabaseServer.from("quotes").delete().not("deleted_at", "is", null),
+      teamIds
+    );
+    if (quoteError) console.error("Empty trash quotes error:", quoteError);
 
     revalidatePath("/trash");
     return { success: true, message: "Çöp kutusu başarıyla boşaltıldı." };

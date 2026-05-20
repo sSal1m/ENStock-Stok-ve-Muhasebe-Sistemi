@@ -8,7 +8,7 @@ const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
 const supabaseServer = createClient(supabaseUrl, supabaseServiceKey);
 
 /* ═══════════════════════════════════════════
-   TEAM RESOLUTION HELPER (SERVER-SIDE)
+   TEAM RESOLUTION HELPER (SERVER-SIDE
    ═══════════════════════════════════════════ */
 
 async function resolveTeamIdsServer(userId: string): Promise<string[]> {

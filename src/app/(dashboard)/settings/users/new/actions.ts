@@ -16,7 +16,7 @@ type InvitationInput = {
 };
 
 type InvitationResult =
-  | { success: true; inviteUrl?: string }
+  | { success: true; inviteUrl?: string; code?: string }
   | { success: false; message: string };
 
 function generateOtpCode(): string {
@@ -144,7 +144,7 @@ export async function createInvitationAction(input: InvitationInput): Promise<In
     const appUrl = process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000";
     const inviteUrl = `${appUrl}/register/invite?email=${encodeURIComponent(email)}&code=${otpCode}`;
 
-    return { success: true, inviteUrl };
+    return { success: true, inviteUrl, code: otpCode };
   } catch (error: any) {
     console.error("Create Invitation Error:", error);
     return { success: false, message: error.message || "Unexpected server error." };

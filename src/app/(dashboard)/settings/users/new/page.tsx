@@ -16,6 +16,7 @@ export default function InviteUserPage() {
   });
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [inviteUrl, setInviteUrl] = useState<string | null>(null);
+  const [inviteCode, setInviteCode] = useState<string | null>(null);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -45,6 +46,7 @@ export default function InviteUserPage() {
       
       if (result.inviteUrl) {
         setInviteUrl(result.inviteUrl);
+        setInviteCode(result.code || null);
       } // else {
       //   router.push("/settings/users");
       // }
@@ -136,25 +138,51 @@ export default function InviteUserPage() {
                     </div>
                   </div>
 
-                  <div className="flex flex-col sm:flex-row items-center gap-3 mt-6 relative z-10">
-                    <input
-                      type="text"
-                      readOnly
-                      value={inviteUrl ?? ""}
-                      className="bg-white border border-slate-200 rounded-xl px-4 py-3 flex-1 text-slate-600 text-sm w-full outline-none"
-                    />
-                    <button
-                      onClick={() => {
-                        if (inviteUrl) {
-                          navigator.clipboard.writeText(inviteUrl);
-                          toast.success("Bağlantı kopyalandı!");
-                        }
-                      }}
-                      className="bg-indigo-600 hover:bg-indigo-700 text-white font-medium px-5 py-3 rounded-xl flex items-center justify-center gap-2 transition-colors w-full sm:w-auto flex-shrink-0"
-                    >
-                      <span className="material-symbols-outlined text-xl">content_copy</span>
-                      Linki Kopyala
-                    </button>
+                  <div className="flex flex-col gap-4 mt-6 relative z-10">
+                    {inviteCode && (
+                      <div className="bg-white border border-slate-200 rounded-xl p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3 animate-in fade-in duration-300">
+                        <div>
+                          <div className="text-[10px] text-slate-400 font-bold uppercase font-label">Davet Kodu (6 Haneli)</div>
+                          <div className="text-2xl font-black tracking-widest text-indigo-600 font-headline mt-1">{inviteCode}</div>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            navigator.clipboard.writeText(inviteCode);
+                            toast.success("Davet kodu kopyalandı!");
+                          }}
+                          className="bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold px-4 py-2.5 rounded-lg flex items-center justify-center gap-1.5 transition-all text-xs"
+                        >
+                          <span className="material-symbols-outlined text-base">content_copy</span>
+                          Kodu Kopyala
+                        </button>
+                      </div>
+                    )}
+
+                    <div className="flex flex-col sm:flex-row items-center gap-3 w-full">
+                      <div className="flex-1 w-full">
+                        <div className="text-[10px] text-slate-400 font-bold uppercase font-label mb-1">Davet Bağlantısı</div>
+                        <input
+                          type="text"
+                          readOnly
+                          value={inviteUrl ?? ""}
+                          className="bg-white border border-slate-200 rounded-xl px-4 py-3 text-slate-600 text-sm w-full outline-none"
+                        />
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          if (inviteUrl) {
+                            navigator.clipboard.writeText(inviteUrl);
+                            toast.success("Bağlantı kopyalandı!");
+                          }
+                        }}
+                        className="bg-indigo-600 hover:bg-indigo-700 text-white font-medium px-5 py-3 rounded-xl flex items-center justify-center gap-2 transition-colors w-full sm:w-auto flex-shrink-0 self-end h-[46px]"
+                      >
+                        <span className="material-symbols-outlined text-xl">content_copy</span>
+                        Linki Kopyala
+                      </button>
+                    </div>
                   </div>
 
                   <div className="flex items-center justify-between mt-6 pt-4 border-t border-slate-100 relative z-10">

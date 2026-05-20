@@ -21,6 +21,20 @@ export function usePermission(module: string, action: ActionType) {
           return;
         }
 
+        // 1. Önce kullanıcı bazlı (user.id) izinleri kontrol et
+        const { data: userPermission } = await supabase
+          .from('role_permissions')
+          .select(action)
+          .eq('role', user.id)
+          .eq('module', module)
+          .maybeSingle();
+
+        if (userPermission) {
+          setHasPermission(!!(userPermission as any)[action]);
+          return;
+        }
+
+        // 2. Profil tablosundan kullanıcının rolünü al
         const { data: profile } = await supabase
           .from('profiles')
           .select('role')
@@ -42,7 +56,7 @@ export function usePermission(module: string, action: ActionType) {
           .select(action)
           .eq('role', profile.role)
           .eq('module', module)
-          .single();
+          .maybeSingle();
 
         setHasPermission(permission ? !!(permission as any)[action] : false);
       } catch (err) {

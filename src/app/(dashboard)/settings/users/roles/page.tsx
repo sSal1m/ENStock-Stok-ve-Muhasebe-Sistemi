@@ -26,8 +26,7 @@ const MODULES = [
     description: "Müşteri ve Tedarikçi Portföyü",
     icon: "groups",
     color: "indigo",
-    // Düzenleme fonksiyonu yok → edit sütunu tamamen gizli
-    actions: { view: true, create: true, edit: false, delete: true },
+    actions: { view: true, create: true, edit: true, delete: true },
   },
   {
     id: "invoices",
@@ -35,8 +34,7 @@ const MODULES = [
     description: "Alış, Satış ve Gider Faturası",
     icon: "receipt_long",
     color: "purple",
-    // Düzenleme fonksiyonu yok → edit sütunu tamamen gizli
-    actions: { view: true, create: true, edit: false, delete: true },
+    actions: { view: true, create: true, edit: true, delete: true },
   },
   {
     id: "reports",
@@ -44,8 +42,7 @@ const MODULES = [
     description: "Finansal Analiz ve Grafik",
     icon: "analytics",
     color: "emerald",
-    // Sadece görüntüleme var; ekleme ve silme tamamen yok
-    actions: { view: true, create: false, edit: false, delete: false },
+    actions: { view: true, create: true, edit: true, delete: true },
   },
 ];
 
@@ -335,8 +332,7 @@ export default function RolesPermissionsPage() {
             <tbody className="divide-y divide-slate-50/50">
               {MODULES.map(module => {
                 const perms = activeRolePerms[module.id] || { view: false, create: false, edit: false, delete: false };
-                // "Raporlar" için sadece view aktif ve disabled; diğerleri yoktur
-                const forceViewOnly = module.id === 'reports';
+                const forceViewOnly = false;
                 // Kural gereği "tam erişim" badge'i: sadece müvcut aksiyonlar değerlendirilir
                 const availableActions = (Object.keys(module.actions) as Array<keyof typeof module.actions>)
                   .filter(k => module.actions[k]);

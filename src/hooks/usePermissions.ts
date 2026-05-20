@@ -23,7 +23,13 @@ export function usePermissions() {
           
           if (profile) {
             setRole(profile.role);
-            const perms = await getRolePermissions(profile.role);
+            // 1. Önce kullanıcı bazlı (user.id) izinleri yükle
+            let perms = await getRolePermissions(user.id);
+            
+            // 2. Kullanıcı bazlı izin tanımlı değilse, rol varsayılanlarını yükle
+            if (Object.keys(perms).length === 0) {
+              perms = await getRolePermissions(profile.role);
+            }
             setPermissions(perms);
           }
         }

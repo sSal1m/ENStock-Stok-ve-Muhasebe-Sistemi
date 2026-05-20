@@ -33,7 +33,19 @@ export async function checkPermission(module: string, action: ActionType): Promi
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return false;
 
-  // Profil tablosundan kullanıcının rolünü al
+  // 1. Önce kullanıcı bazlı (user.id) izinleri kontrol et
+  const { data: userPermission } = await supabase
+    .from('role_permissions')
+    .select(action)
+    .eq('role', user.id)
+    .eq('module', module)
+    .maybeSingle();
+
+  if (userPermission) {
+    return !!(userPermission as any)[action];
+  }
+
+  // 2. Profil tablosundan kullanıcının rolünü al
   const { data: profile } = await supabase
     .from('profiles')
     .select('role')
@@ -51,7 +63,7 @@ export async function checkPermission(module: string, action: ActionType): Promi
     .select(action)
     .eq('role', profile.role)
     .eq('module', module)
-    .single();
+    .maybeSingle();
 
   // İstediğimiz aksiyon sütunu (örn: can_create) true ise yetkilidir
   return permission ? !!(permission as any)[action] : false;

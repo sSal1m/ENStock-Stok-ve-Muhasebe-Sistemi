@@ -59,6 +59,7 @@ export default function DashboardLayout({
       if (path.includes('/contacts')) return 'contacts';
       if (path.includes('/invoices')) return 'invoices';
       if (path.includes('/reports')) return 'reports';
+      if (path.includes('/quotes')) return 'quotes';
       if (path.includes('/settings/users')) return 'users';
       return null;
     };

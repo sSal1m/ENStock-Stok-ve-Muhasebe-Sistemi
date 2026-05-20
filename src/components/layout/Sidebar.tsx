@@ -70,6 +70,7 @@ export default function Sidebar() {
   const getModuleId = (href: string) => {
     if (href.includes('inventory')) return 'stock';
     if (href.includes('contacts')) return 'contacts';
+    if (href.includes('quotes')) return 'quotes';
     if (href.includes('invoices')) return 'invoices';
     if (href.includes('reports')) return 'reports';
     return null;

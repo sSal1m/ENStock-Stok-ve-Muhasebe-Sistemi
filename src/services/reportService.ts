@@ -1,4 +1,5 @@
 import { supabase } from "@/lib/supabaseClient";
+import { resolveTeamIds, applyTeamFilter } from "@/lib/teamUtils";
 
 export interface ContactVolume {
   contact_id: string;
@@ -19,22 +20,179 @@ export interface MonthlyTrend {
 }
 
 export interface DashboardSummaryResponse {
-  total_income: number;
-  total_expense: number;
+  total_income: number;     // TRY
+  total_expense: number;    // TRY
   total_stock: number;
-  top_contacts: ContactVolume[];
-  income_by_category: CategoryVolume[];
+  top_contacts: ContactVolume[];        // total_volume TRY
+  income_by_category: CategoryVolume[]; // amount TRY
   expense_by_category: CategoryVolume[];
-  monthly_trend: MonthlyTrend[];
+  monthly_trend: MonthlyTrend[];        // income/expense TRY
 }
 
-export async function fetchDashboardSummary(userId: string): Promise<DashboardSummaryResponse | null> {
-  const { data, error } = await supabase.rpc("get_dashboard_summary", { p_user_id: userId });
+const TR_MONTHS = ["Oca", "Şub", "Mar", "Nis", "May", "Haz", "Tem", "Ağu", "Eyl", "Eki", "Kas", "Ara"];
 
-  if (error) {
-    console.error("Dashboard özeti getirilemedi (RPC Hatası):", error);
+/**
+ * Currency-aware dashboard özeti. Faturalar farklı para birimlerinde olabilir;
+ * her birini exchange_rate ile TRY'ye normalize edip topluyoruz. Eski
+ * `get_dashboard_summary` RPC'si currency-blind toplama yapıyordu — bu
+ * yüzden client tarafından yapılması tercih edildi.
+ */
+export async function fetchDashboardSummary(userId: string): Promise<DashboardSummaryResponse | null> {
+  try {
+    const teamIds = await resolveTeamIds(userId);
+
+    // 1) Tüm aktif faturalar (draft hariç) — currency ve exchange_rate ile
+    const { data: invoices, error: invErr } = await applyTeamFilter(
+      supabase
+        .from("invoices")
+        .select("id, total_amount, currency, exchange_rate, type, status, issue_date, contact_id")
+        .is("deleted_at", null)
+        .neq("status", "draft"),
+      teamIds
+    );
+
+    if (invErr) {
+      console.error("fetchDashboardSummary invoices error:", invErr);
+      return null;
+    }
+
+    // 2) Stok adedi
+    const { count: totalStockCount } = await applyTeamFilter(
+      supabase
+        .from("products")
+        .select("id", { count: "exact", head: true })
+        .is("deleted_at", null),
+      teamIds
+    );
+
+    // 3) Contact isim haritası
+    const contactIds = [...new Set((invoices ?? []).map((i: any) => i.contact_id).filter(Boolean))];
+    const contactMap = new Map<string, string>();
+    if (contactIds.length > 0) {
+      const { data: contactsData } = await supabase
+        .from("contacts")
+        .select("id, name")
+        .in("id", contactIds);
+      (contactsData ?? []).forEach((c: any) => contactMap.set(c.id, c.name));
+    }
+
+    // 4) Fatura kalemleri + ürün kategorileri (kategori bazlı analiz için)
+    const invoiceIds = (invoices ?? []).map((i: any) => i.id);
+    let items: any[] = [];
+    if (invoiceIds.length > 0) {
+      const { data: itemsData } = await supabase
+        .from("invoice_items")
+        .select("invoice_id, quantity, unit_price, products(name, categories(name))")
+        .in("invoice_id", invoiceIds);
+      items = itemsData ?? [];
+    }
+
+    const itemsByInvoice = new Map<string, any[]>();
+    items.forEach((it: any) => {
+      const arr = itemsByInvoice.get(it.invoice_id) ?? [];
+      arr.push(it);
+      itemsByInvoice.set(it.invoice_id, arr);
+    });
+
+    // 5) Agregasyonlar (hepsi TRY)
+    let totalIncome = 0;
+    let totalExpense = 0;
+    const contactVolumes = new Map<string, number>(); // contactId → TRY volume
+    const incomeByCategory = new Map<string, number>();
+    const expenseByCategory = new Map<string, number>();
+    const monthMap = new Map<string, { income: number; expense: number; sortKey: string }>();
+
+    (invoices ?? []).forEach((inv: any) => {
+      const rate = Number(inv.exchange_rate) || 1;
+      const totalTry = (Number(inv.total_amount) || 0) * rate;
+
+      if (inv.type === "sale") {
+        totalIncome += totalTry;
+      } else {
+        totalExpense += totalTry;
+      }
+
+      if (inv.contact_id) {
+        contactVolumes.set(inv.contact_id, (contactVolumes.get(inv.contact_id) ?? 0) + totalTry);
+      }
+
+      // Aylık trend (son 6 ay)
+      if (inv.issue_date) {
+        const d = new Date(inv.issue_date);
+        const key = `${d.getFullYear()}-${String(d.getMonth()).padStart(2, "0")}`;
+        const sortKey = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+        const monthName = TR_MONTHS[d.getMonth()];
+        const current = monthMap.get(key) ?? { income: 0, expense: 0, sortKey };
+        if (inv.type === "sale") current.income += totalTry;
+        else current.expense += totalTry;
+        current.sortKey = sortKey;
+        monthMap.set(key, current);
+        // monthName'i sıralama için saklamayız, render sırasında çekeriz
+        (current as any).monthName = monthName;
+      }
+
+      // Kategori bazlı dağılım — fatura kalemleri × ürün kategorisi
+      const invItems = itemsByInvoice.get(inv.id) ?? [];
+      invItems.forEach((it: any) => {
+        const lineTry = (Number(it.quantity) || 0) * (Number(it.unit_price) || 0) * rate;
+        const product = Array.isArray(it.products) ? it.products[0] : it.products;
+        const category = Array.isArray(product?.categories) ? product.categories[0] : product?.categories;
+        const categoryName = category?.name ?? product?.name ?? "Diğer";
+        if (inv.type === "sale") {
+          incomeByCategory.set(categoryName, (incomeByCategory.get(categoryName) ?? 0) + lineTry);
+        } else {
+          expenseByCategory.set(categoryName, (expenseByCategory.get(categoryName) ?? 0) + lineTry);
+        }
+      });
+    });
+
+    // Top 5 cariler
+    const topContacts: ContactVolume[] = Array.from(contactVolumes.entries())
+      .map(([contactId, vol]) => ({
+        contact_id: contactId,
+        contact_name: contactMap.get(contactId) ?? "Bilinmeyen",
+        total_volume: vol,
+      }))
+      .sort((a, b) => b.total_volume - a.total_volume)
+      .slice(0, 5);
+
+    // Income/Expense by category
+    const incomeByCategoryArr: CategoryVolume[] = Array.from(incomeByCategory.entries())
+      .map(([category_name, amount]) => ({ category_name, amount }))
+      .sort((a, b) => b.amount - a.amount)
+      .slice(0, 8);
+
+    const expenseByCategoryArr: CategoryVolume[] = Array.from(expenseByCategory.entries())
+      .map(([category_name, amount]) => ({ category_name, amount }))
+      .sort((a, b) => b.amount - a.amount)
+      .slice(0, 8);
+
+    // Aylık trend — son 6 ay (eksik ayları doldur)
+    const monthlyTrend: MonthlyTrend[] = [];
+    const now = new Date();
+    for (let i = 5; i >= 0; i--) {
+      const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+      const key = `${d.getFullYear()}-${String(d.getMonth()).padStart(2, "0")}`;
+      const entry = monthMap.get(key);
+      monthlyTrend.push({
+        month: key,
+        month_name: TR_MONTHS[d.getMonth()],
+        income: entry?.income ?? 0,
+        expense: entry?.expense ?? 0,
+      });
+    }
+
+    return {
+      total_income: totalIncome,
+      total_expense: totalExpense,
+      total_stock: totalStockCount ?? 0,
+      top_contacts: topContacts,
+      income_by_category: incomeByCategoryArr,
+      expense_by_category: expenseByCategoryArr,
+      monthly_trend: monthlyTrend,
+    };
+  } catch (err) {
+    console.error("Dashboard özeti getirilemedi:", err);
     return null;
   }
-
-  return data as unknown as DashboardSummaryResponse;
 }

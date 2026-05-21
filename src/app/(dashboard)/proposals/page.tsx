@@ -26,7 +26,7 @@ interface Contact {
 }
 
 export default function ProposalsPage() {
-  const { viewCurrency, setViewCurrency, convert, format } = useCurrencyConverter();
+  const { viewCurrency, setViewCurrency, convertFull, format } = useCurrencyConverter();
   const [proposals, setProposals] = useState<Invoice[]>([]);
   const [contacts, setContacts] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(true);
@@ -94,12 +94,20 @@ export default function ProposalsPage() {
     return typeMatch && searchMatch;
   });
 
-  const calculateInView = (amountTry: number) => {
-    return convert(amountTry);
+  // Teklif/proposal tutarları kendi para biriminde saklı.
+  // viewCurrency'ye her tekliften ayrı ayrı çevirip toplanıyor.
+  const calculateInView = (amount: number, fromCurrency: string | null | undefined) => {
+    return convertFull(amount, fromCurrency || "TRY", viewCurrency);
   };
 
-  const totalAmount = filtered.reduce((sum, prop) => sum + calculateInView(prop.total_amount), 0);
-  const vatAmount = filtered.reduce((sum, prop) => sum + calculateInView(prop.tax_total), 0);
+  const totalAmount = filtered.reduce(
+    (sum, prop) => sum + calculateInView(prop.total_amount, prop.currency),
+    0
+  );
+  const vatAmount = filtered.reduce(
+    (sum, prop) => sum + calculateInView(prop.tax_total, prop.currency),
+    0
+  );
 
   const handleDownloadPdf = async (proposal: Invoice) => {
     setDownloadingPdfId(proposal.id);
@@ -370,7 +378,7 @@ export default function ProposalsPage() {
                           </p>
                         </td>
                         <td className="px-6 py-5 align-middle text-right">
-                          <p className="text-sm font-semibold text-on-surface">{format(calculateInView(proposal.total_amount))}</p>
+                          <p className="text-sm font-semibold text-on-surface">{format(calculateInView(proposal.total_amount, proposal.currency))}</p>
                         </td>
                         <td className="px-6 py-5 align-middle">
                           <span

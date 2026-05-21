@@ -27,7 +27,7 @@ interface Contact {
 }
 
 export default function InvoicesPage() {
-  const { viewCurrency, setViewCurrency, convert, format } = useCurrencyConverter();
+  const { viewCurrency, setViewCurrency, convertFull, format } = useCurrencyConverter();
   const [invoices, setInvoices] = useState<Invoice[]>([]);
   const [contacts, setContacts] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(true);
@@ -97,12 +97,21 @@ export default function InvoicesPage() {
     return typeMatch && searchMatch;
   });
 
-  const calculateInView = (amountTry: number) => {
-    return convert(amountTry); // Hook'un convert fonksiyonunu kullanıyoruz (TRY -> viewCurrency)
+  // Fatura tutarları faturanın kendi para biriminde saklanır.
+  // Her faturayı kendi currency'sinden viewCurrency'ye çevirip topluyoruz —
+  // böylece TRY + USD + EUR faturalar doğru toplam verir.
+  const calculateInView = (amount: number, fromCurrency: string | null | undefined) => {
+    return convertFull(amount, fromCurrency || "TRY", viewCurrency);
   };
 
-  const totalAmount = filtered.reduce((sum, inv) => sum + calculateInView(inv.total_amount), 0);
-  const vatAmount = filtered.reduce((sum, inv) => sum + calculateInView(inv.tax_total), 0);
+  const totalAmount = filtered.reduce(
+    (sum, inv) => sum + calculateInView(inv.total_amount, inv.currency),
+    0
+  );
+  const vatAmount = filtered.reduce(
+    (sum, inv) => sum + calculateInView(inv.tax_total, inv.currency),
+    0
+  );
 
   const handleDownloadPdf = async (invoice: Invoice) => {
     setDownloadingPdfId(invoice.id);
@@ -382,7 +391,7 @@ export default function InvoicesPage() {
                           </p>
                         </td>
                         <td className="w-[130px] px-6 py-5 align-middle text-right">
-                          <p className="text-sm font-semibold text-on-surface">{format(calculateInView(invoice.total_amount))}</p>
+                          <p className="text-sm font-semibold text-on-surface">{format(calculateInView(invoice.total_amount, invoice.currency))}</p>
                         </td>
                         <td className="w-[120px] px-6 py-5 align-middle">
                           <span

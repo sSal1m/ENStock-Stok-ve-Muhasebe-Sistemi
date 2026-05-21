@@ -91,8 +91,13 @@ export default function DashboardPage() {
             teamIds
           ),
 
+          // ✅ Currency-aware revenue: total_amount fatura para biriminde saklı,
+          //   exchange_rate ile TRY karşılığını hesaplıyoruz
           applyTeamFilter(
-            supabase.from('invoices').select('total_amount').is('deleted_at', null),
+            supabase
+              .from('invoices')
+              .select('id, total_amount, currency, exchange_rate, type, issue_date')
+              .is('deleted_at', null),
             teamIds
           ),
 
@@ -118,13 +123,14 @@ export default function DashboardPage() {
             .is('deleted_at', null)
             .limit(10),
 
-          // Son 7 gün satış trendleri için
+          // Son 7 gün satış trendleri + COGS hesabı için fatura kalemleri + ürün maliyeti
           supabase
-            .from('invoices')
-            .select('total_amount, issue_date')
-            .eq('user_id', authUser.id)
-            .is('deleted_at', null)
-            .gte('issue_date', new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0]),
+            .from('invoice_items')
+            .select('quantity, unit_price, invoice_id, product_id, invoices!inner(issue_date, type, currency, exchange_rate, deleted_at, user_id), products(purchase_price)')
+            .eq('invoices.user_id', authUser.id)
+            .is('invoices.deleted_at', null)
+            .eq('invoices.type', 'sale')
+            .gte('invoices.issue_date', new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0]),
         ]);
 
         // Hata kontrolü
@@ -139,29 +145,34 @@ export default function DashboardPage() {
           (p: any) => p.stock_quantity <= (p.critical_limit || 10)
         ).length;
 
-        // En çok stoktaki ürünleri hesapla
+        // En çok stoktaki ürünleri hesapla — totalValue her zaman TRY karşılığında
+        // tutulur; display tarafında convert(TRY → viewCurrency) uygulanır.
         const topProducts = allProducts
-          .filter((product: any) => product.stock_quantity > 0) // Sadece stoğu olan ürünler
+          .filter((product: any) => product.stock_quantity > 0)
           .map((product: any) => {
-            const price = product.sale_price_in_currency 
-              ? parseFloat(product.sale_price_in_currency) 
-              : parseFloat(product.sale_price || 0);
+            const priceTry = parseFloat(product.sale_price || 0); // TRY karşılığı
             return {
               id: product.id,
               name: product.name || 'Ürün',
               totalProducts: product.stock_quantity || 0,
-              totalValue: isNaN(price) ? 0 : (price * (product.stock_quantity || 0)),
+              totalValue: isNaN(priceTry) ? 0 : (priceTry * (product.stock_quantity || 0)),
             };
           })
-          .sort((a: any, b: any) => b.totalProducts - a.totalProducts) // En çok stok önce
-          .slice(0, 3); // İlk 3 ürünü al
+          .sort((a: any, b: any) => b.totalProducts - a.totalProducts)
+          .slice(0, 3);
 
-        let totalRevenue = 0;
+        // Faturalar farklı para birimlerinde olabilir; her birini exchange_rate
+        // ile TRY'ye çevirip topluyoruz. Display tarafında convert(TRY → viewCurrency)
+        // ile gösterilecek. Sadece "sale" faturalar ciro sayılır.
+        let totalRevenueTry = 0;
         if (revenueRes.data) {
-          totalRevenue = revenueRes.data.reduce(
-            (sum: number, inv: any) => sum + (inv.total_amount || 0),
-            0
-          );
+          totalRevenueTry = revenueRes.data
+            .filter((inv: any) => inv.type === 'sale')
+            .reduce((sum: number, inv: any) => {
+              const amount = Number(inv.total_amount) || 0;
+              const rate = Number(inv.exchange_rate) || 1; // 1 USD = ? TRY
+              return sum + amount * rate;
+            }, 0);
         }
 
         let processedActivities: ActivityLog[] = [];
@@ -193,13 +204,14 @@ export default function DashboardPage() {
             ? Math.round((nonCriticalProducts / totalProducts) * 100)
             : 0;
 
-        // Gerçek satış trendleri hesapla
-        const chartPoints = generateChartDataFromInvoices(invoicesDetailsRes.data || []);
+        // Gerçek satış trendleri hesapla — invoice_items + product.purchase_price ile
+        // gerçek COGS hesabı yapılır, hardcoded %35 yerine.
+        const chartPoints = generateChartDataFromInvoiceItems(invoicesDetailsRes.data || []);
 
         setKpiData({
           totalProducts,
           criticalStockItems: criticalCount,
-          todayRevenue: totalRevenue,
+          todayRevenue: totalRevenueTry,
           stockHealth,
         });
         setActivities(processedActivities);
@@ -252,11 +264,11 @@ export default function DashboardPage() {
     return 'delayed' as const;
   };
 
-  const generateChartDataFromInvoices = (invoices: any[]): ChartDataPoint[] => {
+  const generateChartDataFromInvoiceItems = (items: any[]): ChartDataPoint[] => {
     const days = ['Pzt', 'Sal', 'Çar', 'Per', 'Cum', 'Cmt', 'Paz'];
     const dayMap = new Map<number, { revenue: number; profit: number }>();
 
-    // Son 7 gün için harita oluştur
+    // Son 7 gün için harita oluştur (tüm değerler TRY bazında tutulur)
     for (let i = 6; i >= 0; i--) {
       const date = new Date();
       date.setDate(date.getDate() - i);
@@ -265,20 +277,30 @@ export default function DashboardPage() {
       dayMap.set(adjustedDay, { revenue: 0, profit: 0 });
     }
 
-    // Invoice verileri işle
-    invoices.forEach((inv: any) => {
-      if (inv.issue_date) {
-        const date = new Date(inv.issue_date);
-        const dayOfWeek = date.getDay();
-        const adjustedDay = dayOfWeek === 0 ? 6 : dayOfWeek - 1;
+    // Her satır fatura kalemi: revenue = quantity * unit_price * exchange_rate (TRY karşılığı)
+    // COGS = quantity * product.purchase_price (zaten TRY karşılığı)
+    // Profit = revenue - COGS
+    items.forEach((item: any) => {
+      const inv = Array.isArray(item.invoices) ? item.invoices[0] : item.invoices;
+      const product = Array.isArray(item.products) ? item.products[0] : item.products;
+      if (!inv?.issue_date) return;
 
-        if (dayMap.has(adjustedDay)) {
-          const existing = dayMap.get(adjustedDay)!;
-          existing.revenue += inv.total_amount || 0;
-          // Kar tahmini: brüt satışın %35'i
-          existing.profit += (inv.total_amount || 0) * 0.35;
-        }
-      }
+      const date = new Date(inv.issue_date);
+      const dayOfWeek = date.getDay();
+      const adjustedDay = dayOfWeek === 0 ? 6 : dayOfWeek - 1;
+      if (!dayMap.has(adjustedDay)) return;
+
+      const qty = Number(item.quantity) || 0;
+      const unitPrice = Number(item.unit_price) || 0;
+      const rate = Number(inv.exchange_rate) || 1; // 1 currency = rate TRY
+      const revenueTry = qty * unitPrice * rate;
+
+      const purchasePriceTry = Number(product?.purchase_price) || 0; // products.purchase_price TRY karşılığı
+      const cogsTry = qty * purchasePriceTry;
+
+      const existing = dayMap.get(adjustedDay)!;
+      existing.revenue += revenueTry;
+      existing.profit += revenueTry - cogsTry;
     });
 
     // Sonuçları diziye dönüştür

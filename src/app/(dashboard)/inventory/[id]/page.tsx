@@ -6,6 +6,7 @@ import toast, { Toaster } from "react-hot-toast";
 import { supabase } from "@/lib/supabaseClient";
 import StockAdjustmentModal from "@/components/inventory/StockAdjustmentModal";
 import { useCurrencyConverter } from "@/hooks/useCurrencyConverter";
+import CurrencySwitcher from "@/components/common/CurrencySwitcher";
 
 // ─── Tipler ────────────────────────────────────────────────────────────────
 interface Product {
@@ -103,7 +104,7 @@ export default function ProductDetailPage() {
   const ITEMS_PER_PAGE = 5; // Client-side pagination için
 
   // Döviz Durumu
-  const { rates, viewCurrency, setViewCurrency, convert, format: fmt } = useCurrencyConverter();
+  const { rates, viewCurrency, setViewCurrency, convert, convertFull, format: fmt } = useCurrencyConverter();
 
   // ── Kullanıcı ID'sini Al ────────────────────────────────────────────────
   useEffect(() => {
@@ -531,7 +532,9 @@ export default function ProductDetailPage() {
                         </td>
                         <td className="w-[130px] px-6 py-5 align-middle text-right">
                           <span className="text-sm font-medium text-slate-600">
-                            {m.unit_price != null ? fmt(convert(m.unit_price), viewCurrency) : "—"}
+                            {m.unit_price != null
+                              ? fmt(convertFull(m.unit_price, product.currency || "TRY", viewCurrency), viewCurrency)
+                              : "—"}
                           </span>
                         </td>
                         <td className="w-auto px-6 py-5 align-middle">
@@ -592,8 +595,10 @@ export default function ProductDetailPage() {
           productId={product.id}
           productName={product.name}
           currentStock={product.stock_quantity}
-          salePriceAtTime={product.sale_price}
-          purchasePriceAtTime={product.purchase_price}
+          // inventory_logs.unit_price ürünün orijinal currency'sinde tutulur,
+          // böylece görüntülerken convertFull(unit_price, product.currency, ...) ile doğru çalışır.
+          salePriceAtTime={product.sale_price_in_currency || product.sale_price}
+          purchasePriceAtTime={product.purchase_price_in_currency || product.purchase_price}
           userId={userId}
         />
       )}

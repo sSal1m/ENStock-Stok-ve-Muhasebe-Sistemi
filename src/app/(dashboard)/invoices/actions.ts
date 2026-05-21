@@ -336,6 +336,11 @@ export async function createInvoiceAction(request: CreateInvoiceRequest): Promis
        };
     }
 
+    // TRY karşılıkları — currency-blind agregasyonlar için (dashboard, raporlar)
+    const totalAmountTry = totalAmount * (exchange_rate || 1);
+    const subtotalTry    = subtotal    * (exchange_rate || 1);
+    const taxTotalTry    = vatTotal    * (exchange_rate || 1);
+
     if (invoice_id) {
       // ✅ Update existing draft invoice
       const { data: updatedInvoice, error: updateError } = await supabaseServer
@@ -348,6 +353,9 @@ export async function createInvoiceAction(request: CreateInvoiceRequest): Promis
           subtotal,
           tax_total: vatTotal,
           total_amount: totalAmount,
+          subtotal_try: subtotalTry,
+          tax_total_try: taxTotalTry,
+          total_amount_try: totalAmountTry,
           notes: notes || null,
           status: status,
           currency,
@@ -403,6 +411,9 @@ export async function createInvoiceAction(request: CreateInvoiceRequest): Promis
             subtotal,
             tax_total: vatTotal,
             total_amount: totalAmount,
+            subtotal_try: subtotalTry,
+            tax_total_try: taxTotalTry,
+            total_amount_try: totalAmountTry,
             notes: notes || null,
             status: status,
             currency,
@@ -596,8 +607,11 @@ export async function createInvoiceAction(request: CreateInvoiceRequest): Promis
       if (shouldProcessStock) {  // ✅ Only if transitioning from draft->paid
         // ✅ Hardcode enum mapping for cash_transactions.transaction_type
         const dbTransactionType = invoice_type.toLowerCase().includes('sale') ? 'sale' : 'purchase';
-        const amount = Number(totalAmount);
-        
+        // cash_transactions.amount HER ZAMAN TRY'de tutulur (raporlama agregasyonları
+        // currency-blind toplama yaptığı için). Fatura currency'sinden exchange_rate
+        // ile TRY'ye normalize ediliyor.
+        const amount = Number(totalAmount) * Number(exchange_rate || 1);
+
         const { error: transactionError } = await supabaseServer
           .from("cash_transactions")
           .insert([
@@ -636,7 +650,10 @@ export async function createInvoiceAction(request: CreateInvoiceRequest): Promis
       // ═══════════════════════════════════════════
       // ✅ inventory_logs pattern: bakiye UPDATE + contact_logs INSERT
       if (shouldProcessStock) {  // ✅ Only if transitioning from draft->paid
-        const balanceChange = invoice_type === "sales" ? totalAmount : -totalAmount;
+        // contacts.current_balance ve contact_logs HER ZAMAN TRY'de tutulur.
+        // Fatura currency'sindeki tutar exchange_rate ile normalize edilir.
+        const totalAmountTryForBalance = Number(totalAmount) * Number(exchange_rate || 1);
+        const balanceChange = invoice_type === "sales" ? totalAmountTryForBalance : -totalAmountTryForBalance;
         
         const { data: currentContact, error: fetchError } = await supabaseServer
           .from("contacts")
@@ -1001,6 +1018,14 @@ export async function updateInvoiceAction(
       };
     }
 
+    // Mevcut faturanın exchange_rate'ini al ki TRY karşılığını güncelleyebilelim
+    const { data: existingInv } = await supabaseServer
+      .from("invoices")
+      .select("exchange_rate")
+      .eq("id", invoiceId)
+      .single();
+    const rate = Number(existingInv?.exchange_rate) || 1;
+
     // Update invoice
     const { error: updateError } = await supabaseServer
       .from("invoices")
@@ -1010,6 +1035,9 @@ export async function updateInvoiceAction(
         notes: notes || null,
         total_amount: totalAmount,
         tax_total: totalTax,
+        total_amount_try: totalAmount * rate,
+        tax_total_try: totalTax * rate,
+        subtotal_try: (totalAmount - totalTax) * rate,
         updated_at: new Date().toISOString(),
       })
       .eq("id", invoiceId)

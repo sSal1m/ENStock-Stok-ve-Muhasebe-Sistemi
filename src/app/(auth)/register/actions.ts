@@ -60,32 +60,40 @@ export async function registerInvitedUserAction(
       return { success: false, error: 'Davet kodunuzun süresi dolmuş. Yöneticinizden yeni davet talep edin.' };
     }
 
-    // ── 5. Supabase Auth kaydı ───────────────────────────────────────────────
-    const { data: signUpData, error: signUpError } = await supabase.auth.signUp({
+    // ── 5. Supabase Auth kaydı (Admin client ile e-posta onaylı) ────────────
+    // Service role client kullanarak e-posta doğrulamasını atlıyoruz
+    // çünkü davet kodu zaten doğrulanmış durumda
+    const supabaseAdmin = createClient(supabaseUrl, supabaseServiceKey, {
+      auth: { autoRefreshToken: false, persistSession: false },
+    });
+
+    const { data: createUserData, error: createUserError } = await supabaseAdmin.auth.admin.createUser({
       email: email.toLowerCase().trim(),
       password,
-      options: {
-        data: {
-          full_name: full_name.trim(),
-          business_id: invitation.business_id ?? null,
-          role: invitation.role ?? 'employee',
-        },
+      email_confirm: true,
+      user_metadata: {
+        full_name: full_name.trim(),
+        business_id: invitation.business_id ?? null,
+        role: invitation.role ?? 'employee',
       },
     });
 
-    if (signUpError) {
-      if (signUpError.message.toLowerCase().includes('rate limit')) {
+    if (createUserError) {
+      if (createUserError.message.toLowerCase().includes('rate limit')) {
         return { success: false, error: 'Çok fazla deneme yapıldı. Lütfen 1 saat bekleyin.' };
       }
-      if (signUpError.message.toLowerCase().includes('already registered')) {
+      if (createUserError.message.toLowerCase().includes('already registered') || createUserError.message.toLowerCase().includes('already been registered')) {
         return { success: false, error: 'Bu e-posta adresi zaten kayıtlı. Giriş yapmayı deneyin.' };
       }
-      return { success: false, error: `Kayıt hatası: ${signUpError.message}` };
+      return { success: false, error: `Kayıt hatası: ${createUserError.message}` };
     }
+
+    const signUpData = { user: createUserData.user };
 
     if (!signUpData.user) {
       return { success: false, error: 'Kullanıcı oluşturulamadı. Lütfen tekrar deneyin.' };
     }
+
 
     // ── 6. Daveti kabul edildi olarak işaretle ───────────────────────────────
     await supabase

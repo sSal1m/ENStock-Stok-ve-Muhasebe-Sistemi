@@ -61,18 +61,21 @@ export default function DashboardLayout({
       if (path.includes('/reports')) return 'reports';
       if (path.includes('/quotes')) return 'quotes';
       if (path.includes('/settings/users')) return 'users';
+      if (path.includes('/settings/business')) return 'business';
       return null;
     };
 
     const moduleId = getModuleId(pathname);
 
-    if (moduleId === 'users' && role !== 'admin') {
+    // Admin-only modules
+    if ((moduleId === 'users' || moduleId === 'business') && role !== 'admin') {
       router.push('/unauthorized');
       return;
     }
-    if (moduleId && moduleId !== 'users' && !hasPermission(moduleId, 'view')) {
+    if (moduleId && moduleId !== 'users' && moduleId !== 'business' && !hasPermission(moduleId, 'view')) {
       router.push('/unauthorized');
     }
+
   }, [permsLoading, isAuthenticated, role, hasPermission, router]);
 
   if (isLoading || permsLoading) {

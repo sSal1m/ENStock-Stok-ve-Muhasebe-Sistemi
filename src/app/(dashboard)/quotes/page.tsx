@@ -15,6 +15,8 @@ interface Quote {
   issue_date?: string;
   total_amount: number;
   tax_total: number;
+  currency?: string | null;
+  exchange_rate?: number | null;
   status: string;
   contact_id: string;
   created_at?: string;
@@ -24,7 +26,9 @@ interface Quote {
 }
 
 export default function QuotesPage() {
-  const { viewCurrency, setViewCurrency, convert, format: fmt } = useCurrencyConverter();
+  const { viewCurrency, setViewCurrency, convertFull, format: fmt } = useCurrencyConverter();
+  const convertQuote = (amount: number, fromCurrency: string | null | undefined) =>
+    convertFull(amount, fromCurrency || "TRY", viewCurrency);
   const [quotes, setQuotes] = useState<Quote[]>([]);
   const [contacts, setContacts] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(true);
@@ -240,8 +244,16 @@ export default function QuotesPage() {
     (currentPage + 1) * ITEMS_PER_PAGE
   );
 
-  const totalAmount = filtered.reduce((sum, q) => sum + (q.total_amount || 0), 0);
-  const vatAmount = filtered.reduce((sum, q) => sum + (q.tax_total || 0), 0);
+  // Teklifler farklı para birimlerinde olabilir; her birini kendi currency'sinden
+  // viewCurrency'ye çevirip topluyoruz.
+  const totalAmount = filtered.reduce(
+    (sum, q) => sum + convertQuote(q.total_amount || 0, q.currency),
+    0
+  );
+  const vatAmount = filtered.reduce(
+    (sum, q) => sum + convertQuote(q.tax_total || 0, q.currency),
+    0
+  );
 
   return (
     <div className="w-full p-8 max-w-[1600px] mx-auto bg-slate-50 min-h-screen">
@@ -338,7 +350,7 @@ export default function QuotesPage() {
                 <p className="text-xs font-semibold text-orange-600 uppercase tracking-wide mb-2">
                   Toplam KDV
                 </p>
-                <p className="font-bold text-2xl text-orange-700">{fmt(convert(vatAmount))}</p>
+                <p className="font-bold text-2xl text-orange-700">{fmt(vatAmount)}</p>
               </div>
               <div className="w-12 h-12 bg-orange-200/50 rounded-lg flex items-center justify-center">
                 <span className="material-symbols-outlined text-xl text-orange-600">receipt_long</span>
@@ -352,7 +364,7 @@ export default function QuotesPage() {
                 <p className="text-xs font-semibold text-green-600 uppercase tracking-wide mb-2">
                   Toplam Tutar
                 </p>
-                <p className="font-bold text-2xl text-green-700">{fmt(convert(totalAmount))}</p>
+                <p className="font-bold text-2xl text-green-700">{fmt(totalAmount)}</p>
               </div>
               <div className="w-12 h-12 bg-green-200/50 rounded-lg flex items-center justify-center">
                 <span className="material-symbols-outlined text-xl text-green-600">payments</span>
@@ -433,7 +445,7 @@ export default function QuotesPage() {
                         </p>
                       </td>
                       <td className="px-6 py-4 text-right">
-                        <p className="text-sm font-semibold text-slate-900">{fmt(convert(quote.total_amount))}</p>
+                        <p className="text-sm font-semibold text-slate-900">{fmt(convertQuote(quote.total_amount, quote.currency))}</p>
                       </td>
                       <td className="px-6 py-4">
                         <span

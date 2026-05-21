@@ -60,24 +60,16 @@ export default function RolesPermissionsPage() {
       const { data: { user: authUser } } = await supabase.auth.getUser();
       if (!authUser) return;
 
-      const { data: myProfile } = await supabase
-        .from("profiles")
-        .select("company_name")
-        .eq("id", authUser.id)
-        .single();
+      const { fetchTeamScopedData } = await import("@/app/(dashboard)/teamActions");
+      const { data } = await fetchTeamScopedData(authUser.id, "profiles", "role", {
+        excludeDeleted: false,
+        teamFilterColumn: "id"
+      });
 
-      const company = myProfile?.company_name;
-      if (!company) return;
-
-      const { data, error } = await supabase
-        .from("profiles")
-        .select("role")
-        .eq("company_name", company);
-
-      if (error) throw error;
       const counts: Record<string, number> = {};
-      data.forEach(p => {
-        const r = p.role?.toLowerCase() || 'staff';
+      (data || []).forEach(p => {
+        // Fallback to warehouse or sales if needed, but usually it matches ROLES exactly
+        const r = p.role?.toLowerCase() || 'warehouse'; 
         counts[r] = (counts[r] || 0) + 1;
       });
       setRoleCounts(counts);

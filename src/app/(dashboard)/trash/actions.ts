@@ -16,17 +16,17 @@ async function resolveTeamIdsServer(userId: string): Promise<string[]> {
   try {
     const { data: myProfile } = await supabaseServer
       .from("profiles")
-      .select("company_name")
+      .select("business_id")
       .eq("id", userId)
       .single();
 
-    const company = myProfile?.company_name;
-    if (!company) return [userId];
+    const businessId = myProfile?.business_id;
+    if (!businessId) return [userId];
 
     const { data: teamProfiles } = await supabaseServer
       .from("profiles")
       .select("id")
-      .eq("company_name", company);
+      .eq("business_id", businessId);
 
     if (teamProfiles && teamProfiles.length > 0) {
       return teamProfiles.map((p) => p.id);

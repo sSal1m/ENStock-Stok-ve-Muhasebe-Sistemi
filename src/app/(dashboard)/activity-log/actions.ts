@@ -30,16 +30,28 @@ export async function logActivityAction(input: {
    Team resolution (server-side)
    ═══════════════════════════════════════════ */
 
-async function resolveCompanyName(userId: string): Promise<string | null> {
+async function resolveTeamIdsServer(userId: string): Promise<string[]> {
   try {
-    const { data } = await supabaseServer
+    const { data: myProfile } = await supabaseServer
       .from("profiles")
-      .select("company_name")
+      .select("business_id")
       .eq("id", userId)
       .single();
-    return data?.company_name ?? null;
+
+    const businessId = myProfile?.business_id;
+    if (!businessId) return [userId];
+
+    const { data: teamProfiles } = await supabaseServer
+      .from("profiles")
+      .select("id")
+      .eq("business_id", businessId);
+
+    if (teamProfiles && teamProfiles.length > 0) {
+      return teamProfiles.map((p) => p.id);
+    }
+    return [userId];
   } catch {
-    return null;
+    return [userId];
   }
 }
 
@@ -77,16 +89,16 @@ export async function listActivityLogs(
   params: ListActivityLogsParams
 ): Promise<{ success: boolean; data: ActivityLogRecord[]; total: number; message?: string }> {
   try {
-    const company = await resolveCompanyName(params.userId);
+    const teamIds = await resolveTeamIdsServer(params.userId);
 
     let query = supabaseServer
       .from("activity_logs")
       .select("*", { count: "exact" });
 
-    if (company) {
-      query = query.eq("company_name", company);
+    if (teamIds.length <= 1) {
+      query = query.eq("user_id", teamIds[0] || params.userId);
     } else {
-      query = query.eq("user_id", params.userId);
+      query = query.in("user_id", teamIds);
     }
 
     if (params.module && params.module !== "all") {

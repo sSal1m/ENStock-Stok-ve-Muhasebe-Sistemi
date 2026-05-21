@@ -8,7 +8,6 @@ import CategoryModal from "@/components/inventory/CategoryModal";
 import DeleteConfirmationModal from "@/components/inventory/DeleteConfirmationModal";
 import Link from "next/link";
 import { useCurrencyConverter } from "@/hooks/useCurrencyConverter";
-import { resolveTeamIds, applyTeamFilter } from "@/lib/teamUtils";
 import * as XLSX from "xlsx";
 
 // ─── Tipler ────────────────────────────────────────────────────────────────
@@ -126,29 +125,17 @@ export default function InventoryPage() {
     setError(null);
     setIsAnimating(false);
     try {
-      // Resolve team context
-      const teamIds = await resolveTeamIds(userId);
+      // Fetch all inventory data via server action (bypasses RLS)
+      const { fetchInventoryData } = await import("@/app/(dashboard)/teamActions");
+      const { products: prods, categories: cats, invoiceCount } = await fetchInventoryData(userId);
 
-      // 1. Kategorileri çek (ekip bazında)
-      const { data: categoryData, error: categoryError } = await applyTeamFilter(
-        supabase.from("categories").select("id, name"),
-        teamIds
-      ).order("name");
-
-      if (categoryError) throw categoryError;
-      setCategories((categoryData ?? []) as Category[]);
-
-      // 2. Ürünler + kategori join (ekip bazında) — çöp kutusundakiler hariç
-      const { data: productData, error: productError } = await applyTeamFilter(
-        supabase.from("products").select("id, sku, name, purchase_price, sale_price, currency, purchase_price_in_currency, sale_price_in_currency, stock_quantity, critical_limit, categories(name)").is("deleted_at", null),
-        teamIds
-      ).order("name");
-
-      if (productError) throw productError;
-      const prods = (productData ?? []) as Product[];
+      setCategories(cats);
+      setProducts(prods);
+      setFiltered(prods);
       
       // 3. İnsights: kritik limit altındaki ürünler
       const criticals = prods.filter((p) => p.stock_quantity <= p.critical_limit);
+      setCriticalItems(criticals);
 
       // 4. İstatistikler
       const totalStockValue = prods.reduce(
@@ -156,15 +143,6 @@ export default function InventoryPage() {
         0
       );
 
-      // 5. Fatura sayısı (ekip bazında) — çöp kutusundakiler hariç
-      const { count: invoiceCount } = await applyTeamFilter(
-        supabase.from("invoices").select("id", { count: "exact", head: true }).is("deleted_at", null),
-        teamIds
-      );
-
-      setProducts(prods);
-      setFiltered(prods);
-      setCriticalItems(criticals);
       setStats({
         totalProducts: prods.length,
         lowStockCount: criticals.length,

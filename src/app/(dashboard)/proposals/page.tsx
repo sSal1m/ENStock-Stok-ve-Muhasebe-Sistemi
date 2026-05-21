@@ -6,7 +6,6 @@ import { useCurrencyConverter } from "@/hooks/useCurrencyConverter";
 import { softDeleteInvoice } from "@/app/(dashboard)/trash/actions";
 import Link from "next/link";
 import toast from "react-hot-toast";
-import { resolveTeamIds, applyTeamFilter } from "@/lib/teamUtils";
 
 interface Invoice {
   id: string;
@@ -43,37 +42,37 @@ export default function ProposalsPage() {
       return;
     }
 
-    const teamIds = await resolveTeamIds(user.id);
-
-    // Fetch proposals (type = 'proposal')
-    const { data: proposalsData, error: proposalsError } = await applyTeamFilter(
-      supabase.from("invoices").select("*").eq("type", "proposal").is("deleted_at", null),
-      teamIds
-    ).order("issue_date", { ascending: false });
-
-    if (proposalsError) {
-      console.error("Error fetching proposals:", proposalsError);
-      setLoading(false);
-      return;
-    }
-
-    setProposals((proposalsData || []) as Invoice[]);
-
-    if (proposalsData && proposalsData.length > 0) {
-      const contactIds = [...new Set(proposalsData.map((i: any) => i.contact_id))];
-      const { data: contactsData } = await supabase
-        .from("contacts")
-        .select("id, name")
-        .in("id", contactIds);
-
-      const contactMap: Record<string, string> = {};
-      (contactsData || []).forEach((c: any) => {
-        contactMap[c.id] = c.name;
+    try {
+      const { fetchTeamScopedData } = await import("@/app/(dashboard)/teamActions");
+      
+      // Fetch proposals (type = 'proposal')
+      const { data: proposalsData } = await fetchTeamScopedData(user.id, "invoices", "*", {
+        excludeDeleted: true,
+        additionalFilters: [{ column: "type", operator: "eq", value: "proposal" }],
+        orderBy: "issue_date",
+        orderAscending: false
       });
-      setContacts(contactMap);
-    }
 
-    setLoading(false);
+      setProposals((proposalsData || []) as Invoice[]);
+
+      if (proposalsData && proposalsData.length > 0) {
+        const contactIds = [...new Set(proposalsData.map((i: any) => i.contact_id))];
+        const { data: contactsData } = await fetchTeamScopedData(user.id, "contacts", "id, name", {
+          excludeDeleted: false
+        });
+
+        const contactMap: Record<string, string> = {};
+        // Only map contacts that exist
+        (contactsData || []).forEach((c: any) => {
+          contactMap[c.id] = c.name;
+        });
+        setContacts(contactMap);
+      }
+    } catch (error) {
+      console.error("Error fetching proposals:", error);
+    } finally {
+      setLoading(false);
+    }
   };
 
   useEffect(() => {

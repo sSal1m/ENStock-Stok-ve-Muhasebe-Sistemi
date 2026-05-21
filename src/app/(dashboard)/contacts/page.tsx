@@ -7,7 +7,6 @@ import { softDeleteContact } from "@/app/(dashboard)/trash/actions";
 import toast from "react-hot-toast";
 import Link from "next/link";
 import * as XLSX from "xlsx";
-import { resolveTeamIds, applyTeamFilter } from "@/lib/teamUtils";
 
 /* ═══════════════════════════════════════════
    DATA
@@ -79,20 +78,20 @@ export default function ContactsPage() {
       return;
     }
 
-    // Resolve team context
-    const teamIds = await resolveTeamIds(user.id);
-    
-    const { data, error } = await applyTeamFilter(
-      supabase.from("contacts").select("*").is("deleted_at", null),
-      teamIds
-    ).order("created_at", { ascending: false });
-    
-    if (error) {
-      console.error("Veri çekme hatası:", error);
-    } else {
+    try {
+      const { fetchTeamScopedData } = await import("@/app/(dashboard)/teamActions");
+      const { data } = await fetchTeamScopedData(user.id, "contacts", "*", {
+        excludeDeleted: true,
+        orderBy: "created_at",
+        orderAscending: false
+      });
+      
       setContacts((data as Contact[]) || []);
+    } catch (error) {
+      console.error("Veri çekme hatası:", error);
+    } finally {
+      setLoading(false);
     }
-    setLoading(false);
   };
 
   useEffect(() => {

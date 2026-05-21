@@ -1,5 +1,6 @@
-import { supabase } from "@/lib/supabaseClient";
-import { resolveTeamIds, applyTeamFilter } from "@/lib/teamUtils";
+"use server";
+
+import { fetchTeamScopedData } from "@/app/(dashboard)/teamActions";
 
 export interface ContactVolume {
   contact_id: string;
@@ -39,52 +40,58 @@ const TR_MONTHS = ["Oca", "Şub", "Mar", "Nis", "May", "Haz", "Tem", "Ağu", "Ey
  */
 export async function fetchDashboardSummary(userId: string): Promise<DashboardSummaryResponse | null> {
   try {
-    const teamIds = await resolveTeamIds(userId);
-
     // 1) Tüm aktif faturalar (draft hariç) — currency ve exchange_rate ile
-    const { data: invoices, error: invErr } = await applyTeamFilter(
-      supabase
-        .from("invoices")
-        .select("id, total_amount, currency, exchange_rate, type, status, issue_date, contact_id")
-        .is("deleted_at", null)
-        .neq("status", "draft"),
-      teamIds
+    const { data: invoices } = await fetchTeamScopedData(
+      userId,
+      "invoices",
+      "id, total_amount, currency, exchange_rate, type, status, issue_date, contact_id",
+      {
+        excludeDeleted: true,
+        additionalFilters: [{ column: "status", operator: "not", value: "draft" }]
+      }
     );
 
-    if (invErr) {
-      console.error("fetchDashboardSummary invoices error:", invErr);
-      return null;
-    }
-
     // 2) Stok adedi
-    const { count: totalStockCount } = await applyTeamFilter(
-      supabase
-        .from("products")
-        .select("id", { count: "exact", head: true })
-        .is("deleted_at", null),
-      teamIds
+    const { count: totalStockCount } = await fetchTeamScopedData(
+      userId,
+      "products",
+      "id",
+      { excludeDeleted: true, countOnly: true }
     );
 
     // 3) Contact isim haritası
     const contactIds = [...new Set((invoices ?? []).map((i: any) => i.contact_id).filter(Boolean))];
     const contactMap = new Map<string, string>();
     if (contactIds.length > 0) {
-      const { data: contactsData } = await supabase
-        .from("contacts")
-        .select("id, name")
-        .in("id", contactIds);
-      (contactsData ?? []).forEach((c: any) => contactMap.set(c.id, c.name));
+      const { data: contactsData } = await fetchTeamScopedData(
+        userId,
+        "contacts",
+        "id, name",
+        { excludeDeleted: false }
+      );
+      (contactsData ?? []).forEach((c: any) => {
+        if (contactIds.includes(c.id)) {
+          contactMap.set(c.id, c.name);
+        }
+      });
     }
 
     // 4) Fatura kalemleri + ürün kategorileri (kategori bazlı analiz için)
-    const invoiceIds = (invoices ?? []).map((i: any) => i.id);
     let items: any[] = [];
-    if (invoiceIds.length > 0) {
-      const { data: itemsData } = await supabase
-        .from("invoice_items")
-        .select("invoice_id, quantity, unit_price, products(name, categories(name))")
-        .in("invoice_id", invoiceIds);
-      items = itemsData ?? [];
+    if (invoices && invoices.length > 0) {
+      // fetching all invoice items for the team might be large, but it's okay for dashboard summary
+      const { data: itemsData } = await fetchTeamScopedData(
+        userId,
+        "invoice_items",
+        "invoice_id, quantity, unit_price, products(name, categories(name))",
+        {
+          teamFilterColumn: 'invoices.user_id',
+          additionalFilters: [
+            { column: 'invoices.deleted_at', operator: 'is', value: null }
+          ]
+        }
+      );
+      items = (itemsData ?? []).filter((it: any) => invoices.some((inv: any) => inv.id === it.invoice_id));
     }
 
     const itemsByInvoice = new Map<string, any[]>();

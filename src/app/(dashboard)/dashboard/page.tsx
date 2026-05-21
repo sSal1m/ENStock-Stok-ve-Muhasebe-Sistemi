@@ -6,7 +6,6 @@ import { useRouter } from 'next/navigation';
 import { supabase } from '@/lib/supabaseClient';
 import toast from 'react-hot-toast';
 import { useCurrencyConverter } from '@/hooks/useCurrencyConverter';
-import { resolveTeamIds, applyTeamFilter } from '@/lib/teamUtils';
 import { getRecentActivityLogs, type ActivityLogRecord } from '@/app/(dashboard)/activity-log/actions';
 import ActivityLogList from '@/components/activity-log/ActivityLogList';
 import * as XLSX from 'xlsx';
@@ -73,8 +72,7 @@ export default function DashboardPage() {
           return;
         }
 
-        // Resolve team context so invited users see company data
-        const teamIds = await resolveTeamIds(authUser.id);
+        const { fetchTeamScopedData } = await import("@/app/(dashboard)/teamActions");
 
         const [
           productsRes,
@@ -83,60 +81,51 @@ export default function DashboardPage() {
           contactsRes,
           invoicesDetailsRes,
         ] = await Promise.all([
-          applyTeamFilter(
-            supabase
-              .from('products')
-              .select('id, name, stock_quantity, critical_limit, sale_price, currency, sale_price_in_currency')
-              .is('deleted_at', null),
-            teamIds
+          fetchTeamScopedData(
+            authUser.id,
+            'products',
+            'id, name, stock_quantity, critical_limit, sale_price, currency, sale_price_in_currency',
+            { excludeDeleted: true }
           ),
 
           // ✅ Currency-aware revenue: total_amount fatura para biriminde saklı,
           //   exchange_rate ile TRY karşılığını hesaplıyoruz
-          applyTeamFilter(
-            supabase
-              .from('invoices')
-              .select('id, total_amount, currency, exchange_rate, type, issue_date')
-              .is('deleted_at', null),
-            teamIds
+          fetchTeamScopedData(
+            authUser.id,
+            'invoices',
+            'id, total_amount, currency, exchange_rate, type, issue_date',
+            { excludeDeleted: true }
           ),
 
-          applyTeamFilter(
-            supabase.from('inventory_logs').select(`
-              id,
-              action_type,
-              quantity_change,
-              created_at,
-              products (
-                name
-              )
-            `),
-            teamIds
-          )
-            .order('created_at', { ascending: false })
-            .limit(5),
+          fetchTeamScopedData(
+            authUser.id,
+            'inventory_logs',
+            'id, action_type, quantity_change, created_at, products(name)',
+            { orderBy: 'created_at', orderAscending: false, limit: 5 }
+          ),
 
-          supabase
-            .from('contacts')
-            .select('id, name, type')
-            .eq('user_id', authUser.id)
-            .is('deleted_at', null)
-            .limit(10),
+          fetchTeamScopedData(
+            authUser.id,
+            'contacts',
+            'id, name, type',
+            { excludeDeleted: true, limit: 10 }
+          ),
 
           // Son 7 gün satış trendleri + COGS hesabı için fatura kalemleri + ürün maliyeti
-          supabase
-            .from('invoice_items')
-            .select('quantity, unit_price, invoice_id, product_id, invoices!inner(issue_date, type, currency, exchange_rate, deleted_at, user_id), products(purchase_price)')
-            .eq('invoices.user_id', authUser.id)
-            .is('invoices.deleted_at', null)
-            .eq('invoices.type', 'sale')
-            .gte('invoices.issue_date', new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0]),
+          fetchTeamScopedData(
+            authUser.id,
+            'invoice_items',
+            'quantity, unit_price, invoice_id, product_id, invoices!inner(issue_date, type, currency, exchange_rate, deleted_at, user_id), products(purchase_price)',
+            {
+              teamFilterColumn: 'invoices.user_id',
+              additionalFilters: [
+                { column: 'invoices.deleted_at', operator: 'is', value: null },
+                { column: 'invoices.type', operator: 'eq', value: 'sale' },
+                { column: 'invoices.issue_date', operator: 'gte', value: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0] }
+              ]
+            }
+          ),
         ]);
-
-        // Hata kontrolü
-        if (productsRes.error) {
-          throw new Error(`Products: ${productsRes.error.message}`);
-        }
 
         const allProducts = productsRes.data || [];
         const totalProducts = allProducts.length;

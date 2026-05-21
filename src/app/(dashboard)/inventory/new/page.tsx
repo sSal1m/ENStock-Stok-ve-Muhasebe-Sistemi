@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import toast, { Toaster } from "react-hot-toast";
 import { supabase } from "@/lib/supabaseClient";
 import { useCurrencyConverter } from "@/hooks/useCurrencyConverter";
+import { fetchDefaultCurrency } from "@/lib/defaultCurrency";
 import { logActivityAction } from "@/app/(dashboard)/activity-log/actions";
 
 // ─── Tipler ────────────────────────────────────────────────────────────────
@@ -67,7 +68,7 @@ export default function NewInventoryPage() {
   const [savingCategory, setSavingCategory] = useState(false);
   const { rates, convertFull } = useCurrencyConverter();
 
-  // ── Kullanıcı ID'sini Al ────────────────────────────────────────────────
+  // ── Kullanıcı ID'sini Al ve işletme default currency'sini forma uygula ─
   useEffect(() => {
     async function getUser() {
       const { data: { user }, error } = await supabase.auth.getUser();
@@ -76,6 +77,9 @@ export default function NewInventoryPage() {
         return;
       }
       setUserId(user.id);
+
+      const businessCurrency = await fetchDefaultCurrency(user.id);
+      setForm((prev) => ({ ...prev, currency: businessCurrency }));
     }
     getUser();
   }, []);

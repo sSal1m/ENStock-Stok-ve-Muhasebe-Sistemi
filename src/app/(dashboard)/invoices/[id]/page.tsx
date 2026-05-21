@@ -5,6 +5,8 @@ import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import { supabase } from "@/lib/supabaseClient";
 import toast from "react-hot-toast";
+import { useCurrencyConverter } from "@/hooks/useCurrencyConverter";
+import CurrencySwitcher from "@/components/common/CurrencySwitcher";
 
 interface InvoiceItem {
   id: string;
@@ -42,6 +44,7 @@ export default function InvoiceDetailsPage() {
   const params = useParams();
   const invoiceId = params.id as string;
   const router = useRouter();
+  const { viewCurrency, setViewCurrency, convertFull, format: fmtCurrency } = useCurrencyConverter();
 
   const [invoice, setInvoice] = useState<InvoiceDetails | null>(null);
   const [items, setItems] = useState<InvoiceItem[]>([]);
@@ -183,9 +186,11 @@ export default function InvoiceDetailsPage() {
     );
   }
 
-  const formatCurrency = (val: number) => {
-    return new Intl.NumberFormat('tr-TR', { style: 'currency', currency: invoice.currency || 'TRY' }).format(val);
-  };
+  // Fatura tutarları fatura'nın kendi para biriminde (invoice.currency) tutulur.
+  // viewCurrency'ye çevirip formatlar — kullanıcı sayfa üstündeki switcher'dan değiştirebilir.
+  const invoiceCurrency = invoice.currency || "TRY";
+  const formatCurrency = (val: number) =>
+    fmtCurrency(convertFull(val, invoiceCurrency, viewCurrency), viewCurrency);
 
   const isSale = invoice.type === 'sale';
 
@@ -227,7 +232,7 @@ export default function InvoiceDetailsPage() {
             PDF İndir
           </button>
           {invoice.status === 'draft' && (
-            <Link 
+            <Link
               href={`/invoices/new?id=${invoice.id}`}
               className="flex-1 md:flex-none flex items-center justify-center gap-2 bg-purple-600 text-white px-6 py-2.5 rounded-lg font-semibold shadow-md hover:bg-purple-700 active:scale-95 transition-all"
             >
@@ -235,6 +240,8 @@ export default function InvoiceDetailsPage() {
               Düzenle
             </Link>
           )}
+
+          <CurrencySwitcher value={viewCurrency} onChange={setViewCurrency} />
         </div>
       </div>
 

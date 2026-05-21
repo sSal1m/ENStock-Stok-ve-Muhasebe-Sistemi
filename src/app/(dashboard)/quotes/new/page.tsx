@@ -1,8 +1,10 @@
 "use client";
 
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { supabase } from "@/lib/supabaseClient";
+import { useCurrencyConverter } from "@/hooks/useCurrencyConverter";
+import { fetchDefaultCurrency } from "@/lib/defaultCurrency";
 
 interface Contact {
   id: string;
@@ -13,9 +15,18 @@ interface Contact {
 interface Product {
   id: string;
   name: string;
-  sale_price?: number | null;
+  sale_price?: number | null;                  // TRY karşılığı
+  sale_price_in_currency?: number | null;      // orijinal currency'de
+  currency?: string | null;                    // ürünün orijinal currency'si
   tax_rate?: number | null;
 }
+
+const CURRENCY_SYMBOLS: Record<string, string> = {
+  TRY: "₺",
+  USD: "$",
+  EUR: "€",
+  GBP: "£",
+};
 
 type QuoteItem = {
   id: string;
@@ -42,6 +53,8 @@ const ProductSelect = ({
   showProductSuggestions,
   setShowProductSuggestions,
   onSearch,
+  formCurrency,
+  convertProductPrice,
 }: {
   item: QuoteItem;
   updateItem: any;
@@ -50,6 +63,8 @@ const ProductSelect = ({
   showProductSuggestions: Record<string, boolean>;
   setShowProductSuggestions: React.Dispatch<React.SetStateAction<Record<string, boolean>>>;
   onSearch: (id: string, term: string) => void;
+  formCurrency: string;
+  convertProductPrice: (product: Product) => number;
 }) => {
   const [isOpen, setIsOpen] = useState(false);
   const [searchTerm, setSearchTerm] = useState(item.name || "");
@@ -114,7 +129,7 @@ const ProductSelect = ({
                 e.preventDefault();
                 updateItem(item.id, "product_id", p.id);
                 updateItem(item.id, "name", p.name);
-                updateItem(item.id, "price", p.sale_price || 0);
+                updateItem(item.id, "price", convertProductPrice(p));
                 updateItem(item.id, "vatRate", p.tax_rate || 20);
                 setSearchTerm(p.name);
                 setIsOpen(false);
@@ -123,7 +138,7 @@ const ProductSelect = ({
             >
               <div className="text-sm font-medium text-slate-900">{p.name}</div>
               <div className="text-xs text-slate-400 mt-0.5">
-                Fiyat: ₺{p.sale_price} | KDV: %{p.tax_rate}
+                Fiyat: {CURRENCY_SYMBOLS[formCurrency] ?? formCurrency}{convertProductPrice(p).toLocaleString("tr-TR", { maximumFractionDigits: 2 })} | KDV: %{p.tax_rate}
               </div>
             </div>
           ))}
@@ -135,7 +150,7 @@ const ProductSelect = ({
                 e.preventDefault();
                 updateItem(item.id, "product_id", p.id);
                 updateItem(item.id, "name", p.name);
-                updateItem(item.id, "price", p.sale_price || 0);
+                updateItem(item.id, "price", convertProductPrice(p));
                 updateItem(item.id, "vatRate", p.tax_rate || 20);
                 setSearchTerm(p.name);
                 setIsOpen(false);
@@ -144,7 +159,7 @@ const ProductSelect = ({
             >
               <div className="text-sm font-medium text-slate-900">{p.name}</div>
               <div className="text-xs text-slate-400 mt-0.5">
-                Fiyat: ₺{p.sale_price} | KDV: %{p.tax_rate}
+                Fiyat: {CURRENCY_SYMBOLS[formCurrency] ?? formCurrency}{convertProductPrice(p).toLocaleString("tr-TR", { maximumFractionDigits: 2 })} | KDV: %{p.tax_rate}
               </div>
             </div>
           ))}
@@ -158,6 +173,7 @@ export default function NewQuotePage() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const editQuoteId = searchParams.get("id");
+  const { rates, convertFull } = useCurrencyConverter();
 
   const [items, setItems] = useState<QuoteItem[]>([
     { id: "1", product_id: undefined, name: "", quantity: 1, unit: "Adet", price: 0, vatRate: 20 },
@@ -171,6 +187,9 @@ export default function NewQuotePage() {
   const [issueDate, setIssueDate] = useState(() => new Date().toISOString().split("T")[0]);
   const [validityDays, setValidityDays] = useState("15 Gun");
   const [notes, setNotes] = useState("");
+  // Teklif kesim para birimi — varsayılan işletme default'u, kullanıcı değiştirebilir.
+  const [currency, setCurrency] = useState<string>("TRY");
+  const prevCurrencyRef = useRef<string>("TRY");
 
   const [isLoading, setIsLoading] = useState(false);
   const [isEditMode] = useState(!!editQuoteId);
@@ -181,6 +200,34 @@ export default function NewQuotePage() {
 
   const [productSuggestions, setProductSuggestions] = useState<Record<string, Product[]>>({});
   const [showProductSuggestions, setShowProductSuggestions] = useState<Record<string, boolean>>({});
+
+  const symbol = CURRENCY_SYMBOLS[currency] ?? currency;
+
+  // Ürünün fiyatını teklif currency'sine çevirir.
+  // Ürün kendi currency'sinde fiyatlandırılmışsa ve teklif aynı currency ise direkt
+  // _in_currency değerini kullanır; aksi halde TRY karşılığı üzerinden convertFull.
+  const convertProductPrice = (p: Product): number => {
+    if (!p) return 0;
+    if (p.currency && p.currency === currency && p.sale_price_in_currency != null) {
+      return Number(p.sale_price_in_currency) || 0;
+    }
+    const tryPrice = Number(p.sale_price) || 0;
+    if (currency === "TRY") return tryPrice;
+    return convertFull(tryPrice, "TRY", currency);
+  };
+
+  // Kullanıcı currency değiştirince mevcut kalem fiyatlarını da çevir
+  useEffect(() => {
+    if (!rates) return;
+    if (prevCurrencyRef.current === currency) return;
+    setItems((prev) =>
+      prev.map((it) => ({
+        ...it,
+        price: convertFull(it.price, prevCurrencyRef.current, currency),
+      }))
+    );
+    prevCurrencyRef.current = currency;
+  }, [currency, rates, convertFull]);
 
   useEffect(() => {
     const init = async () => {
@@ -199,10 +246,20 @@ export default function NewQuotePage() {
       }
       setUserId(user.id);
 
+      // İşletme default currency — yeni teklif için başlangıç değeri
+      if (!editQuoteId) {
+        const defaultCur = await fetchDefaultCurrency(user.id);
+        setCurrency(defaultCur);
+        prevCurrencyRef.current = defaultCur;
+      }
+
       const { data: contactsData } = await supabase.from("contacts").select("*").order("name");
       if (contactsData) setContacts(contactsData as Contact[]);
 
-      const { data: productsData } = await supabase.from("products").select("*").order("name");
+      const { data: productsData } = await supabase
+        .from("products")
+        .select("id, name, sale_price, sale_price_in_currency, currency, tax_rate")
+        .order("name");
       if (productsData) setProducts(productsData as Product[]);
 
       if (editQuoteId) {
@@ -217,6 +274,10 @@ export default function NewQuotePage() {
           setQuoteNumber(quoteData.quote_number);
           setIssueDate(quoteData.issue_date || new Date().toISOString().split("T")[0]);
           setNotes(quoteData.notes || "");
+          if (quoteData.currency) {
+            setCurrency(quoteData.currency);
+            prevCurrencyRef.current = quoteData.currency;
+          }
           const dayNum = quoteData.validity_days;
           const validityStr = dayNum === 7 ? "7 Gun" : dayNum === 15 ? "15 Gun" : dayNum === 30 ? "30 Gun" : "Ozel";
           setValidityDays(validityStr);
@@ -286,7 +347,7 @@ export default function NewQuotePage() {
 
     const { data } = await supabase
       .from("products")
-      .select("id, name, sale_price, tax_rate")
+      .select("id, name, sale_price, sale_price_in_currency, currency, tax_rate")
       .ilike("name", `%${term}%`)
       .limit(10);
 
@@ -340,6 +401,9 @@ export default function NewQuotePage() {
 
       let quoteData;
 
+      // Teklif currency'sine göre exchange_rate (TCMB selling) — TRY için 1
+      const exchangeRate = currency === "TRY" ? 1 : (rates?.[currency]?.selling || 1);
+
       if (editQuoteId) {
         const { data: updated, error: updateError } = await supabase
           .from("quotes")
@@ -350,6 +414,8 @@ export default function NewQuotePage() {
             subtotal,
             tax_total,
             total_amount,
+            currency,
+            exchange_rate: exchangeRate,
             notes,
             validity_days: parseValidityDays(validityDays),
           })
@@ -372,6 +438,8 @@ export default function NewQuotePage() {
             subtotal,
             tax_total,
             total_amount,
+            currency,
+            exchange_rate: exchangeRate,
             notes,
             status: "Pending",
             validity_days: parseValidityDays(validityDays),
@@ -437,6 +505,19 @@ export default function NewQuotePage() {
             <p className="text-slate-500 mt-1 text-sm">
               {isEditMode ? "Mevcut teklif bilgilerini güncelleyin" : "Yeni bir teklif oluşturun"}
             </p>
+          </div>
+          <div className="flex items-center gap-2 bg-white border border-indigo-100 rounded-xl px-4 py-2 shadow-sm">
+            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-tighter">Para Birimi:</span>
+            <select
+              value={currency}
+              onChange={(e) => setCurrency(e.target.value)}
+              className="bg-transparent border-none text-sm font-black text-indigo-600 outline-none focus:ring-0 cursor-pointer"
+            >
+              <option value="TRY">TRY (₺)</option>
+              <option value="USD">USD ($)</option>
+              <option value="EUR">EUR (€)</option>
+              <option value="GBP">GBP (£)</option>
+            </select>
           </div>
         </div>
 
@@ -552,7 +633,7 @@ export default function NewQuotePage() {
                   <th className="px-4 py-3 text-left text-xs font-semibold text-slate-600 uppercase tracking-wider">#</th>
                   <th className="px-4 py-3 text-left text-xs font-semibold text-slate-600 uppercase tracking-wider">HİZMET / ÜRÜN</th>
                   <th className="px-4 py-3 text-left text-xs font-semibold text-slate-600 uppercase tracking-wider w-20">MİKTAR</th>
-                  <th className="px-4 py-3 text-right text-xs font-semibold text-slate-600 uppercase tracking-wider w-28">BİRİM FİYAT (₺)</th>
+                  <th className="px-4 py-3 text-right text-xs font-semibold text-slate-600 uppercase tracking-wider w-28">BİRİM FİYAT ({symbol})</th>
                   <th className="px-4 py-3 text-center text-xs font-semibold text-slate-600 uppercase tracking-wider w-16">KDV %</th>
                   <th className="px-4 py-3 text-right text-xs font-semibold text-slate-600 uppercase tracking-wider w-28">SATIR TOPLAMI</th>
                   <th className="px-4 py-3 w-8"></th>
@@ -573,6 +654,8 @@ export default function NewQuotePage() {
                           showProductSuggestions={showProductSuggestions}
                           setShowProductSuggestions={setShowProductSuggestions}
                           onSearch={handleProductSearch}
+                          formCurrency={currency}
+                          convertProductPrice={convertProductPrice}
                         />
                       </td>
                       <td className="px-4 py-3">
@@ -607,7 +690,7 @@ export default function NewQuotePage() {
                         </select>
                       </td>
                       <td className="px-4 py-3 text-right font-semibold text-slate-900 text-sm">
-                        ₺{total.toLocaleString("tr-TR", { maximumFractionDigits: 2 })}
+                        {symbol}{total.toLocaleString("tr-TR", { maximumFractionDigits: 2 })}
                       </td>
                       <td className="px-4 py-3 text-center">
                         <button
@@ -651,15 +734,15 @@ export default function NewQuotePage() {
                   <>
                     <div className="flex justify-between text-sm">
                       <span className="text-slate-600">Ara Toplam</span>
-                      <span className="font-semibold text-slate-900">₺{sub.toLocaleString("tr-TR", { maximumFractionDigits: 2 })}</span>
+                      <span className="font-semibold text-slate-900">{symbol}{sub.toLocaleString("tr-TR", { maximumFractionDigits: 2 })}</span>
                     </div>
                     <div className="flex justify-between text-sm">
                       <span className="text-slate-600">KDV Toplamı</span>
-                      <span className="font-semibold text-slate-900">₺{tax.toLocaleString("tr-TR", { maximumFractionDigits: 2 })}</span>
+                      <span className="font-semibold text-slate-900">{symbol}{tax.toLocaleString("tr-TR", { maximumFractionDigits: 2 })}</span>
                     </div>
                     <div className="border-t border-slate-200 pt-3 flex justify-between">
                       <span className="font-semibold text-slate-900">Genel Toplam</span>
-                      <span className="text-xl font-bold text-indigo-600">₺{total.toLocaleString("tr-TR", { maximumFractionDigits: 2 })}</span>
+                      <span className="text-xl font-bold text-indigo-600">{symbol}{total.toLocaleString("tr-TR", { maximumFractionDigits: 2 })}</span>
                     </div>
                   </>
                 );

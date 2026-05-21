@@ -28,6 +28,8 @@ interface QuoteDetails {
   subtotal: number;
   tax_total: number;
   total_amount: number;
+  currency: string | null;
+  exchange_rate: number | null;
   notes: string | null;
   contact_id: string;
   contacts: {
@@ -42,7 +44,7 @@ export default function QuoteDetailsPage() {
   const params = useParams();
   const quoteId = params.id as string;
   const router = useRouter();
-  const { viewCurrency, setViewCurrency, convert, format: fmtCurrency } = useCurrencyConverter();
+  const { viewCurrency, setViewCurrency, convertFull, format: fmtCurrency } = useCurrencyConverter();
 
   const [quote, setQuote] = useState<QuoteDetails | null>(null);
   const [items, setItems] = useState<QuoteItem[]>([]);
@@ -257,8 +259,11 @@ export default function QuoteDetailsPage() {
     );
   }
 
-  // Teklif tutarları TRY bazlı; viewCurrency'ye çevirip formatlar.
-  const formatCurrency = (val: number) => fmtCurrency(convert(val), viewCurrency);
+  // Teklif tutarları teklifin kendi para biriminde saklanır (quote.currency).
+  // viewCurrency'ye convertFull ile çevirip formatlanır.
+  const quoteCurrency = quote.currency || "TRY";
+  const formatCurrency = (val: number) =>
+    fmtCurrency(convertFull(val, quoteCurrency, viewCurrency), viewCurrency);
 
   return (
     <div className="w-full p-8 max-w-[1200px] mx-auto min-h-screen bg-slate-50">

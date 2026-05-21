@@ -7,6 +7,8 @@ import { supabase } from '@/lib/supabaseClient';
 import toast from 'react-hot-toast';
 import { useCurrencyConverter } from '@/hooks/useCurrencyConverter';
 import { resolveTeamIds, applyTeamFilter } from '@/lib/teamUtils';
+import { getRecentActivityLogs, type ActivityLogRecord } from '@/app/(dashboard)/activity-log/actions';
+import ActivityLogList from '@/components/activity-log/ActivityLogList';
 import * as XLSX from 'xlsx';
 
 interface KPIData {
@@ -56,6 +58,7 @@ export default function DashboardPage() {
   const [chartData, setChartData] = useState<ChartDataPoint[]>([]);
   const [categories, setCategories] = useState<CategoryData[]>([]);
   const [vendors, setVendors] = useState<VendorData[]>([]);
+  const [activityLogs, setActivityLogs] = useState<ActivityLogRecord[]>([]);
   const [loading, setLoading] = useState(true);
   const { rates, viewCurrency, setViewCurrency, convert, format: fmt } = useCurrencyConverter();
 
@@ -203,6 +206,12 @@ export default function DashboardPage() {
         setCategories(topProducts);
         setVendors(vendorData);
         setChartData(chartPoints);
+
+        // Aktivite logları (CRUD audit trail)
+        const logsRes = await getRecentActivityLogs(authUser.id, 6);
+        if (logsRes.success) {
+          setActivityLogs(logsRes.data);
+        }
       } catch (error) {
         console.error('Dashboard veri yükleme hatası:', error);
         
@@ -642,6 +651,20 @@ export default function DashboardPage() {
             </div>
             <div className="absolute -bottom-10 -right-10 w-40 h-40 bg-white/10 rounded-full blur-3xl"></div>
             <div className="absolute -top-10 -left-10 w-40 h-40 bg-white/5 rounded-full blur-2xl"></div>
+          </div>
+
+          {/* Aktivite Geçmişi (audit log) */}
+          <div className="bg-surface-container-lowest rounded-3xl p-6 shadow-sm">
+            <div className="flex items-center justify-between mb-4">
+              <div className="flex items-center gap-3">
+                <div className="w-1.5 h-6 bg-primary rounded-full"></div>
+                <h2 className="text-lg font-bold text-on-surface">İşlem Geçmişi</h2>
+              </div>
+              <Link href="/activity-log" className="text-primary text-xs font-bold hover:underline">
+                Tümü
+              </Link>
+            </div>
+            <ActivityLogList logs={activityLogs} compact emptyMessage="Henüz işlem yok" />
           </div>
 
           {/* Category Breakdown */}

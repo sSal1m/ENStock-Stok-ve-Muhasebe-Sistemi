@@ -2,6 +2,7 @@
 
 import { createClient } from "@supabase/supabase-js";
 import { revalidatePath } from "next/cache";
+import { logActivity } from "@/lib/activityLogger";
 
 /* ═══════════════════════════════════════════
    Server-side Supabase client (uses Service Role Key)
@@ -76,10 +77,27 @@ export async function cariEkleAction(formData: FormData): Promise<CariFormState>
       return { success: false, message: `Kayıt hatası: ${error.message}` };
     }
 
+    if (newContact) {
+      await logActivity({
+        userId,
+        module: "contact",
+        action: "create",
+        entityId: newContact.id,
+        entityName: newContact.name,
+        description: `"${newContact.name}" ${type === "customer" ? "müşterisi" : "tedarikçisi"} oluşturuldu`,
+        metadata: {
+          type,
+          tax_number: vergiNo || null,
+          phone: telefon || null,
+          email: email || null,
+        },
+      });
+    }
+
     revalidatePath("/contacts");
 
-    return { 
-      success: true, 
+    return {
+      success: true,
       message: `"${unvan}" başarıyla eklendi!`,
       data: newContact && {
         id: newContact.id,
@@ -136,11 +154,26 @@ export async function cariGuncelleAction(formData: FormData): Promise<CariFormSt
       return { success: false, message: `Güncelleme hatası: ${error.message}` };
     }
 
+    await logActivity({
+      userId,
+      module: "contact",
+      action: "update",
+      entityId: id,
+      entityName: unvan,
+      description: `"${unvan}" cari bilgileri güncellendi`,
+      metadata: {
+        type,
+        tax_number: vergiNo || null,
+        phone: telefon || null,
+        email: email || null,
+      },
+    });
+
     revalidatePath(`/contacts/${id}`);
     revalidatePath("/contacts");
 
-    return { 
-      success: true, 
+    return {
+      success: true,
       message: `"${unvan}" başarıyla güncellendi!`,
       data: updatedContact
     };
@@ -225,6 +258,29 @@ export async function islemYapAction(formData: FormData) {
         message: "⚠️ İşlem kaydedildi ama log oluşturulamadı",
       };
     }
+
+    // Audit trail (activity_logs)
+    const { data: contactRow } = await supabaseServer
+      .from("contacts")
+      .select("name")
+      .eq("id", cariId)
+      .single();
+
+    await logActivity({
+      userId,
+      module: "contact",
+      action: "balance_change",
+      entityId: cariId,
+      entityName: contactRow?.name ?? null,
+      description: `"${contactRow?.name ?? "Cari"}" için ${islemTuru} (${tutar.toLocaleString("tr-TR")} TRY) — Bakiye: ${previousBalance.toFixed(2)} → ${newBalance.toFixed(2)}`,
+      metadata: {
+        operation: islemTuru,
+        amount: tutar,
+        previous_balance: previousBalance,
+        new_balance: newBalance,
+        note: notlar || null,
+      },
+    });
 
     revalidatePath(`/contacts/${cariId}`);
     revalidatePath("/contacts");

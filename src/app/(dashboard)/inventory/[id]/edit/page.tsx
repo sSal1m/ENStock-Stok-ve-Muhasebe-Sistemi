@@ -5,6 +5,7 @@ import { useParams, useRouter } from "next/navigation";
 import toast, { Toaster } from "react-hot-toast";
 import { supabase } from "@/lib/supabaseClient";
 import { useCurrencyConverter } from "@/hooks/useCurrencyConverter";
+import { logActivityAction } from "@/app/(dashboard)/activity-log/actions";
 
 interface Category {
   id: string;
@@ -214,7 +215,24 @@ export default function EditProductPage() {
       } else {
         console.log("✅ Inventory log başarıyla kaydedildi");
       }
-      
+
+      // Audit trail (activity_logs)
+      await logActivityAction({
+        userId,
+        module: "product",
+        action: "update",
+        entityId: id,
+        entityName: form.name.trim(),
+        description: `"${form.name.trim()}" ürünü güncellendi`,
+        metadata: {
+          sku: form.sku.trim(),
+          stock_quantity: Math.floor(stockQty),
+          purchase_price: purchasePrice,
+          sale_price: salePrice,
+          currency: form.currency,
+        },
+      });
+
       // Toast bildirimi göster
       toast.success(`"${form.name}" başarıyla güncellendi!`, {
         duration: 3000,

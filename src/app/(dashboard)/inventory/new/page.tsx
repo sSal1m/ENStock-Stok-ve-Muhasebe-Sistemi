@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import toast, { Toaster } from "react-hot-toast";
 import { supabase } from "@/lib/supabaseClient";
 import { useCurrencyConverter } from "@/hooks/useCurrencyConverter";
+import { logActivityAction } from "@/app/(dashboard)/activity-log/actions";
 
 // ─── Tipler ────────────────────────────────────────────────────────────────
 
@@ -303,8 +304,25 @@ export default function NewInventoryPage() {
         } else {
           console.log("✅ Inventory_logs başarıyla eklendi");
         }
+
+        // Audit trail (activity_logs)
+        await logActivityAction({
+          userId,
+          module: "product",
+          action: "create",
+          entityId: newProduct.id,
+          entityName: newProduct.name,
+          description: `"${newProduct.name}" ürünü oluşturuldu (Başlangıç stok: ${newProduct.stock_quantity})`,
+          metadata: {
+            sku: newProduct.sku,
+            stock_quantity: newProduct.stock_quantity,
+            purchase_price: newProduct.purchase_price,
+            sale_price: newProduct.sale_price,
+            currency: newProduct.currency,
+          },
+        });
       }
-      
+
       toast.success(`"${form.name}" başarıyla eklendi!`, {
         duration: 3000,
         icon: "✅",

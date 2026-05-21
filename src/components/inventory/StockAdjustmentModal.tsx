@@ -3,6 +3,7 @@
 import { useRef, useEffect, useState } from "react";
 import toast from "react-hot-toast";
 import { supabase } from "@/lib/supabaseClient";
+import { logActivityAction } from "@/app/(dashboard)/activity-log/actions";
 
 interface Props {
   isOpen: boolean;
@@ -159,6 +160,25 @@ export default function StockAdjustmentModal({
         // Ürün zaten güncellendiği için, log hatası kritik değil ama konsola yaz
       } else {
         console.log("✅ Inventory_logs başarıyla kaydedildi");
+      }
+
+      // Audit trail (activity_logs)
+      if (userId) {
+        await logActivityAction({
+          userId,
+          module: "product",
+          action: "stock_adjust",
+          entityId: productId,
+          entityName: productName,
+          description: `"${productName}" stoğu ${operationType === "add" ? "artırıldı" : "azaltıldı"} (${quantityChange > 0 ? "+" : ""}${quantityChange}) — ${previousStock} → ${newStockQuantity}`,
+          metadata: {
+            operation: operationType,
+            quantity_change: quantityChange,
+            previous_stock: previousStock,
+            new_stock: newStockQuantity,
+            note: notes || null,
+          },
+        });
       }
 
       const action =

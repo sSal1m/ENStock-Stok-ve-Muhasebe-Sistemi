@@ -2,6 +2,7 @@
 
 import { createClient } from "@supabase/supabase-js";
 import { revalidatePath } from "next/cache";
+import { logActivity } from "@/lib/activityLogger";
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
@@ -706,6 +707,24 @@ export async function createInvoiceAction(request: CreateInvoiceRequest): Promis
       console.log("📝 [DRAFT] Invoice saved as draft - no stock or balance changes");
     }
 
+    // Audit trail (activity_logs)
+    await logActivity({
+      userId: user_id,
+      module: "invoice",
+      action: invoice_id ? "update" : "create",
+      entityId: invoiceIdToUse,
+      entityName: newInvoice.invoice_number ?? finalInvoiceNumber,
+      description: `${invoice_id ? "Güncellendi" : "Oluşturuldu"}: ${invoice_type === "sales" ? "Satış" : "Alış"} faturası "${newInvoice.invoice_number ?? finalInvoiceNumber}" (${Number(totalAmount).toLocaleString("tr-TR")} ${currency}) - ${status === "draft" ? "Taslak" : "Kesildi"}`,
+      metadata: {
+        type: dbInvoiceType,
+        status,
+        total_amount: totalAmount,
+        currency,
+        contact_id,
+        line_items_count: line_items.length,
+      },
+    });
+
     revalidatePath("/invoices");
     revalidatePath("/contacts");
     revalidatePath(`/contacts/${contact_id}`);
@@ -858,6 +877,26 @@ export async function updateProposalAction(
       };
     }
 
+    const { data: proposal } = await supabaseServer
+      .from("invoices")
+      .select("invoice_number")
+      .eq("id", proposalId)
+      .single();
+
+    await logActivity({
+      userId,
+      module: "invoice",
+      action: "update",
+      entityId: proposalId,
+      entityName: proposal?.invoice_number ?? null,
+      description: `Teklif "${proposal?.invoice_number ?? proposalId}" güncellendi (${Number(totalAmount).toLocaleString("tr-TR")} TRY)`,
+      metadata: {
+        proposal_type: proposalType,
+        total_amount: totalAmount,
+        line_items_count: lineItems.length,
+      },
+    });
+
     revalidatePath("/proposals");
     revalidatePath(`/proposals/${proposalId}`);
 
@@ -983,6 +1022,26 @@ export async function updateInvoiceAction(
         message: "Fatura güncellenirken hata oluştu: " + updateError.message,
       };
     }
+
+    const { data: invoiceRow } = await supabaseServer
+      .from("invoices")
+      .select("invoice_number")
+      .eq("id", invoiceId)
+      .single();
+
+    await logActivity({
+      userId,
+      module: "invoice",
+      action: "update",
+      entityId: invoiceId,
+      entityName: invoiceRow?.invoice_number ?? null,
+      description: `Fatura "${invoiceRow?.invoice_number ?? invoiceId}" güncellendi (${invoiceType === "sale" ? "Satış" : "Alış"} - ${Number(totalAmount).toLocaleString("tr-TR")} TRY)`,
+      metadata: {
+        invoice_type: invoiceType,
+        total_amount: totalAmount,
+        line_items_count: lineItems.length,
+      },
+    });
 
     revalidatePath("/invoices");
     revalidatePath(`/invoices/${invoiceId}`);

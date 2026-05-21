@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import { usePathname } from 'next/navigation';
 import { supabase } from '@/lib/supabaseClient';
 import toast from 'react-hot-toast';
@@ -36,6 +36,7 @@ const pathTitleMap: Record<string, string> = {
   '/settings/users/roles': 'Rol Yönetimi',
   '/reports': 'Genel Raporlar',
   '/reports/income-expense': 'Gelir-Gider Raporu',
+  '/trash': 'Çöp Kutusu',
 };
 
 // Helper function to get page title from pathname
@@ -75,7 +76,25 @@ export default function Header() {
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [loading, setLoading] = useState(true);
   const [showDropdown, setShowDropdown] = useState(false);
+  const [showSettingsDropdown, setShowSettingsDropdown] = useState(false);
+  
+  const userMenuRef = useRef<HTMLDivElement>(null);
+  const settingsMenuRef = useRef<HTMLDivElement>(null);
   const router = useRouter();
+
+  // Close dropdowns when clicking outside
+  useEffect(() => {
+    function handleClickOutside(event: MouseEvent) {
+      if (userMenuRef.current && !userMenuRef.current.contains(event.target as Node)) {
+        setShowDropdown(false);
+      }
+      if (settingsMenuRef.current && !settingsMenuRef.current.contains(event.target as Node)) {
+        setShowSettingsDropdown(false);
+      }
+    }
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
 
   useEffect(() => {
     const fetchUserData = async () => {
@@ -98,7 +117,6 @@ export default function Header() {
 
           if (error) {
             // Sessiz fallback: Profil bulunamadıysa varsayılan değerleri kullan
-            // (PGRST116: no rows returned, normal expected behavior for new users)
             setProfile({
               full_name: authUser.user_metadata?.full_name || 'Kullanıcı',
               company_name: 'Şirket',
@@ -165,33 +183,142 @@ export default function Header() {
         <GlobalSearch />
       </div>
 
-      {/* Right side - Notifications, Settings & User Menu */}
+      {/* Right side - Trash, Notifications, Settings & User Menu */}
       <div className="flex items-center gap-2">
-        {/* Notifications Button */}
+        {/* Çöp Kutusu (Trash) Button */}
         <button
-          className="relative p-2.5 text-slate-500 hover:text-slate-700 hover:bg-slate-100 rounded-lg transition-colors"
-          title="Bildirimler"
+          className="p-2.5 text-slate-500 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors group relative flex items-center justify-center"
+          onClick={() => router.push('/trash')}
+          title="Çöp Kutusu"
         >
-          <span className="material-symbols-outlined text-xl">notifications</span>
-          <span className="absolute top-1 right-1 w-2 h-2 bg-red-500 rounded-full"></span>
+          <span className="material-symbols-outlined text-xl transition-transform duration-200 group-hover:scale-110">
+            delete
+          </span>
+          <span className="absolute -bottom-8 left-1/2 -translate-x-1/2 bg-slate-800 text-white text-[10px] px-2 py-0.5 rounded opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none font-semibold whitespace-nowrap shadow-sm">
+            Çöp Kutusu
+          </span>
         </button>
 
-        {/* Settings Button */}
+        {/* Notifications Button */}
         <button
-          className="p-2.5 text-slate-500 hover:text-slate-700 hover:bg-slate-100 rounded-lg transition-colors"
-          onClick={() => router.push('/settings/profile')}
-          title="Ayarlar"
+          className="relative p-2.5 text-slate-500 hover:text-slate-700 hover:bg-slate-100 rounded-lg transition-colors group flex items-center justify-center"
+          title="Bildirimler"
         >
-          <span className="material-symbols-outlined text-xl">settings</span>
+          <span className="material-symbols-outlined text-xl transition-transform duration-200 group-hover:scale-110">
+            notifications
+          </span>
+          <span className="absolute top-1.5 right-1.5 w-2 h-2 bg-red-500 rounded-full animate-pulse"></span>
         </button>
+
+        {/* Settings Dropdown Button */}
+        <div className="relative" ref={settingsMenuRef}>
+          <button
+            className={`p-2.5 rounded-lg transition-colors flex items-center justify-center group relative ${
+              showSettingsDropdown 
+                ? 'bg-indigo-50 text-indigo-600' 
+                : 'text-slate-500 hover:text-slate-700 hover:bg-slate-100'
+            }`}
+            onClick={() => {
+              setShowSettingsDropdown(!showSettingsDropdown);
+              setShowDropdown(false);
+            }}
+            title="Ayarlar"
+          >
+            <span className={`material-symbols-outlined text-xl transition-transform duration-300 ${
+              showSettingsDropdown ? 'rotate-90 text-indigo-600' : 'group-hover:rotate-45'
+            }`}>
+              settings
+            </span>
+          </button>
+
+          {showSettingsDropdown && (
+            <div className="absolute right-0 mt-2 w-64 bg-white border border-slate-200 rounded-xl shadow-lg z-50 overflow-hidden animate-in fade-in slide-in-from-top-2 duration-200">
+              {/* Settings Header */}
+              <div className="p-4 bg-slate-50 border-b border-slate-200">
+                <p className="font-bold text-slate-800 flex items-center gap-2">
+                  <span className="material-symbols-outlined text-sm text-indigo-600">tune</span>
+                  Sistem Ayarları
+                </p>
+                <p className="text-[10px] text-slate-400 mt-0.5">Sistem ve kullanıcı tercihlerini yönetin</p>
+              </div>
+
+              {/* Settings Items */}
+              <div className="p-2 space-y-0.5">
+                <button
+                  onClick={() => {
+                    router.push('/settings/profile');
+                    setShowSettingsDropdown(false);
+                  }}
+                  className="w-full flex items-center gap-3 px-4 py-2.5 text-xs font-semibold text-slate-700 hover:bg-indigo-50/50 hover:text-indigo-700 rounded-lg transition-colors text-left"
+                >
+                  <span className="material-symbols-outlined text-base">manage_accounts</span>
+                  <span>Profil Ayarları</span>
+                </button>
+
+                <button
+                  onClick={() => {
+                    router.push('/settings/business');
+                    setShowSettingsDropdown(false);
+                  }}
+                  className="w-full flex items-center gap-3 px-4 py-2.5 text-xs font-semibold text-slate-700 hover:bg-indigo-50/50 hover:text-indigo-700 rounded-lg transition-colors text-left"
+                >
+                  <span className="material-symbols-outlined text-base">store</span>
+                  <span>İşletme Ayarları</span>
+                </button>
+
+                {userRole === 'admin' && (
+                  <>
+                    <hr className="my-1 border-slate-100" />
+                    
+                    <button
+                      onClick={() => {
+                        router.push('/settings/users');
+                        setShowSettingsDropdown(false);
+                      }}
+                      className="w-full flex items-center gap-3 px-4 py-2.5 text-xs font-semibold text-slate-700 hover:bg-indigo-50/50 hover:text-indigo-700 rounded-lg transition-colors text-left"
+                    >
+                      <span className="material-symbols-outlined text-base">group</span>
+                      <span>Kullanıcı Yönetimi</span>
+                    </button>
+
+                    <button
+                      onClick={() => {
+                        router.push('/settings/users/roles');
+                        setShowSettingsDropdown(false);
+                      }}
+                      className="w-full flex items-center gap-3 px-4 py-2.5 text-xs font-semibold text-slate-700 hover:bg-indigo-50/50 hover:text-indigo-700 rounded-lg transition-colors text-left"
+                    >
+                      <span className="material-symbols-outlined text-base">admin_panel_settings</span>
+                      <span>Rol Yönetimi</span>
+                    </button>
+
+                    <button
+                      onClick={() => {
+                        router.push('/settings/users/new');
+                        setShowSettingsDropdown(false);
+                      }}
+                      className="w-full flex items-center gap-3 px-4 py-2.5 text-xs font-semibold text-slate-700 hover:bg-indigo-50/50 hover:text-indigo-700 rounded-lg transition-colors text-left"
+                    >
+                      <span className="material-symbols-outlined text-base text-indigo-600">person_add</span>
+                      <span>Üye Davet Et</span>
+                    </button>
+                  </>
+                )}
+              </div>
+            </div>
+          )}
+        </div>
 
         {/* Divider */}
         <div className="h-6 w-px bg-slate-200 mx-1"></div>
 
         {/* User Profile Menu */}
-        <div className="relative">
+        <div className="relative" ref={userMenuRef}>
           <button
-            onClick={() => setShowDropdown(!showDropdown)}
+            onClick={() => {
+              setShowDropdown(!showDropdown);
+              setShowSettingsDropdown(false);
+            }}
             className="flex items-center gap-3 px-3 py-2 rounded-lg hover:bg-slate-100 transition-colors active:bg-slate-200"
             title="Profil Menüsü"
           >
@@ -276,3 +403,4 @@ export default function Header() {
     </header>
   );
 }
+

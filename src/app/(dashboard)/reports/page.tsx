@@ -144,19 +144,57 @@ export default function RaporlarSayfasi() {
      ═══════════════════════════════════════════ */
   return (
     <div className="p-6 lg:p-10 space-y-8 w-full">
-      {/* ── Title ── */}
-      <div>
-        <h1 className="text-2xl font-extrabold tracking-tight text-slate-900">Gelir / Gider Analizi</h1>
-        <p className="mt-1 text-sm text-slate-500">Mali durumunuzu canlı grafikler ile inceleyin.</p>
+      {/* ── Sayfa Başlığı ── */}
+      <div className="flex flex-col md:flex-row md:items-end justify-between gap-6">
+        <div>
+          <nav className="flex items-center gap-2 text-xs font-semibold text-indigo-400 mb-2">
+            <span>Panel</span>
+            <span className="material-symbols-outlined text-[12px]">chevron_right</span>
+            <span className="text-slate-500">Finansal Raporlar</span>
+          </nav>
+          <h1 className="text-3xl font-extrabold text-on-surface tracking-tight">
+            Gelir / Gider Analizi
+          </h1>
+          <p className="text-slate-500 mt-1">
+            Mali durumunuzu canlı grafikler ile inceleyin ve yönetin.
+          </p>
+        </div>
+
+        {/* ── Filtre Araç Çubuğu ── */}
+        <div className="flex items-center gap-3 flex-wrap">
+          <button className="flex items-center gap-2 rounded-xl bg-white border border-indigo-100 px-4 py-2.5 text-sm font-semibold text-slate-600 shadow-sm hover:border-primary/20 transition-all">
+            <span className="material-symbols-outlined text-[18px] text-primary">calendar_month</span>
+            {dateRange}
+          </button>
+          <CurrencySwitcher value={viewCurrency} onChange={setViewCurrency} />
+        </div>
       </div>
 
-      {/* ── Filter Row ── */}
-      <div className="flex items-center gap-3 flex-wrap">
-        <button className="flex items-center gap-2 rounded-xl bg-white border border-indigo-100 px-4 py-2.5 text-sm font-semibold text-slate-600 shadow-sm hover:border-primary/20 transition-all">
-          <span className="material-symbols-outlined text-[18px] text-primary">calendar_month</span>
-          {dateRange}
-        </button>
-        <CurrencySwitcher value={viewCurrency} onChange={setViewCurrency} />
+      {/* ── Premium Finans Rapor Tanıtım ve Bilgi Banner'ı ── */}
+      <div className="relative overflow-hidden rounded-3xl bg-gradient-to-r from-slate-900 via-slate-800 to-indigo-950 text-white p-8 shadow-xl border border-slate-700/50 flex flex-col md:flex-row items-center justify-between gap-8 group">
+        {/* Sol İçerik */}
+        <div className="space-y-4 md:max-w-xl z-10">
+          <span className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-full text-xs font-bold bg-indigo-500/20 text-indigo-300 border border-indigo-500/30 tracking-wide uppercase">
+            <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-ping"></span>
+            Canlı Finansal Veri
+          </span>
+          <h2 className="text-2xl lg:text-3xl font-black tracking-tight leading-tight">
+            Gelişmiş Finansal Analiz & Raporlama
+          </h2>
+          <p className="text-sm text-slate-300 font-medium leading-relaxed">
+            İşletmenizin gelir-gider dengesini, net kar marjlarını ve dönemsel nakit akışını gerçek zamanlı veri entegrasyonu ile analiz edin, geleceğe yönelik stratejik kararlarınızı güvenle alın.
+          </p>
+        </div>
+
+        {/* Sağ Görsel Konteyneri */}
+        <div className="relative w-full md:w-[440px] lg:w-[580px] h-[220px] md:h-[260px] rounded-2xl overflow-hidden shadow-2xl border border-slate-600/30 flex-shrink-0">
+          <div className="absolute inset-0 bg-gradient-to-t from-slate-950/40 via-transparent to-transparent z-10"></div>
+          <img
+            src="/rapor.png"
+            alt="Mali Rapor Analizi"
+            className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-700 ease-out"
+          />
+        </div>
       </div>
 
       {/* ══════════════════════════════════════

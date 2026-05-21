@@ -137,7 +137,7 @@ export async function softDeleteInvoice(invoiceId: string, userId: string) {
     // 1. Fatura bilgilerini al (bakiye geri alma için)
     const { data: invoice, error: fetchError } = await supabaseServer
       .from("invoices")
-      .select("id, invoice_number, type, total_amount, contact_id, status")
+      .select("id, invoice_number, type, total_amount, exchange_rate, contact_id, status")
       .eq("id", invoiceId)
       .eq("user_id", userId)
       .single();
@@ -163,7 +163,9 @@ export async function softDeleteInvoice(invoiceId: string, userId: string) {
     if (invoice.status !== "draft" && invoice.contact_id) {
       // Orijinal fatura oluşturulurken: sales → +total, purchase → -total
       // Geri alma: sales → -total, purchase → +total
-      const balanceReversal = invoice.type === "sale" ? -Number(invoice.total_amount) : Number(invoice.total_amount);
+      // current_balance TRY'de tutulur, fatura currency'sinden exchange_rate ile normalize edilir.
+      const totalAmountTry = Number(invoice.total_amount) * Number(invoice.exchange_rate || 1);
+      const balanceReversal = invoice.type === "sale" ? -totalAmountTry : totalAmountTry;
 
       const { data: contact } = await supabaseServer
         .from("contacts")
@@ -298,7 +300,7 @@ export async function restoreInvoice(invoiceId: string, userId: string) {
     // 1. Fatura bilgilerini al (bakiye tekrar ekleme için)
     const { data: invoice, error: fetchError } = await supabaseServer
       .from("invoices")
-      .select("id, invoice_number, type, total_amount, contact_id, status")
+      .select("id, invoice_number, type, total_amount, exchange_rate, contact_id, status")
       .eq("id", invoiceId)
       .eq("user_id", userId)
       .single();
@@ -324,7 +326,9 @@ export async function restoreInvoice(invoiceId: string, userId: string) {
     if (invoice.status !== "draft" && invoice.contact_id) {
       // Fatura geri yüklenince bakiye etkisi tekrar eklenir:
       // sales → +total, purchase → -total
-      const balanceChange = invoice.type === "sale" ? Number(invoice.total_amount) : -Number(invoice.total_amount);
+      // current_balance TRY'de tutulur; fatura currency'sinden exchange_rate ile normalize.
+      const totalAmountTry = Number(invoice.total_amount) * Number(invoice.exchange_rate || 1);
+      const balanceChange = invoice.type === "sale" ? totalAmountTry : -totalAmountTry;
 
       const { data: contact } = await supabaseServer
         .from("contacts")

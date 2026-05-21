@@ -103,7 +103,7 @@ export default function InventoryPage() {
   const [userId, setUserId] = useState<string | null>(null);
   
   // Dashboard Döviz Durumu
-  const { rates, viewCurrency, setViewCurrency, convert, format: formatPrice } = useCurrencyConverter();
+  const { rates, viewCurrency, setViewCurrency, convert, convertFull, format: formatPrice } = useCurrencyConverter();
   const router = useRouter();
 
   // ── Kullanıcı ID'sini Al ────────────────────────────────────────────────
@@ -258,7 +258,7 @@ export default function InventoryPage() {
         "Satış Fiyatı (TRY)": p.sale_price,
         "Orjinal Döviz": p.currency,
         "Orjinal Satış Fiyatı": p.sale_price_in_currency,
-        "Görünen Satış Fiyatı": formatPrice(convert(p.sale_price_in_currency), viewCurrency)
+        "Görünen Satış Fiyatı": formatPrice(convertFull(p.sale_price_in_currency, p.currency || "TRY", viewCurrency), viewCurrency)
       };
     });
 

@@ -116,6 +116,12 @@ export default function BusinessSettingsPage() {
         })
         .eq("id", user.id);
 
+      // Also save address to auth user_metadata so it can be retrieved by employees
+      await supabase.auth.updateUser({
+        data: { business_address: formData.address }
+      });
+
+
       if (error) {
         console.warn("Supabase partial save error (likely missing columns, saved to local instead):", error.message);
         // We don't throw error here because we saved to local storage

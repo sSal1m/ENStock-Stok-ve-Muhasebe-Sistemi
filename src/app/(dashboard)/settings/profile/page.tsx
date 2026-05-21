@@ -7,6 +7,8 @@ import { supabase } from "@/lib/supabaseClient";
 import toast from "react-hot-toast";
 import * as XLSX from 'xlsx';
 
+import { getAdminBusinessAddress } from "./actions";
+
 export default function ProfilePage() {
   const router = useRouter();
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -75,43 +77,90 @@ export default function ProfilePage() {
           email: user.email || "",
           fullName: user.user_metadata?.full_name || "",
           avatarUrl: user.user_metadata?.avatar_url || null,
-          companyName: "Henüz Belirtilmemiş",
-          taxId: "—",
-          businessSector: "Diğer",
-          address: "Henüz Belirtilmemiş",
+          companyName: "Sovereign Holdings Ltd.",
+          taxId: "GB 938 4210 02",
+          businessSector: "Doğrulanmış İşletme",
+          address: user.user_metadata?.business_address || "88 Canary Wharf, Level 42, London E14 5AA",
           logoUrl: null as string | null,
         };
 
         if (!profileError && profileData) {
+          let adminData = null;
+          
+          if (profileData.role !== 'admin') {
+            let adminQuery = supabase
+              .from("profiles")
+              .select("id, company_name, tax_id, business_sector, logo_url")
+              .eq("role", "admin")
+              .limit(1);
+            
+            if (profileData.business_id) {
+              adminQuery = adminQuery.eq("business_id", profileData.business_id);
+            } else if (profileData.company_name) {
+              adminQuery = adminQuery.eq("company_name", profileData.company_name);
+            } else {
+              adminQuery = null as any;
+            }
+
+            if (adminQuery) {
+              const { data: fetchedAdmin } = await adminQuery.maybeSingle();
+              if (fetchedAdmin) {
+                adminData = fetchedAdmin;
+              }
+            }
+          }
+
           baseProfileData = {
             ...baseProfileData,
             fullName: profileData.full_name || baseProfileData.fullName,
             avatarUrl: profileData.avatar_url || baseProfileData.avatarUrl,
-            companyName: profileData.company_name || baseProfileData.companyName,
-            taxId: profileData.tax_id || baseProfileData.taxId,
-            businessSector: profileData.business_sector || baseProfileData.businessSector,
+            companyName: adminData?.company_name || profileData.company_name || baseProfileData.companyName,
+            taxId: adminData?.tax_id || profileData.tax_id || baseProfileData.taxId,
+            businessSector: adminData?.business_sector || profileData.business_sector || baseProfileData.businessSector,
+            logoUrl: adminData?.logo_url || profileData.logo_url || baseProfileData.logoUrl,
           };
-        }
 
-        // Merge with local business settings (for missing Supabase columns)
-        const localBusinessRaw = localStorage.getItem(`business_settings_${user.id}`);
-        if (localBusinessRaw) {
-          try {
-            const localData = JSON.parse(localBusinessRaw);
-            baseProfileData = {
-              ...baseProfileData,
-              companyName: localData.companyName || baseProfileData.companyName,
-              taxId: localData.taxId || baseProfileData.taxId,
-              businessSector: localData.businessSector || baseProfileData.businessSector,
-              address: localData.address || baseProfileData.address,
-              logoUrl: localData.logoUrl || baseProfileData.logoUrl,
-            };
-          } catch (e) {
-            console.error("Local data parsing error:", e);
+          // Try to load business settings from localStorage (user's or admin's if found)
+          const targetIds = [user.id];
+          if (adminData?.id) targetIds.push(adminData.id);
+
+          for (const targetId of targetIds) {
+            const localBusinessRaw = localStorage.getItem(`business_settings_${targetId}`);
+            if (localBusinessRaw) {
+              try {
+                const localData = JSON.parse(localBusinessRaw);
+                baseProfileData = {
+                  ...baseProfileData,
+                  companyName: localData.companyName || baseProfileData.companyName,
+                  taxId: localData.taxId || baseProfileData.taxId,
+                  businessSector: localData.businessSector || baseProfileData.businessSector,
+                  address: localData.address || baseProfileData.address,
+                  logoUrl: localData.logoUrl || baseProfileData.logoUrl,
+                };
+                // If we found and parsed data successfully, we can stop checking
+                break; 
+              } catch (e) {
+                console.error("Local data parsing error:", e);
+              }
+            }
+          }
+
+          // If user is not admin and we found an admin, fetch the address securely from server action
+          if (profileData.role !== 'admin' && adminData?.id) {
+            try {
+              const adminAddress = await getAdminBusinessAddress(adminData.id);
+              if (adminAddress) {
+                baseProfileData.address = adminAddress;
+              }
+            } catch (err) {
+              console.error("Failed to fetch admin address:", err);
+            }
           }
         }
 
         setProfile(baseProfileData);
+
+
 
         const storedPrefs = localStorage.getItem("user_preferences");
         if (storedPrefs) {

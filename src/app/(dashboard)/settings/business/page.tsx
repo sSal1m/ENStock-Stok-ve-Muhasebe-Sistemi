@@ -18,7 +18,7 @@ export default function BusinessSettingsPage() {
     tradeRegistryNumber: "REG-77281-XL",
     address: "88 Canary Wharf, Level 42, London E14 5AA",
     logoUrl: null as string | null,
-    currency: "GBP",
+    currency: "TRY",
     fiscalYearStart: "2024-01-01",
     businessSector: "Doğrulanmış İşletme",
   });
@@ -55,7 +55,7 @@ export default function BusinessSettingsPage() {
         // 2. Then, fetch from Supabase (Source of Truth for specific fields)
         const { data, error } = await supabase
           .from("profiles")
-          .select("company_name, tax_id, business_sector, logo_url")
+          .select("company_name, tax_id, business_sector, logo_url, default_currency")
           .eq("id", user.id)
           .maybeSingle();
 
@@ -71,6 +71,7 @@ export default function BusinessSettingsPage() {
             taxId: data.tax_id || prev.taxId,
             businessSector: data.business_sector || prev.businessSector,
             logoUrl: data.logo_url || prev.logoUrl,
+            currency: data.default_currency || prev.currency,
           }));
         }
       } catch (err) {
@@ -101,20 +102,30 @@ export default function BusinessSettingsPage() {
       // 1. Save all fields to localStorage (Reliable local persistence)
       localStorage.setItem(`business_settings_${user.id}`, JSON.stringify(formData));
 
-      // 2. Save schema-compliant fields to Supabase
+      // 2. Save schema-compliant fields to Supabase.
+      // UPDATE kullanılıyor (upsert değil) çünkü profil satırı zaten var olmalı
+      // (auth.signUp trigger'ı oluşturuyor). Upsert NOT NULL kolon (full_name)
+      // gerektirdiği için yeni satır insert path'inde patlıyordu.
       const { error } = await supabase
         .from("profiles")
-        .upsert({
-          id: user.id,
+        .update({
           company_name: formData.companyName,
           tax_id: formData.taxId,
           business_sector: formData.businessSector,
-        }, { onConflict: "id" });
+          default_currency: formData.currency,
+        })
+        .eq("id", user.id);
 
       if (error) {
         console.warn("Supabase partial save error (likely missing columns, saved to local instead):", error.message);
         // We don't throw error here because we saved to local storage
       }
+
+      // İşletme default'u değiştiğinde mevcut tüm sayfaların hook'larındaki
+      // sayfa-bazlı override'ı temizle ki yeni default hemen etkili olsun.
+      // (Kullanıcı bilinçli olarak değiştirdiği için artık eski override anlamsız.)
+      localStorage.removeItem("preferred_currency_overridden");
+      localStorage.setItem("preferred_currency", formData.currency);
 
       toast.success("Ayarlar başarıyla güncellendi.", { id: toastId });
     } catch (err: any) {
@@ -159,10 +170,8 @@ export default function BusinessSettingsPage() {
 
       const { error: updateError } = await supabase
         .from("profiles")
-        .upsert({
-          id: user.id,
-          logo_url: publicUrl
-        }, { onConflict: "id" });
+        .update({ logo_url: publicUrl })
+        .eq("id", user.id);
 
       if (updateError) {
         console.warn("Logo Supabase save error:", updateError.message);
@@ -364,10 +373,10 @@ export default function BusinessSettingsPage() {
                 value={formData.currency}
                 onChange={handleInputChange}
               >
-                <option value="GBP">GBP (£) - British Pound</option>
+                <option value="TRY">TRY (₺) - Türk Lirası</option>
                 <option value="USD">USD ($) - US Dollar</option>
                 <option value="EUR">EUR (€) - Euro</option>
-                <option value="TRY">TRY (₺) - Türk Lirası</option>
+                <option value="GBP">GBP (£) - British Pound</option>
               </select>
             </div>
             <div className="space-y-1.5">

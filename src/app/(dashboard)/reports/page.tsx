@@ -3,6 +3,8 @@
 import { useState, useEffect } from "react";
 import { supabase } from "@/lib/supabaseClient";
 import { fetchDashboardSummary, DashboardSummaryResponse } from "@/services/reportService";
+import { useCurrencyConverter } from "@/hooks/useCurrencyConverter";
+import CurrencySwitcher from "@/components/common/CurrencySwitcher";
 import {
   BarChart,
   Bar,
@@ -17,14 +19,14 @@ import {
   Legend
 } from "recharts";
 
-/* ═══════════════════════════════════════════
-   HELPERS
-   ═══════════════════════════════════════════ */
-
-const fmt = (v: number) =>
-  new Intl.NumberFormat("tr-TR", { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(v);
-
 const PIE_COLORS = ["#4b41e1", "#10b981", "#f59e0b", "#94a3b8", "#fb7185", "#8b5cf6"];
+
+const CURRENCY_SYMBOLS: Record<string, string> = {
+  TRY: "₺",
+  USD: "$",
+  EUR: "€",
+  GBP: "£",
+};
 
 /* ═══════════════════════════════════════════
    PAGE COMPONENT
@@ -33,8 +35,16 @@ const PIE_COLORS = ["#4b41e1", "#10b981", "#f59e0b", "#94a3b8", "#fb7185", "#8b5
 export default function RaporlarSayfasi() {
   const [summary, setSummary] = useState<DashboardSummaryResponse | null>(null);
   const [loading, setLoading] = useState(true);
-  
+  const { viewCurrency, setViewCurrency, convert, format: fmtCurrency } = useCurrencyConverter();
+
   const [dateRange] = useState("Genel Rapor & Son 6 Ay Özeti");
+
+  // DB'den gelen tutarlar TRY bazlı kabul ediliyor; viewCurrency'ye dönüştürülür.
+  const fmt = (v: number) => fmtCurrency(convert(v), viewCurrency).replace(CURRENCY_SYMBOLS[viewCurrency] ?? "", "").trim();
+  // Zaten convert edilmiş değerleri (örn. chart datası) formatlamak için
+  const fmtNoConvert = (v: number) =>
+    new Intl.NumberFormat("tr-TR", { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(v);
+  const symbol = CURRENCY_SYMBOLS[viewCurrency] ?? viewCurrency;
 
   useEffect(() => {
     const initFetch = async () => {
@@ -94,16 +104,16 @@ export default function RaporlarSayfasi() {
      2. CHART DATA PREPARATION
      ═══════════════════════════════════════════ */
   
-  // -- PIE CHART (Gelir Dağılımı)
+  // -- PIE CHART (Gelir Dağılımı) — viewCurrency'ye çevrilir
   let pieData = (summary.income_by_category || []).map(item => ({
     name: item.category_name,
-    value: Number(item.amount)
+    value: convert(Number(item.amount))
   }));
   pieData.sort((a, b) => b.value - a.value);
 
   // Kategorilere girmeyen diğer gelirleri de ekleyelim
   let topIncomeAmount = pieData.reduce((sum, d) => sum + d.value, 0);
-  let otherIncome = Math.max(0, toplamGelir - topIncomeAmount);
+  let otherIncome = Math.max(0, convert(toplamGelir) - topIncomeAmount);
   if (otherIncome > 0 && toplamGelir > 0) {
     pieData.push({ name: "Diğer", value: otherIncome });
   }
@@ -115,18 +125,18 @@ export default function RaporlarSayfasi() {
       return (
         <div className="bg-white border text-sm border-slate-100 p-3 rounded-lg shadow-lg">
           <p className="font-bold text-slate-800 mb-1">{data.name}</p>
-          <p className="text-primary font-semibold">{fmt(data.value)} TL</p>
+          <p className="text-primary font-semibold">{fmtNoConvert(data.value)} {symbol}</p>
         </div>
       );
     }
     return null;
   };
 
-  // -- BAR CHART (Aylık Trend)
+  // -- BAR CHART (Aylık Trend) — viewCurrency'ye çevrilir
   const barData = (summary.monthly_trend || []).map(m => ({
     name: m.month_name,
-    Gelir: Number(m.income),
-    Gider: Number(m.expense)
+    Gelir: convert(Number(m.income)),
+    Gider: convert(Number(m.expense))
   }));
 
   /* ═══════════════════════════════════════════
@@ -141,11 +151,12 @@ export default function RaporlarSayfasi() {
       </div>
 
       {/* ── Filter Row ── */}
-      <div className="flex items-center gap-3">
+      <div className="flex items-center gap-3 flex-wrap">
         <button className="flex items-center gap-2 rounded-xl bg-white border border-indigo-100 px-4 py-2.5 text-sm font-semibold text-slate-600 shadow-sm hover:border-primary/20 transition-all">
           <span className="material-symbols-outlined text-[18px] text-primary">calendar_month</span>
           {dateRange}
         </button>
+        <CurrencySwitcher value={viewCurrency} onChange={setViewCurrency} />
       </div>
 
       {/* ══════════════════════════════════════
@@ -161,7 +172,7 @@ export default function RaporlarSayfasi() {
             <p className="text-xs font-bold uppercase tracking-widest text-slate-400">Toplam Gelir</p>
           </div>
           <p className="text-2xl font-extrabold text-slate-800 tabular-nums">
-            {fmt(toplamGelir)} <span className="text-sm font-bold text-slate-400">TL</span>
+            {fmt(toplamGelir)} <span className="text-sm font-bold text-slate-400">{symbol}</span>
           </p>
         </div>
 
@@ -174,7 +185,7 @@ export default function RaporlarSayfasi() {
             <p className="text-xs font-bold uppercase tracking-widest text-slate-400">Toplam Gider</p>
           </div>
           <p className="text-2xl font-extrabold text-slate-800 tabular-nums">
-            {fmt(toplamGider)} <span className="text-sm font-bold text-slate-400">TL</span>
+            {fmt(toplamGider)} <span className="text-sm font-bold text-slate-400">{symbol}</span>
           </p>
         </div>
 
@@ -190,7 +201,7 @@ export default function RaporlarSayfasi() {
             <p className="text-xs font-bold uppercase tracking-widest text-slate-400">Net Kâr</p>
           </div>
           <p className="text-2xl font-extrabold text-emerald-600 tabular-nums">
-            {fmt(netKar)} <span className="text-sm font-bold text-emerald-400">TL</span>
+            {fmt(netKar)} <span className="text-sm font-bold text-emerald-400">{symbol}</span>
           </p>
         </div>
 
@@ -333,7 +344,7 @@ export default function RaporlarSayfasi() {
                       <td className="py-3 px-3 text-slate-400 font-medium">{idx + 1}</td>
                       <td className="py-3 px-3 font-bold text-slate-700">{contact.contact_name}</td>
                       <td className="py-3 px-3 text-right font-bold text-primary tabular-nums">
-                        {fmt(Number(contact.total_volume))} TL
+                        {fmt(Number(contact.total_volume))} {symbol}
                       </td>
                     </tr>
                   ))
@@ -367,7 +378,7 @@ export default function RaporlarSayfasi() {
                     <tr key={exp.category_name + idx} className="hover:bg-slate-50 transition-colors">
                       <td className="py-3 px-3 font-semibold text-slate-700 truncate max-w-[200px]">{exp.category_name}</td>
                       <td className="py-3 px-3 text-right font-bold text-rose-500 tabular-nums">
-                        {fmt(Number(exp.amount))} TL
+                        {fmt(Number(exp.amount))} {symbol}
                       </td>
                     </tr>
                   ))

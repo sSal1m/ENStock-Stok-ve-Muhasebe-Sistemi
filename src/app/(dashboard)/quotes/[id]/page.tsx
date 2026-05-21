@@ -5,6 +5,8 @@ import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import { supabase } from "@/lib/supabaseClient";
 import toast from "react-hot-toast";
+import { useCurrencyConverter } from "@/hooks/useCurrencyConverter";
+import CurrencySwitcher from "@/components/common/CurrencySwitcher";
 
 interface QuoteItem {
   id: string;
@@ -40,6 +42,7 @@ export default function QuoteDetailsPage() {
   const params = useParams();
   const quoteId = params.id as string;
   const router = useRouter();
+  const { viewCurrency, setViewCurrency, convert, format: fmtCurrency } = useCurrencyConverter();
 
   const [quote, setQuote] = useState<QuoteDetails | null>(null);
   const [items, setItems] = useState<QuoteItem[]>([]);
@@ -254,9 +257,8 @@ export default function QuoteDetailsPage() {
     );
   }
 
-  const formatCurrency = (val: number) => {
-    return new Intl.NumberFormat('tr-TR', { style: 'currency', currency: 'TRY' }).format(val);
-  };
+  // Teklif tutarları TRY bazlı; viewCurrency'ye çevirip formatlar.
+  const formatCurrency = (val: number) => fmtCurrency(convert(val), viewCurrency);
 
   return (
     <div className="w-full p-8 max-w-[1200px] mx-auto min-h-screen bg-slate-50">
@@ -307,7 +309,7 @@ export default function QuoteDetailsPage() {
             </button>
           )}
 
-          <button 
+          <button
             onClick={handleDownloadPdf}
             disabled={downloading}
             className="flex-1 md:flex-none flex items-center justify-center gap-2 bg-white border border-emerald-200 text-emerald-700 px-6 py-2.5 rounded-lg font-semibold shadow-sm hover:bg-emerald-50 active:scale-95 transition-all"
@@ -315,6 +317,8 @@ export default function QuoteDetailsPage() {
             <span className="material-symbols-outlined text-[20px]">{downloading ? 'sync' : 'download'}</span>
             PDF İndir
           </button>
+
+          <CurrencySwitcher value={viewCurrency} onChange={setViewCurrency} />
         </div>
       </div>
 

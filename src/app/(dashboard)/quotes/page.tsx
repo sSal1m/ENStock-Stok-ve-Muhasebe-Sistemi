@@ -5,6 +5,8 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { toast, Toaster } from "react-hot-toast";
 import { supabase } from "@/lib/supabaseClient";
+import { useCurrencyConverter } from "@/hooks/useCurrencyConverter";
+import CurrencySwitcher from "@/components/common/CurrencySwitcher";
 
 interface Quote {
   id: string;
@@ -21,14 +23,8 @@ interface Quote {
   };
 }
 
-const fmt = (val: number) =>
-  new Intl.NumberFormat("tr-TR", {
-    style: "currency",
-    currency: "TRY",
-    minimumFractionDigits: 2,
-  }).format(val);
-
 export default function QuotesPage() {
+  const { viewCurrency, setViewCurrency, convert, format: fmt } = useCurrencyConverter();
   const [quotes, setQuotes] = useState<Quote[]>([]);
   const [contacts, setContacts] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(true);
@@ -258,13 +254,16 @@ export default function QuotesPage() {
             </h1>
             <p className="text-slate-600">Tum tekliflerinizi yonetin ve takip edin</p>
           </div>
-          <Link
-            href="/quotes/new"
-            className="flex items-center gap-2 px-8 py-3.5 rounded-lg font-semibold text-sm text-white bg-gradient-to-r from-purple-600 to-purple-700 shadow-lg shadow-purple-200 hover:shadow-xl hover:shadow-purple-300 active:scale-[0.98] transition-all"
-          >
-            <span className="material-symbols-outlined">add_circle</span>
-            + Yeni Teklif
-          </Link>
+          <div className="flex items-center gap-3 flex-wrap">
+            <CurrencySwitcher value={viewCurrency} onChange={setViewCurrency} />
+            <Link
+              href="/quotes/new"
+              className="flex items-center gap-2 px-8 py-3.5 rounded-lg font-semibold text-sm text-white bg-gradient-to-r from-purple-600 to-purple-700 shadow-lg shadow-purple-200 hover:shadow-xl hover:shadow-purple-300 active:scale-[0.98] transition-all"
+            >
+              <span className="material-symbols-outlined">add_circle</span>
+              + Yeni Teklif
+            </Link>
+          </div>
         </div>
 
         <div className="flex items-center gap-3 pb-6 border-b border-slate-200">
@@ -339,7 +338,7 @@ export default function QuotesPage() {
                 <p className="text-xs font-semibold text-orange-600 uppercase tracking-wide mb-2">
                   Toplam KDV
                 </p>
-                <p className="font-bold text-2xl text-orange-700">{fmt(vatAmount)}</p>
+                <p className="font-bold text-2xl text-orange-700">{fmt(convert(vatAmount))}</p>
               </div>
               <div className="w-12 h-12 bg-orange-200/50 rounded-lg flex items-center justify-center">
                 <span className="material-symbols-outlined text-xl text-orange-600">receipt_long</span>
@@ -353,7 +352,7 @@ export default function QuotesPage() {
                 <p className="text-xs font-semibold text-green-600 uppercase tracking-wide mb-2">
                   Toplam Tutar
                 </p>
-                <p className="font-bold text-2xl text-green-700">{fmt(totalAmount)}</p>
+                <p className="font-bold text-2xl text-green-700">{fmt(convert(totalAmount))}</p>
               </div>
               <div className="w-12 h-12 bg-green-200/50 rounded-lg flex items-center justify-center">
                 <span className="material-symbols-outlined text-xl text-green-600">payments</span>
@@ -434,7 +433,7 @@ export default function QuotesPage() {
                         </p>
                       </td>
                       <td className="px-6 py-4 text-right">
-                        <p className="text-sm font-semibold text-slate-900">{fmt(quote.total_amount)}</p>
+                        <p className="text-sm font-semibold text-slate-900">{fmt(convert(quote.total_amount))}</p>
                       </td>
                       <td className="px-6 py-4">
                         <span

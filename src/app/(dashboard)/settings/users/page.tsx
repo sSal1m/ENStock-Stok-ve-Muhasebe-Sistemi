@@ -559,48 +559,7 @@ export default function UserListPage() {
         </div>
       </div>
 
-      {/* Role Permissions Context Card */}
-      <div className="mt-8 grid grid-cols-1 md:grid-cols-3 gap-8">
-        <div className="bg-surface-container-low p-6 rounded-3xl relative overflow-hidden group">
-          <div className="absolute top-0 right-0 p-4 opacity-10 group-hover:scale-110 transition-transform">
-            <span className="material-symbols-outlined text-6xl">verified_user</span>
-          </div>
-          <h4 className="font-headline font-bold text-slate-900 flex items-center gap-2">
-            <span className="w-2 h-2 rounded-full bg-indigo-500"></span>
-            Yönetici Kontrolleri
-          </h4>
-          <p className="text-xs text-slate-500 mt-2 mb-4 leading-relaxed font-body">Finansal kayıtlara, kullanıcı yönetimine, faturalandırmaya ve sistem ayarlarına tam erişim.</p>
-          <Link href="/settings/users/roles" className="text-xs font-bold text-indigo-600 flex items-center gap-1 group font-body">
-            Politikayı Görüntüle <span className="material-symbols-outlined text-sm group-hover:translate-x-1 transition-transform">arrow_forward</span>
-          </Link>
-        </div>
-        <div className="bg-surface-container-low p-6 rounded-3xl relative overflow-hidden group">
-          <div className="absolute top-0 right-0 p-4 opacity-10 group-hover:scale-110 transition-transform">
-            <span className="material-symbols-outlined text-6xl">analytics</span>
-          </div>
-          <h4 className="font-headline font-bold text-slate-900 flex items-center gap-2">
-            <span className="w-2 h-2 rounded-full bg-emerald-500"></span>
-            Muhasebeci Görünümü
-          </h4>
-          <p className="text-xs text-slate-500 mt-2 mb-4 leading-relaxed font-body">Üye yönetimi olmadan defterlere, vergi raporlarına ve denetim günlüklerine özel erişim.</p>
-          <Link href="/settings/users/roles" className="text-xs font-bold text-emerald-600 flex items-center gap-1 group font-body">
-            Erişimi Yapılandır <span className="material-symbols-outlined text-sm group-hover:translate-x-1 transition-transform">arrow_forward</span>
-          </Link>
-        </div>
-        <div className="bg-surface-container-low p-6 rounded-3xl relative overflow-hidden group">
-          <div className="absolute top-0 right-0 p-4 opacity-10 group-hover:scale-110 transition-transform">
-            <span className="material-symbols-outlined text-6xl">lock</span>
-          </div>
-          <h4 className="font-headline font-bold text-slate-900 flex items-center gap-2">
-            <span className="w-2 h-2 rounded-full bg-slate-400"></span>
-            Güvenlik Aktivitesi
-          </h4>
-          <p className="text-xs text-slate-500 mt-2 mb-4 leading-relaxed font-body">Giriş geçmişini, IP adresi değişikliklerini ve kritik izin modifikasyonlarını inceleyin.</p>
-          <button className="text-xs font-bold text-slate-600 flex items-center gap-1 group font-body">
-            Denetim Günlükleri <span className="material-symbols-outlined text-sm group-hover:translate-x-1 transition-transform">arrow_forward</span>
-          </button>
-        </div>
-      </div>
+
 
       {/* User Specific Permissions Drawer */}
       {selectedUserForPerms && (

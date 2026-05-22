@@ -4,7 +4,7 @@ import React, { useState, useEffect, useCallback } from "react";
 import Image from "next/image";
 import Link from "next/link";
 import { supabase } from "@/lib/supabaseClient";
-import toast from "react-hot-toast";
+import toast, { Toaster } from "react-hot-toast";
 import { updateUserProfileSecure } from "@/app/(dashboard)/teamActions";
 
 const MODULES = [
@@ -340,6 +340,7 @@ export default function UserListPage() {
 
   return (
     <div className="space-y-8 animate-in fade-in duration-700">
+      <Toaster position="top-right" />
       {/* Header with Action */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>

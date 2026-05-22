@@ -98,7 +98,7 @@ export default function InviteUserPage() {
                     <option value="admin">Yönetici</option>
                     <option value="accounting">Muhasebe</option>
                     <option value="warehouse">Depo Personeli</option>
-                    <option value="manager">Personel / Müdür</option>
+                    <option value="manager">Personel</option>
                   </select>
                   <span className="absolute right-4 top-1/2 -translate-y-1/2 material-symbols-outlined text-outline pointer-events-none">expand_more</span>
                 </div>
@@ -316,7 +316,7 @@ export default function InviteUserPage() {
                 <div className="p-4 bg-surface-container-lowest rounded-lg border border-primary/5 animate-in fade-in">
                   <div className="flex items-center gap-2 text-blue-600 mb-2">
                     <span className="material-symbols-outlined text-sm">manage_accounts</span>
-                    <span className="text-sm font-bold uppercase tracking-tight font-label">Personel / Müdür Rolü</span>
+                    <span className="text-sm font-bold uppercase tracking-tight font-label">Personel Rolü</span>
                   </div>
                   <p className="text-sm text-on-surface-variant mb-4 font-body leading-relaxed">Günlük operasyonlar, müşteri iletişimi ve genel kayıt işlemleri için standart rol.</p>
                   <div className="space-y-3">

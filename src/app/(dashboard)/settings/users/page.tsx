@@ -440,7 +440,7 @@ export default function UserListPage() {
                             <option value="admin">Yönetici</option>
                             <option value="accounting">Muhasebe</option>
                             <option value="warehouse">Depo Personeli</option>
-                            <option value="manager">Personel / Müdür</option>
+                            <option value="manager">Personel</option>
                           </select>
                           <span className="material-symbols-outlined absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none text-sm">unfold_more</span>
                         </div>
@@ -495,7 +495,7 @@ export default function UserListPage() {
                           user.role === 'manager' ? 'bg-blue-50 text-blue-700 border border-blue-100' :
                           'bg-slate-100 text-slate-600 border border-slate-200'
                         }`}>
-                          {user.role === 'admin' ? 'Yönetici' : user.role === 'accounting' ? 'Muhasebe' : user.role === 'warehouse' ? 'Depo Personeli' : user.role === 'manager' ? 'Personel / Müdür' : 'Personel'}
+                          {user.role === 'admin' ? 'Yönetici' : user.role === 'accounting' ? 'Muhasebe' : user.role === 'warehouse' ? 'Depo Personeli' : user.role === 'manager' ? 'Personel' : 'Personel'}
                         </span>
                       </td>
                       <td className="px-8 py-5">
@@ -622,7 +622,7 @@ export default function UserListPage() {
                     selectedUserForPerms.role === 'admin' ? 'Yönetici' : 
                     selectedUserForPerms.role === 'accounting' ? 'Muhasebe' : 
                     selectedUserForPerms.role === 'warehouse' ? 'Depo Personeli' : 
-                    selectedUserForPerms.role === 'manager' ? 'Personel / Müdür' : 'Personel'
+                    selectedUserForPerms.role === 'manager' ? 'Personel' : 'Personel'
                   })
                 </p>
               </div>

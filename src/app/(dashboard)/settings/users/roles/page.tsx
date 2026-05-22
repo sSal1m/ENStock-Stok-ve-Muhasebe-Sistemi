@@ -46,7 +46,7 @@ const ROLES = [
   { id: "admin", label: "Yönetici" },
   { id: "accounting", label: "Muhasebe" },
   { id: "warehouse", label: "Depo Personeli" },
-  { id: "sales", label: "Satış Temsilcisi" },
+  { id: "manager", label: "Personel" },
 ];
 
 export default function RolesPermissionsPage() {
@@ -68,8 +68,9 @@ export default function RolesPermissionsPage() {
 
       const counts: Record<string, number> = {};
       (data || []).forEach(p => {
-        // Fallback to warehouse or sales if needed, but usually it matches ROLES exactly
-        const r = p.role?.toLowerCase() || 'warehouse'; 
+        // Fallback to warehouse or manager if needed, but usually it matches ROLES exactly
+        let r = p.role?.toLowerCase() || 'warehouse'; 
+        if (r === 'sales' || r === 'staff') r = 'manager';
         counts[r] = (counts[r] || 0) + 1;
       });
       setRoleCounts(counts);
@@ -122,12 +123,15 @@ export default function RolesPermissionsPage() {
                 canView = true;
                 canAll = true;
               }
-            } else if (r.id === 'staff' || r.id === 'warehouse') {
-              if (m.id === 'stock') canView = true;
-            } else if (r.id === 'sales') {
+            } else if (r.id === 'warehouse') {
+              if (m.id === 'stock') {
+                canView = true;
+                canAll = true;
+              }
+            } else if (r.id === 'manager') {
               if (['stock', 'contacts', 'invoices'].includes(m.id)) {
                 canView = true;
-                // Sales can create/edit but not delete usually
+                // Manager can create/edit but not delete usually
                 if (m.id !== 'reports') canAll = true;
               }
             }
@@ -434,7 +438,7 @@ export default function RolesPermissionsPage() {
             icon={
               role.id === 'admin' ? "manage_accounts" :
                 role.id === 'accounting' ? "payments" :
-                  role.id === 'staff' ? "person" : "point_of_sale"
+                  role.id === 'warehouse' ? "inventory_2" : "supervisor_account"
             }
             label={`${role.label} Kullanıcı`}
             count={roleCounts[role.id] || 0}

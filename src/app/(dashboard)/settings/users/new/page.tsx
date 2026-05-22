@@ -95,10 +95,10 @@ export default function InviteUserPage() {
                     value={formData.role}
                     onChange={(e) => setFormData({ ...formData, role: e.target.value })}
                   >
-                    <option value="accounting">Muhasebe</option>
                     <option value="admin">Yönetici</option>
+                    <option value="accounting">Muhasebe</option>
                     <option value="warehouse">Depo Personeli</option>
-                    <option value="sales">Satış Temsilcisi</option>
+                    <option value="manager">Personel / Müdür</option>
                   </select>
                   <span className="absolute right-4 top-1/2 -translate-y-1/2 material-symbols-outlined text-outline pointer-events-none">expand_more</span>
                 </div>
@@ -213,36 +213,137 @@ export default function InviteUserPage() {
             </div>
             {/* Current Selected Role Info */}
             <div className="space-y-6">
-              <div className="p-4 bg-surface-container-lowest rounded-lg border border-primary/5">
-                <div className="flex items-center gap-2 text-primary mb-2">
-                  <span className="material-symbols-outlined text-sm">verified_user</span>
-                  <span className="text-sm font-bold uppercase tracking-tight font-label">Muhasebe Rolü</span>
+              {formData.role === "admin" && (
+                <div className="p-4 bg-surface-container-lowest rounded-lg border border-primary/5 animate-in fade-in">
+                  <div className="flex items-center gap-2 text-indigo-600 mb-2">
+                    <span className="material-symbols-outlined text-sm">shield_person</span>
+                    <span className="text-sm font-bold uppercase tracking-tight font-label">Yönetici Rolü</span>
+                  </div>
+                  <p className="text-sm text-on-surface-variant mb-4 font-body leading-relaxed">Sistemdeki tüm verilere ve ayarlara tam erişim yetkisi sağlayan ana kullanıcı rolü.</p>
+                  <div className="space-y-3">
+                    <div className="flex items-start gap-3">
+                      <span className="material-symbols-outlined text-green-600 text-lg">check_circle</span>
+                      <div className="text-sm font-body">
+                        <span className="font-bold text-on-surface">Erişim:</span>{" "}
+                        <span className="text-on-surface-variant">Sistemdeki tüm modüller</span>
+                      </div>
+                    </div>
+                    <div className="flex items-start gap-3">
+                      <span className="material-symbols-outlined text-green-600 text-lg">check_circle</span>
+                      <div className="text-sm font-body">
+                        <span className="font-bold text-on-surface">Yetki:</span>{" "}
+                        <span className="text-on-surface-variant">Veri Ekleme, Düzenleme, Silme ve Kullanıcı Yönetimi</span>
+                      </div>
+                    </div>
+                    <div className="flex items-start gap-3">
+                      <span className="material-symbols-outlined text-slate-400 text-lg">horizontal_rule</span>
+                      <div className="text-sm font-body">
+                        <span className="font-bold text-on-surface">Kısıtlama:</span>{" "}
+                        <span className="text-on-surface-variant">Kısıtlama bulunmuyor</span>
+                      </div>
+                    </div>
+                  </div>
                 </div>
-                <p className="text-sm text-on-surface-variant mb-4 font-body leading-relaxed">Bu rol, finansal verilerin yönetimi ve raporlama süreçleri için optimize edilmiştir.</p>
-                <div className="space-y-3">
-                  <div className="flex items-start gap-3">
-                    <span className="material-symbols-outlined text-green-600 text-lg">check_circle</span>
-                    <div className="text-sm font-body">
-                      <span className="font-bold text-on-surface">Erişim:</span>{" "}
-                      <span className="text-on-surface-variant">Faturalar, Raporlar, Cari Hesaplar</span>
-                    </div>
+              )}
+
+              {formData.role === "accounting" && (
+                <div className="p-4 bg-surface-container-lowest rounded-lg border border-primary/5 animate-in fade-in">
+                  <div className="flex items-center gap-2 text-emerald-600 mb-2">
+                    <span className="material-symbols-outlined text-sm">account_balance</span>
+                    <span className="text-sm font-bold uppercase tracking-tight font-label">Muhasebe Rolü</span>
                   </div>
-                  <div className="flex items-start gap-3">
-                    <span className="material-symbols-outlined text-green-600 text-lg">check_circle</span>
-                    <div className="text-sm font-body">
-                      <span className="font-bold text-on-surface">Yetki:</span>{" "}
-                      <span className="text-on-surface-variant">Gider Onayı, Banka Entegrasyonu</span>
+                  <p className="text-sm text-on-surface-variant mb-4 font-body leading-relaxed">Finansal verilerin yönetimi ve raporlama süreçleri için optimize edilmiş rol.</p>
+                  <div className="space-y-3">
+                    <div className="flex items-start gap-3">
+                      <span className="material-symbols-outlined text-green-600 text-lg">check_circle</span>
+                      <div className="text-sm font-body">
+                        <span className="font-bold text-on-surface">Erişim:</span>{" "}
+                        <span className="text-on-surface-variant">Faturalar, Raporlar, Cari Hesaplar</span>
+                      </div>
                     </div>
-                  </div>
-                  <div className="flex items-start gap-3">
-                    <span className="material-symbols-outlined text-error text-lg">cancel</span>
-                    <div className="text-sm font-body">
-                      <span className="font-bold text-on-surface">Kısıtlama:</span>{" "}
-                      <span className="text-on-surface-variant">Sistem Ayarları, Kullanıcı Yönetimi</span>
+                    <div className="flex items-start gap-3">
+                      <span className="material-symbols-outlined text-green-600 text-lg">check_circle</span>
+                      <div className="text-sm font-body">
+                        <span className="font-bold text-on-surface">Yetki:</span>{" "}
+                        <span className="text-on-surface-variant">Gider Onayı, Fatura Oluşturma ve Finansal İşlemler</span>
+                      </div>
+                    </div>
+                    <div className="flex items-start gap-3">
+                      <span className="material-symbols-outlined text-error text-lg">cancel</span>
+                      <div className="text-sm font-body">
+                        <span className="font-bold text-on-surface">Kısıtlama:</span>{" "}
+                        <span className="text-on-surface-variant">Sistem Ayarları, Kullanıcı Yönetimi</span>
+                      </div>
                     </div>
                   </div>
                 </div>
-              </div>
+              )}
+
+              {formData.role === "warehouse" && (
+                <div className="p-4 bg-surface-container-lowest rounded-lg border border-primary/5 animate-in fade-in">
+                  <div className="flex items-center gap-2 text-orange-600 mb-2">
+                    <span className="material-symbols-outlined text-sm">inventory_2</span>
+                    <span className="text-sm font-bold uppercase tracking-tight font-label">Depo Personeli Rolü</span>
+                  </div>
+                  <p className="text-sm text-on-surface-variant mb-4 font-body leading-relaxed">Stok takibi, envanter sayımı ve ürün hareketleri için özel yetkilendirilmiş rol.</p>
+                  <div className="space-y-3">
+                    <div className="flex items-start gap-3">
+                      <span className="material-symbols-outlined text-green-600 text-lg">check_circle</span>
+                      <div className="text-sm font-body">
+                        <span className="font-bold text-on-surface">Erişim:</span>{" "}
+                        <span className="text-on-surface-variant">Stok Yönetimi, Ürün Listesi</span>
+                      </div>
+                    </div>
+                    <div className="flex items-start gap-3">
+                      <span className="material-symbols-outlined text-green-600 text-lg">check_circle</span>
+                      <div className="text-sm font-body">
+                        <span className="font-bold text-on-surface">Yetki:</span>{" "}
+                        <span className="text-on-surface-variant">Stok Ekleme, Depo Hareketi Girişi</span>
+                      </div>
+                    </div>
+                    <div className="flex items-start gap-3">
+                      <span className="material-symbols-outlined text-error text-lg">cancel</span>
+                      <div className="text-sm font-body">
+                        <span className="font-bold text-on-surface">Kısıtlama:</span>{" "}
+                        <span className="text-on-surface-variant">Finansal Veriler, Fatura ve Raporlar</span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {formData.role === "manager" && (
+                <div className="p-4 bg-surface-container-lowest rounded-lg border border-primary/5 animate-in fade-in">
+                  <div className="flex items-center gap-2 text-blue-600 mb-2">
+                    <span className="material-symbols-outlined text-sm">manage_accounts</span>
+                    <span className="text-sm font-bold uppercase tracking-tight font-label">Personel / Müdür Rolü</span>
+                  </div>
+                  <p className="text-sm text-on-surface-variant mb-4 font-body leading-relaxed">Günlük operasyonlar, müşteri iletişimi ve genel kayıt işlemleri için standart rol.</p>
+                  <div className="space-y-3">
+                    <div className="flex items-start gap-3">
+                      <span className="material-symbols-outlined text-green-600 text-lg">check_circle</span>
+                      <div className="text-sm font-body">
+                        <span className="font-bold text-on-surface">Erişim:</span>{" "}
+                        <span className="text-on-surface-variant">Cari Hesaplar, Faturalar, Stok (Sadece Görüntüleme)</span>
+                      </div>
+                    </div>
+                    <div className="flex items-start gap-3">
+                      <span className="material-symbols-outlined text-green-600 text-lg">check_circle</span>
+                      <div className="text-sm font-body">
+                        <span className="font-bold text-on-surface">Yetki:</span>{" "}
+                        <span className="text-on-surface-variant">Bilgi Görüntüleme, Basit Kayıt İşlemleri</span>
+                      </div>
+                    </div>
+                    <div className="flex items-start gap-3">
+                      <span className="material-symbols-outlined text-error text-lg">cancel</span>
+                      <div className="text-sm font-body">
+                        <span className="font-bold text-on-surface">Kısıtlama:</span>{" "}
+                        <span className="text-on-surface-variant">Kritik Finansal Raporlar, Ayarlar</span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
               {/* Pro Tip */}
               <div className="flex gap-4 p-4 rounded-lg bg-indigo-50/50 border border-indigo-100/30">
                 <span className="material-symbols-outlined text-indigo-600">lightbulb</span>

@@ -4,7 +4,7 @@ import React, { useState, useEffect, useRef } from "react";
 import Image from "next/image";
 import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabaseClient";
-import toast from "react-hot-toast";
+import toast, { Toaster } from "react-hot-toast";
 import * as XLSX from 'xlsx';
 
 export default function BusinessSettingsPage() {
@@ -259,7 +259,8 @@ export default function BusinessSettingsPage() {
   }
 
   return (
-    <div className="grid grid-cols-12 gap-8">
+    <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
+      <Toaster position="top-right" />
       {/* Left Column: Business Details */}
       <div className="col-span-12 lg:col-span-7 space-y-8">
         {/* Business Information Card */}

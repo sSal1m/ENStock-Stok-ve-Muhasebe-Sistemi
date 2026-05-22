@@ -5,7 +5,7 @@ import React, { useState } from "react";
 import Image from "next/image";
 import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabaseClient";
-import toast from "react-hot-toast";
+import toast, { Toaster } from "react-hot-toast";
 import { inviteUserAction } from "./actions";
 
 export default function InviteUserPage() {
@@ -59,6 +59,7 @@ export default function InviteUserPage() {
 
   return (
     <div className="max-w-5xl mx-auto w-full">
+      <Toaster position="top-right" />
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-10 items-start">
         {/* Form Section */}
         <div className="lg:col-span-7 space-y-8">

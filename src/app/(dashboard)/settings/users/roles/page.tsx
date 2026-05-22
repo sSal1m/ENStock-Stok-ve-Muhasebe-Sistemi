@@ -3,7 +3,7 @@
 import React, { useState, useEffect } from "react";
 import Image from "next/image";
 import { supabase } from "@/lib/supabaseClient";
-import toast from "react-hot-toast";
+import toast, { Toaster } from "react-hot-toast";
 import { updateRolePermissionAction } from "./actions";
 
 
@@ -249,6 +249,7 @@ export default function RolesPermissionsPage() {
 
   return (
     <>
+      <Toaster position="top-right" />
       {/* Header Section with Bento Elements */}
       <div className="grid grid-cols-12 gap-6 mb-8">
         <div className="col-span-12 lg:col-span-8 bg-surface-container-low p-8 rounded-3xl relative overflow-hidden">

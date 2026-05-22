@@ -41,18 +41,8 @@ export default function ProfilePage() {
 
   // --- Preferences States ---
   const [preferences, setPreferences] = useState({
-    darkMode: false,
     liveSync: true,
   });
-
-  // --- Dark Mode Effect ---
-  useEffect(() => {
-    if (preferences.darkMode) {
-      document.documentElement.classList.add("dark");
-    } else {
-      document.documentElement.classList.remove("dark");
-    }
-  }, [preferences.darkMode]);
 
   // --- Initial Fetch ---
   useEffect(() => {
@@ -314,11 +304,11 @@ export default function ProfilePage() {
     toast.success("Mimari yapılandırma XLSX olarak indirildi.");
   };
 
-  const togglePreference = (key: "darkMode" | "liveSync") => {
+  const togglePreference = (key: "liveSync") => {
     const newPrefs = { ...preferences, [key]: !preferences[key] };
     setPreferences(newPrefs);
     localStorage.setItem("user_preferences", JSON.stringify(newPrefs));
-    toast.success(key === "darkMode" ? (newPrefs.darkMode ? "Gece modu aktif" : "Gündüz modu aktif") : "Senkronizasyon güncellendi");
+    toast.success("Senkronizasyon güncellendi");
   };
 
   if (isLoading) {
@@ -334,32 +324,6 @@ export default function ProfilePage() {
 
   return (
     <div className="grid grid-cols-12 gap-8">
-      {/* Dynamic Styling Hook for Dark Mode (Scoped Override) */}
-      <style jsx global>{`
-        .dark {
-          --color-background: #0f111a;
-          --color-surface: #0f111a;
-          --color-surface-dim: #05060a;
-          --color-surface-bright: #1a1d2d;
-          --color-surface-variant: #2d3142;
-          --color-surface-container-lowest: #141724;
-          --color-surface-container-low: #1c2033;
-          --color-surface-container: #242942;
-          --color-surface-container-high: #2c3251;
-          --color-surface-container-highest: #343b60;
-          --color-on-surface: #eef0ff;
-          --color-on-surface-variant: #bfc4d9;
-          --color-outline: #6e738c;
-          --color-outline-variant: #44495e;
-          --color-on-background: #eef0ff;
-        }
-        .dark .bg-surface-container-low { background-color: var(--color-surface-container-low); }
-        .dark .bg-surface-container-lowest { background-color: var(--color-surface-container-lowest); }
-        .dark .bg-surface-container-high { background-color: var(--color-surface-container-high); }
-        .dark .text-on-surface { color: var(--color-on-surface); }
-        .dark .text-on-surface-variant { color: var(--color-on-surface-variant); }
-      `}</style>
-
       {/* Left Column: User Profile */}
       <div className="col-span-12 lg:col-span-7 space-y-8">
         {/* Profile Information Card */}
@@ -548,18 +512,6 @@ export default function ProfilePage() {
             <h2 className="text-xl font-bold font-headline text-on-surface">Arayüz Kuralları</h2>
           </div>
           <div className="space-y-4">
-            <div
-              onClick={() => togglePreference("darkMode")}
-              className="flex items-center justify-between p-3 hover:bg-surface-container-low rounded-lg transition-colors cursor-pointer"
-            >
-              <div className="flex items-center gap-3">
-                <span className="material-symbols-outlined text-on-surface-variant">dark_mode</span>
-                <span className="text-sm font-medium text-on-surface">Gece Modu</span>
-              </div>
-              <div className={`w-10 h-5 rounded-full relative transition-colors ${preferences.darkMode ? "bg-primary" : "bg-outline-variant"}`}>
-                <div className={`absolute top-1 w-3 h-3 bg-white rounded-full transition-all ${preferences.darkMode ? "right-1" : "left-1"}`}></div>
-              </div>
-            </div>
             <div
               onClick={() => togglePreference("liveSync")}
               className="flex items-center justify-between p-3 hover:bg-surface-container-low rounded-lg transition-colors cursor-pointer"

@@ -172,3 +172,29 @@ export async function fetchTeamScopedData(
 
   return { data: data ?? [], count };
 }
+
+/* ═══════════════════════════════════════════
+   USER PROFILE ACTIONS (bypasses RLS)
+   ═══════════════════════════════════════════ */
+
+export async function updateUserProfileSecure(currentUserId: string, targetProfileId: string, updates: { full_name?: string, role?: string }) {
+  try {
+    const teamIds = await getTeamIdsSecure(currentUserId);
+    if (!teamIds.includes(targetProfileId)) {
+      return { success: false, error: "Yetkisiz işlem: Kullanıcı sizin ekibinizde değil." };
+    }
+
+    const { error } = await supabaseAdmin
+      .from("profiles")
+      .update(updates)
+      .eq("id", targetProfileId);
+
+    if (error) {
+      return { success: false, error: error.message };
+    }
+
+    return { success: true };
+  } catch (error: any) {
+    return { success: false, error: error.message };
+  }
+}

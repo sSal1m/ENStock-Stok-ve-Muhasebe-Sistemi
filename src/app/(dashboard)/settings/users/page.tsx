@@ -5,6 +5,7 @@ import Image from "next/image";
 import Link from "next/link";
 import { supabase } from "@/lib/supabaseClient";
 import toast from "react-hot-toast";
+import { updateUserProfileSecure } from "@/app/(dashboard)/teamActions";
 
 const MODULES = [
   {
@@ -60,13 +61,7 @@ const DEFAULT_ROLE_PERMS: Record<string, any> = {
     invoices: { view: false, create: false, edit: false, delete: false },
     reports: { view: false, create: false, edit: false, delete: false },
   },
-  staff: {
-    stock: { view: true, create: true, edit: true, delete: true },
-    contacts: { view: false, create: false, edit: false, delete: false },
-    invoices: { view: false, create: false, edit: false, delete: false },
-    reports: { view: false, create: false, edit: false, delete: false },
-  },
-  sales: {
+  manager: {
     stock: { view: true, create: true, edit: true, delete: false },
     contacts: { view: true, create: true, edit: false, delete: false },
     invoices: { view: true, create: true, edit: false, delete: false },
@@ -316,22 +311,25 @@ export default function UserListPage() {
   };
 
   const handleSaveEdit = async (id: string) => {
+    const toastId = toast.loading("Güncelleniyor...");
     try {
-      const { error } = await supabase
-        .from("profiles")
-        .update({
-          full_name: editForm.full_name,
-          role: editForm.role
-        })
-        .eq("id", id);
+      const { data: { user: authUser }, error: authError } = await supabase.auth.getUser();
+      if (authError || !authUser) throw new Error("Oturum bulunamadı");
+
+      const result = await updateUserProfileSecure(authUser.id, id, {
+        full_name: editForm.full_name,
+        role: editForm.role
+      });
       
-      if (error) throw error;
+      if (!result) throw new Error("Sunucudan yanıt alınamadı.");
+      if (!result.success) throw new Error(result.error || "Bilinmeyen bir hata oluştu.");
       
-      toast.success("Kullanıcı güncellendi.");
+      toast.success("Kullanıcı güncellendi.", { id: toastId });
       setUsers(users.map(u => u.id === id ? { ...u, ...editForm } : u));
       setEditingId(null);
     } catch (err: any) {
-      toast.error("Güncelleme hatası: " + err.message);
+      console.error("Save edit error:", err);
+      toast.error("Güncelleme hatası: " + (err.message || "Bilinmeyen hata"), { id: toastId });
     }
   };
 
@@ -440,8 +438,8 @@ export default function UserListPage() {
                           >
                             <option value="admin">Yönetici</option>
                             <option value="accounting">Muhasebe</option>
-                            <option value="staff">Personel</option>
-                            <option value="sales">Satış</option>
+                            <option value="warehouse">Depo Personeli</option>
+                            <option value="manager">Personel / Müdür</option>
                           </select>
                           <span className="material-symbols-outlined absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none text-sm">unfold_more</span>
                         </div>
@@ -493,10 +491,10 @@ export default function UserListPage() {
                           user.role === 'admin' ? 'bg-indigo-50 text-indigo-700 border border-indigo-100' :
                           user.role === 'accounting' ? 'bg-emerald-50 text-emerald-700 border border-emerald-100' :
                           user.role === 'warehouse' ? 'bg-orange-50 text-orange-700 border border-orange-100' :
-                          user.role === 'sales' ? 'bg-blue-50 text-blue-700 border border-blue-100' :
+                          user.role === 'manager' ? 'bg-blue-50 text-blue-700 border border-blue-100' :
                           'bg-slate-100 text-slate-600 border border-slate-200'
                         }`}>
-                          {user.role === 'admin' ? 'Yönetici' : user.role === 'accounting' ? 'Muhasebe' : user.role === 'warehouse' ? 'Depo Personeli' : user.role === 'sales' ? 'Satış Temsilcisi' : 'Personel'}
+                          {user.role === 'admin' ? 'Yönetici' : user.role === 'accounting' ? 'Muhasebe' : user.role === 'warehouse' ? 'Depo Personeli' : user.role === 'manager' ? 'Personel / Müdür' : 'Personel'}
                         </span>
                       </td>
                       <td className="px-8 py-5">
@@ -623,7 +621,7 @@ export default function UserListPage() {
                     selectedUserForPerms.role === 'admin' ? 'Yönetici' : 
                     selectedUserForPerms.role === 'accounting' ? 'Muhasebe' : 
                     selectedUserForPerms.role === 'warehouse' ? 'Depo Personeli' : 
-                    selectedUserForPerms.role === 'sales' ? 'Satış Temsilcisi' : 'Personel'
+                    selectedUserForPerms.role === 'manager' ? 'Personel / Müdür' : 'Personel'
                   })
                 </p>
               </div>

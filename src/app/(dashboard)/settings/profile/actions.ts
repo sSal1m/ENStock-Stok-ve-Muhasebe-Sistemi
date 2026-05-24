@@ -111,3 +111,48 @@ export async function uploadProductImageAction(base64Data: string, fileName: str
     return { success: false, error: err.message || "Görsel yüklenirken bir hata oluştu." };
   }
 }
+
+export async function uploadBusinessLogoAction(base64Data: string, fileName: string, fileType: string, userId: string) {
+  if (!userId || !base64Data) {
+    return { success: false, error: "Geçersiz parametreler." };
+  }
+  
+  try {
+    const buffer = Buffer.from(base64Data, 'base64');
+    const fileExt = fileName.split('.').pop();
+    const uniqueFileName = `${userId}-${Math.round(Math.random() * 1000000)}.${fileExt}`;
+    const filePath = `logos/${uniqueFileName}`;
+
+    const { data: uploadData, error: uploadError } = await supabaseAdmin.storage
+      .from("avatars")
+      .upload(filePath, buffer, {
+        contentType: fileType,
+        upsert: true
+      });
+
+    if (uploadError) {
+      console.error("Logo storage upload error:", uploadError);
+      return { success: false, error: uploadError.message };
+    }
+
+    const { data: { publicUrl } } = supabaseAdmin.storage
+      .from("avatars")
+      .getPublicUrl(filePath);
+
+    // Update profiles table logo_url
+    const { error: dbError } = await supabaseAdmin
+      .from("profiles")
+      .update({ logo_url: publicUrl })
+      .eq("id", userId);
+
+    if (dbError) {
+      console.error("Profiles database update error:", dbError);
+      return { success: false, error: dbError.message };
+    }
+
+    return { success: true, publicUrl };
+  } catch (err: any) {
+    console.error("Critical logo upload action error:", err);
+    return { success: false, error: err.message || "Logo yüklenirken bir hata oluştu." };
+  }
+}

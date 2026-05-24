@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabaseClient";
 import toast, { Toaster } from "react-hot-toast";
 import * as XLSX from 'xlsx';
+import { uploadBusinessLogoAction } from "../profile/actions";
 
 export default function BusinessSettingsPage() {
   const router = useRouter();
@@ -158,42 +159,46 @@ export default function BusinessSettingsPage() {
     const toastId = toast.loading("Logo yükleniyor...");
     try {
       const { data: { user } } = await supabase.auth.getUser();
-      if (!user) return;
-
-      const fileExt = file.name.split(".").pop();
-      const fileName = `logo-${user.id}-${Math.random()}.${fileExt}`;
-      const filePath = `logos/${fileName}`;
-
-      const { error: uploadError } = await supabase.storage
-        .from("avatars") // Using avatars bucket as mentioned in plan fallback
-        .upload(filePath, file);
-
-      if (uploadError) throw uploadError;
-
-      const { data: { publicUrl } } = supabase.storage
-        .from("avatars")
-        .getPublicUrl(filePath);
-
-      const { error: updateError } = await supabase
-        .from("profiles")
-        .update({ logo_url: publicUrl })
-        .eq("id", user.id);
-
-      if (updateError) {
-        console.warn("Logo Supabase save error:", updateError.message);
+      if (!user) {
+        toast.error("Oturum bulunamadı.", { id: toastId });
+        return;
       }
 
-      setFormData(prev => {
-        const newData = { ...prev, logoUrl: publicUrl };
-        // Sync logo update to local storage too
-        localStorage.setItem(`business_settings_${user.id}`, JSON.stringify(newData));
-        return newData;
-      });
-      setLogoTimestamp(Date.now());
-      toast.success("Logo başarıyla yüklendi.", { id: toastId });
+      // Dosyayı Base64 dizesine dönüştür
+      const reader = new FileReader();
+      reader.readAsDataURL(file);
+      reader.onload = async () => {
+        try {
+          const base64Data = (reader.result as string).split(',')[1];
+          const result = await uploadBusinessLogoAction(base64Data, file.name, file.type, user.id);
+
+          if (!result.success) {
+            toast.error(`Logo yükleme hatası: ${result.error}`, { id: toastId });
+            setIsLogoUploading(false);
+            return;
+          }
+
+          setFormData(prev => {
+            const newData = { ...prev, logoUrl: result.publicUrl || null };
+            // Sync logo update to local storage too
+            localStorage.setItem(`business_settings_${user.id}`, JSON.stringify(newData));
+            return newData;
+          });
+          setLogoTimestamp(Date.now());
+          toast.success("Logo başarıyla yüklendi.", { id: toastId });
+          setIsLogoUploading(false);
+        } catch (innerErr: any) {
+          toast.error(`Logo yükleme hatası: ${innerErr.message}`, { id: toastId });
+          setIsLogoUploading(false);
+        }
+      };
+      
+      reader.onerror = () => {
+        toast.error("Dosya okunurken bir hata oluştu.", { id: toastId });
+        setIsLogoUploading(false);
+      };
     } catch (err: any) {
       toast.error(`Logo yükleme hatası: ${err.message}`, { id: toastId });
-    } finally {
       setIsLogoUploading(false);
     }
   };

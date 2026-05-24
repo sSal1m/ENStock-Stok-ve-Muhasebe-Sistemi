@@ -239,32 +239,6 @@ export default function InvoicesPage() {
           </div>
         </div>
 
-        {/* ── Premium Faturalar Tanıtım ve Bilgi Banner'ı ── */}
-        <div className="relative overflow-hidden rounded-3xl bg-gradient-to-r from-slate-900 via-slate-800 to-indigo-950 text-white p-8 shadow-xl border border-slate-700/50 flex flex-col md:flex-row items-center justify-between gap-8 group">
-          {/* Sol İçerik */}
-          <div className="space-y-4 md:max-w-xl z-10">
-            <span className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-full text-xs font-bold bg-indigo-500/20 text-indigo-300 border border-indigo-500/30 tracking-wide uppercase">
-              <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-ping"></span>
-              Aktif Fatura Kontrolü
-            </span>
-            <h2 className="text-2xl lg:text-3xl font-black tracking-tight leading-tight">
-              Dijital Fatura & Gelir-Gider Entegrasyonu
-            </h2>
-            <p className="text-sm text-slate-300 font-medium leading-relaxed">
-              İşletmenizin satış ve alış faturalarını dijital olarak düzenleyin, ödeme durumlarını canlı olarak takip edin ve PDF faturalarınızı tek tıkla müşterilerinizle paylaşın.
-            </p>
-          </div>
-
-          {/* Sağ Görsel Konteyneri */}
-          <div className="relative w-full md:w-[440px] lg:w-[580px] h-[220px] md:h-[260px] rounded-2xl overflow-hidden shadow-2xl border border-slate-600/30 flex-shrink-0">
-            <div className="absolute inset-0 bg-gradient-to-t from-slate-950/40 via-transparent to-transparent z-10"></div>
-            <img
-              src="/fatura_banner.png"
-              alt="Dijital Fatura Kayıtları"
-              className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-700 ease-out"
-            />
-          </div>
-        </div>
 
         {/* Filter Bar */}
         <div className="flex items-center gap-3 pb-6 border-b border-slate-200">

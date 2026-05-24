@@ -16,6 +16,7 @@ interface NavLink {
 
 interface UserProfile {
   company_name: string;
+  logo_url?: string | null;
 }
 
 const navLinks: NavLink[] = [
@@ -35,31 +36,60 @@ export default function Sidebar() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    let channel: any = null;
+
     const fetchProfile = async () => {
       try {
         const { data: { user } } = await supabase.auth.getUser();
         if (user) {
           const { data } = await supabase
             .from('profiles')
-            .select('company_name')
+            .select('company_name, logo_url')
             .eq('id', user.id)
             .single();
           
           if (data) {
             setProfile(data as UserProfile);
           } else {
-            setProfile({ company_name: 'Şirketim' });
+            setProfile({ company_name: 'Şirketim', logo_url: null });
           }
+
+          // Realtime listener for company name & logo updates
+          channel = supabase
+            .channel('sidebar-profile-changes')
+            .on(
+              'postgres_changes',
+              {
+                event: 'UPDATE',
+                schema: 'public',
+                table: 'profiles',
+                filter: `id=eq.${user.id}`,
+              },
+              (payload) => {
+                setProfile(prev => prev ? {
+                  ...prev,
+                  company_name: payload.new.company_name || prev.company_name,
+                  logo_url: payload.new.logo_url !== undefined ? payload.new.logo_url : prev.logo_url
+                } : null);
+              }
+            )
+            .subscribe();
         }
       } catch (error) {
         console.error('Sidebar profil yükleme hatası:', error);
-        setProfile({ company_name: 'Şirketim' });
+        setProfile({ company_name: 'Şirketim', logo_url: null });
       } finally {
         setLoading(false);
       }
     };
     
     fetchProfile();
+
+    return () => {
+      if (channel) {
+        supabase.removeChannel(channel);
+      }
+    };
   }, []);
 
   const isActive = (href: string) => {
@@ -78,11 +108,26 @@ export default function Sidebar() {
   return (
     <aside className="w-64 bg-surface border-r border-surface-container-high h-screen overflow-y-auto sticky top-0 shadow-sm flex flex-col">
       {/* Logo/Brand Section */}
-      <div className="p-6 border-b border-surface-container-high">
-        <h1 className="text-xl font-bold text-primary">
-          {loading ? 'Yükleniyor...' : (profile?.company_name || 'Şirketim')}
-        </h1>
-        <p className="text-sm text-on-surface/60 mt-1">Muhasebe & Yönetim</p>
+      <div className="p-5 border-b border-surface-container-high flex items-center gap-4">
+        {profile?.logo_url ? (
+          <div className="w-14 h-14 rounded-xl overflow-hidden border border-surface-container-high flex-shrink-0 relative shadow-sm hover:scale-[1.03] transition-transform duration-200 bg-white dark:bg-slate-900 flex items-center justify-center">
+            <img
+              src={profile.logo_url}
+              alt="Logo"
+              className="w-full h-full object-cover"
+            />
+          </div>
+        ) : (
+          <div className="w-14 h-14 rounded-xl bg-primary/10 flex items-center justify-center flex-shrink-0 text-primary border border-primary/20 shadow-sm hover:scale-[1.03] transition-transform duration-200">
+            <span className="material-symbols-outlined text-3xl">corporate_fare</span>
+          </div>
+        )}
+        <div className="min-w-0 flex-1">
+          <h1 className="text-base font-extrabold text-primary truncate leading-snug">
+            {loading ? 'Yükleniyor...' : (profile?.company_name || 'Şirketim')}
+          </h1>
+          <p className="text-[11px] font-medium text-on-surface/50 mt-0.5 uppercase tracking-wider">Muhasebe & Yönetim</p>
+        </div>
       </div>
 
       {/* Navigation Links */}

@@ -246,6 +246,33 @@ export default function ContactsPage() {
         </div>
       </div>
 
+      {/* ── Premium Cari Rehber Tanıtım ve Bilgi Banner'ı ── */}
+      <div className="relative overflow-hidden rounded-3xl bg-gradient-to-r from-slate-900 via-slate-800 to-indigo-950 text-white p-8 shadow-xl border border-slate-700/50 flex flex-col md:flex-row items-center justify-between gap-8 group">
+        {/* Sol İçerik */}
+        <div className="space-y-4 md:max-w-xl z-10">
+          <span className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-full text-xs font-bold bg-indigo-500/20 text-indigo-300 border border-indigo-500/30 tracking-wide uppercase">
+            <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-ping"></span>
+            Canlı Cari Veri Tabanı
+          </span>
+          <h2 className="text-2xl lg:text-3xl font-black tracking-tight leading-tight">
+            Müşteri & Tedarikçi İlişkileri Yönetimi
+          </h2>
+          <p className="text-sm text-slate-300 font-medium leading-relaxed">
+            İşletmenizin tüm müşteri ve tedarikçi ilişkilerini, alacak-borç bakiyelerini ve iletişim bilgilerini tek bir merkezden izleyin, veri entegrasyonu ile ticari ilişkilerinizi güçlendirin.
+          </p>
+        </div>
+
+        {/* Sağ Görsel Konteyneri */}
+        <div className="relative w-full md:w-[440px] lg:w-[580px] h-[220px] md:h-[260px] rounded-2xl overflow-hidden shadow-2xl border border-slate-600/30 flex-shrink-0 bg-white/5 p-2 backdrop-blur-sm">
+          <div className="absolute inset-0 bg-gradient-to-t from-slate-950/20 via-transparent to-transparent z-10"></div>
+          <img
+            src="/cari_banner.png"
+            alt="Cari İlişkiler Yönetimi"
+            className="w-full h-full object-contain group-hover:scale-105 transition-transform duration-700 ease-out"
+          />
+        </div>
+      </div>
+
       {/* ── STATS ── */}
       <section className="grid grid-cols-1 gap-6 sm:grid-cols-3">
         {/* Alacak */}
@@ -416,8 +443,8 @@ export default function ContactsPage() {
       {/* ── BENTO FORM ── */}
       <section id="form-hizli-cari" className="bg-white rounded-3xl border border-indigo-50/50 p-8 shadow-sm">
         <div className="mb-8 flex items-center gap-4">
-          <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-primary/10">
-            <span className="material-symbols-outlined text-primary text-2xl">person_add</span>
+          <div className="flex h-12 w-12 items-center justify-center rounded-2xl overflow-hidden bg-slate-50 border border-indigo-50/50 p-1 shadow-sm">
+            <img src="/cari.png" alt="Cari Hesap" className="h-full w-full object-contain" />
           </div>
           <div>
             <h2 className="text-xl font-black text-on-surface">Hızlı Yeni Cari Ekle</h2>

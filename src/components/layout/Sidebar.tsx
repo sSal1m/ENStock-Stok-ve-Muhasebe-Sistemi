@@ -26,8 +26,6 @@ const navLinks: NavLink[] = [
   { id: 'invoices', href: '/invoices', label: 'Faturalar', icon: 'receipt' },
   { id: 'reports', href: '/reports', label: 'Raporlar', icon: 'analytics' },
   { id: 'activity-log', href: '/activity-log', label: 'İşlem Geçmişi', icon: 'history' },
-  { id: 'trash', href: '/trash', label: 'Çöp Kutusu', icon: 'delete' },
-  { id: 'settings', href: '/settings/profile', label: 'Ayarlar', icon: 'settings' },
 ];
 
 export default function Sidebar() {

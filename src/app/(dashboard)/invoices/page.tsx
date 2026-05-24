@@ -201,11 +201,16 @@ export default function InvoicesPage() {
         {/* Page Header */}
         <div className="flex flex-col md:flex-row md:items-end justify-between gap-6 pb-6 border-b border-slate-200">
           <div>
-            <h1 className="text-3xl font-extrabold text-slate-900 tracking-tight mb-2">
+            <nav className="flex items-center gap-2 text-xs font-semibold text-indigo-400 mb-2">
+              <span>Panel</span>
+              <span className="material-symbols-outlined text-[12px]">chevron_right</span>
+              <span className="text-slate-500">Fatura Yönetimi</span>
+            </nav>
+            <h1 className="text-3xl font-extrabold text-slate-900 tracking-tight">
               Faturalar
             </h1>
-            <p className="text-slate-600">
-              Tüm faturalarınızı yönetin ve takip edin
+            <p className="text-slate-600 mt-1">
+              Tüm faturalarınızı yönetin ve takip edin.
             </p>
           </div>
           <div className="flex flex-wrap items-center gap-3">
@@ -231,6 +236,33 @@ export default function InvoicesPage() {
               <span className="material-symbols-outlined">add_circle</span>
               Yeni Fatura
             </Link>
+          </div>
+        </div>
+
+        {/* ── Premium Faturalar Tanıtım ve Bilgi Banner'ı ── */}
+        <div className="relative overflow-hidden rounded-3xl bg-gradient-to-r from-slate-900 via-slate-800 to-indigo-950 text-white p-8 shadow-xl border border-slate-700/50 flex flex-col md:flex-row items-center justify-between gap-8 group">
+          {/* Sol İçerik */}
+          <div className="space-y-4 md:max-w-xl z-10">
+            <span className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-full text-xs font-bold bg-indigo-500/20 text-indigo-300 border border-indigo-500/30 tracking-wide uppercase">
+              <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-ping"></span>
+              Aktif Fatura Kontrolü
+            </span>
+            <h2 className="text-2xl lg:text-3xl font-black tracking-tight leading-tight">
+              Dijital Fatura & Gelir-Gider Entegrasyonu
+            </h2>
+            <p className="text-sm text-slate-300 font-medium leading-relaxed">
+              İşletmenizin satış ve alış faturalarını dijital olarak düzenleyin, ödeme durumlarını canlı olarak takip edin ve PDF faturalarınızı tek tıkla müşterilerinizle paylaşın.
+            </p>
+          </div>
+
+          {/* Sağ Görsel Konteyneri */}
+          <div className="relative w-full md:w-[440px] lg:w-[580px] h-[220px] md:h-[260px] rounded-2xl overflow-hidden shadow-2xl border border-slate-600/30 flex-shrink-0">
+            <div className="absolute inset-0 bg-gradient-to-t from-slate-950/40 via-transparent to-transparent z-10"></div>
+            <img
+              src="/fatura_banner.png"
+              alt="Dijital Fatura Kayıtları"
+              className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-700 ease-out"
+            />
           </div>
         </div>
 
@@ -328,8 +360,12 @@ export default function InvoicesPage() {
           </div>
         ) : filtered.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-24 bg-white rounded-2xl shadow-sm border border-slate-200">
-            <div className="w-28 h-28 bg-gradient-to-br from-purple-100 to-purple-50 rounded-lg flex items-center justify-center mb-8 shadow-sm">
-              <span className="material-symbols-outlined text-7xl text-purple-400">receipt_long</span>
+            <div className="w-32 h-32 mb-8 relative flex items-center justify-center rounded-2xl overflow-hidden bg-white border border-slate-200 shadow-md hover:scale-105 transition-transform duration-300">
+              <img
+                src="/fatura.png"
+                alt="Fatura"
+                className="w-full h-full object-cover scale-[1.38]"
+              />
             </div>
             <h3 className="text-2xl font-bold text-slate-900 mb-2">Henüz fatura kesilmemiş</h3>
             <p className="text-slate-600 mb-8 max-w-sm text-center">Yeni bir fatura oluşturmak için aşağıdaki butona tıklayın</p>

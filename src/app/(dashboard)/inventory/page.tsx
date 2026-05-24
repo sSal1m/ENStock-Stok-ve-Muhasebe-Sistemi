@@ -9,6 +9,7 @@ import DeleteConfirmationModal from "@/components/inventory/DeleteConfirmationMo
 import Link from "next/link";
 import { useCurrencyConverter } from "@/hooks/useCurrencyConverter";
 import * as XLSX from "xlsx";
+import { parseDescription } from "@/lib/productImageHelper";
 
 // ─── Tipler ────────────────────────────────────────────────────────────────
 
@@ -16,6 +17,7 @@ interface Product {
   id: string;
   sku: string;
   name: string;
+  description: string | null;
   purchase_price: number;
   sale_price: number;
   currency: string;
@@ -329,6 +331,33 @@ export default function InventoryPage() {
         </div>
       </div>
 
+      {/* ── Premium Depo Tanıtım ve Bilgi Banner'ı ── */}
+      <div className="relative overflow-hidden rounded-3xl bg-gradient-to-r from-slate-900 via-slate-800 to-indigo-950 text-white p-8 shadow-xl border border-slate-700/50 flex flex-col md:flex-row items-center justify-between gap-8 group">
+        {/* Sol İçerik */}
+        <div className="space-y-4 md:max-w-xl z-10">
+          <span className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-full text-xs font-bold bg-indigo-500/20 text-indigo-300 border border-indigo-500/30 tracking-wide uppercase">
+            <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-ping"></span>
+            Aktif Depo Kontrolü
+          </span>
+          <h2 className="text-2xl lg:text-3xl font-black tracking-tight leading-tight">
+            Akıllı Stok & Envanter Yönetimi
+          </h2>
+          <p className="text-sm text-slate-300 font-medium leading-relaxed">
+            Gerçek zamanlı stok takibi, anlık kritik seviye uyarıları ve gelişmiş ürün kategorizasyonu ile deponuzdaki operasyonel verimliliği en üst düzeye çıkarın ve iş akışını tek noktadan yönetin.
+          </p>
+        </div>
+
+        {/* Sağ Görsel Konteyneri */}
+        <div className="relative w-full md:w-[440px] lg:w-[580px] h-[220px] md:h-[260px] rounded-2xl overflow-hidden shadow-2xl border border-slate-600/30 flex-shrink-0">
+          <div className="absolute inset-0 bg-gradient-to-t from-slate-950/40 via-transparent to-transparent z-10"></div>
+          <img
+            src="/depo.png"
+            alt="Depo Yönetimi"
+            className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-700 ease-out"
+          />
+        </div>
+      </div>
+
       {/* ── Bento İstatistik Kartları ── */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
         {/* Toplam Ürün */}
@@ -517,6 +546,7 @@ export default function InventoryPage() {
                 filtered.map((item) => {
                   const level = getStockLevel(item.stock_quantity, item.critical_limit);
                   const percent = getStockPercent(item.stock_quantity, item.critical_limit);
+                  const parsed = parseDescription(item.description);
                   
                   // 🔧 Kategori adını al - hem array hem object formatını destekle
                   let categoryName = "Kategorisiz";
@@ -533,12 +563,22 @@ export default function InventoryPage() {
                       {/* Ürün Adı & SKU */}
                       <td className="px-6 py-4">
                         <div className="flex items-center gap-3">
-                          {/* Ürün görseli yoksa harf avatar */}
-                          <div className="w-10 h-10 rounded-lg bg-indigo-50 flex-shrink-0 flex items-center justify-center">
-                            <span className="text-indigo-600 font-black text-base">
-                              {item.name.charAt(0).toUpperCase()}
-                            </span>
-                          </div>
+                          {/* Ürün görseli varsa göster, yoksa harf avatar */}
+                          {parsed.imageUrl ? (
+                            <div className="w-10 h-10 rounded-lg overflow-hidden flex-shrink-0 border border-indigo-100/50">
+                              <img
+                                src={parsed.imageUrl}
+                                alt={item.name}
+                                className="w-full h-full object-cover"
+                              />
+                            </div>
+                          ) : (
+                            <div className="w-10 h-10 rounded-lg bg-indigo-50 flex-shrink-0 flex items-center justify-center">
+                              <span className="text-indigo-600 font-black text-base">
+                                {item.name.charAt(0).toUpperCase()}
+                              </span>
+                            </div>
+                          )}
                           <div>
                             <Link href={`/inventory/${item.id}`} className="font-bold text-on-surface hover:text-primary transition-colors">{item.name}</Link>
                             <p className="text-xs text-slate-400 font-mono">{item.sku}</p>

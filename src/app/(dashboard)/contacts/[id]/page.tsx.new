@@ -1,0 +1,608 @@
+"use client";
+
+import { useState, useEffect, useTransition, useRef } from "react";
+import { useParams, useRouter } from "next/navigation";
+import Link from "next/link";
+import { supabase } from "@/lib/supabaseClient";
+import toast from "react-hot-toast";
+import { cariGuncelleAction, islemYapAction } from "../actions";
+import { useCurrencyConverter } from "@/hooks/useCurrencyConverter";
+
+/* ═══════════════════════════════════════════
+   TYPES
+   ═══════════════════════════════════════════ */
+
+interface ContactRecord {
+  id: string;
+  type: "customer" | "supplier";
+  name: string;
+  tax_number: string | null;
+  tax_office: string | null;
+  phone: string | null;
+  email: string | null;
+  address: string | null;
+  current_balance: number;
+}
+
+interface ContactLog {
+  id: string;
+  contact_id: string;
+  created_at: string;
+  action_type: "invoice_sale" | "invoice_purchase" | "manual_payment" | "manual_collection";
+  amount_change: number;
+  previous_balance: number;
+  new_balance: number;
+  note: string | null;
+}
+
+/* ═══════════════════════════════════════════
+   CONSTANTS
+   ═══════════════════════════════════════════ */
+
+const TABS = ["Tüm İşlemler", "Satışlar", "Alışlar", "Ödemeler", "Tahsilatlar"] as const;
+type Tab = (typeof TABS)[number];
+
+/* ═══════════════════════════════════════════
+   HELPERS
+   ═══════════════════════════════════════════ */
+
+function fmtDate(iso: string): { date: string; time: string } {
+  const d = new Date(iso);
+  return {
+    date: d.toLocaleDateString("tr-TR", { day: "2-digit", month: "short", year: "numeric" }),
+    time: d.toLocaleTimeString("tr-TR", { hour: "2-digit", minute: "2-digit" }),
+  };
+}
+
+const actionTypeToDisplay = (actionType: string): { label: string; icon: string; color: string; category: Tab } => {
+  switch (actionType) {
+    case "invoice_sale":
+      return { label: "Satış Faturası", icon: "arrow_upward", color: "text-emerald-500", category: "Satışlar" };
+    case "invoice_purchase":
+      return { label: "Alış Faturası", icon: "arrow_downward", color: "text-error", category: "Alışlar" };
+    case "manual_payment":
+      return { label: "Ödeme", icon: "arrow_outward", color: "text-error", category: "Ödemeler" };
+    case "manual_collection":
+      return { label: "Tahsilat", icon: "south_west", color: "text-emerald-500", category: "Tahsilatlar" };
+    default:
+      return { label: "İşlem", icon: "info", color: "text-slate-400", category: "Tüm İşlemler" };
+  }
+};
+
+const avatarGradient = (tip: "customer" | "supplier") =>
+  tip === "supplier"
+    ? "from-amber-400 to-orange-500"
+    : "from-emerald-400 to-emerald-600";
+
+const badgeStyle = (tip: "customer" | "supplier") =>
+  tip === "supplier"
+    ? "bg-amber-50 border-amber-200 text-amber-700"
+    : "bg-emerald-50 border-emerald-200 text-emerald-700";
+
+/* ═══════════════════════════════════════════
+   COMPONENT
+   ═══════════════════════════════════════════ */
+
+export default function ContactDetailPage() {
+  const params = useParams();
+  const router = useRouter();
+  const cariId = params.id as string;
+
+  const [cari, setCari] = useState<ContactRecord | null>(null);
+  const [allLogs, setAllLogs] = useState<ContactLog[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [notFound, setNotFound] = useState(false);
+  const [activeTab, setActiveTab] = useState<Tab>("Tüm İşlemler");
+
+  const [currentPage, setCurrentPage] = useState(0);
+  const [isAnimating, setIsAnimating] = useState(false);
+  const tableRef = useRef<HTMLDivElement>(null);
+  const ITEMS_PER_PAGE = 5;
+
+  const [isEditModalOpen, setIsEditModalOpen] = useState(false);
+  const [isTransactionModalOpen, setIsTransactionModalOpen] = useState(false);
+  const [isPendingEdit, startTransitionEdit] = useTransition();
+  const [isPendingTx, startTransitionTx] = useTransition();
+  const editFormRef = useRef<HTMLFormElement>(null);
+  const txFormRef = useRef<HTMLFormElement>(null);
+  const [islemTipi, setIslemTipi] = useState<"Tahsilat" | "Ödeme">("Tahsilat");
+
+  const { rates, viewCurrency, setViewCurrency, convert, format: fmt } = useCurrencyConverter();
+
+  // ── Fetch cari record & transactions ──
+  const fetchData = async (showLoading = false) => {
+    if (!cariId) return;
+    if (showLoading) setLoading(true);
+
+    try {
+      const { data: cariData, error: cariError } = await supabase
+        .from("contacts")
+        .select("*")
+        .eq("id", cariId)
+        .single();
+
+      if (cariError || !cariData) {
+        console.error("Cari bulunamadı:", cariError);
+        setNotFound(true);
+        if (showLoading) setLoading(false);
+        return;
+      }
+
+      setCari(cariData as ContactRecord);
+
+      // ✅ Fetch contact_logs (single source of truth)
+      const { data: logsRes, error: logsError } = await supabase
+        .from("contact_logs")
+        .select("id, contact_id, created_at, action_type, amount_change, previous_balance, new_balance, note")
+        .eq("contact_id", cariId)
+        .order("created_at", { ascending: false });
+
+      if (logsError) {
+        console.error("contact_logs alınamadı:", logsError);
+        setAllLogs([]);
+      } else if (logsRes) {
+        setAllLogs(logsRes as ContactLog[]);
+      } else {
+        setAllLogs([]);
+      }
+      setCurrentPage(0);
+    } catch (err) {
+      console.error("Fetch error:", err);
+      setNotFound(true);
+    } finally {
+      if (showLoading) setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchData(true);
+  }, [cariId]);
+
+  const filtered =
+    activeTab === "Tüm İşlemler"
+      ? allLogs
+      : allLogs.filter((log) => actionTypeToDisplay(log.action_type).category === activeTab);
+
+  const bakiye = cari?.current_balance ?? 0;
+  const isBorclu = bakiye < 0;
+  const bakiyeLabel = isBorclu ? "Güncel Borç" : "Güncel Alacak";
+  const bakiyeColor = isBorclu ? "text-error" : "text-emerald-600";
+  const bakiyeBg = isBorclu ? "bg-error-container/20 border-error/10" : "bg-emerald-50/60 border-emerald-100";
+
+  // ✅ Bekleyen ve Gecikmiş hesaplamaları contact_logs'tan kaldırıldı (audit trail olarak tutuluyor)
+  const bekleyen = 0;
+  const gecikmis = 0;
+
+  const handleEditSubmit = (e: React.FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+    const fd = new FormData(e.currentTarget);
+    startTransitionEdit(async () => {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) {
+        toast.error("Oturum açma gerekli.");
+        return;
+      }
+      fd.set("user_id", user.id);
+      fd.set("id", cariId);
+      
+      const result = await cariGuncelleAction(fd);
+      if (result.success) {
+        toast.success(result.message);
+        setIsEditModalOpen(false);
+        await fetchData(false);
+        await router.refresh();
+      } else {
+        toast.error(result.message);
+      }
+    });
+  };
+
+  const handleTxSubmit = (e: React.FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+    const fd = new FormData(e.currentTarget);
+    startTransitionTx(async () => {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) {
+        toast.error("Oturum açma gerekli.");
+        return;
+      }
+      fd.set("user_id", user.id);
+      fd.set("cari_id", cariId);
+      fd.set("islem_turu", islemTipi);
+      
+      const result = await islemYapAction(fd);
+      if (result.success) {
+        toast.success(result.message);
+        setIsTransactionModalOpen(false);
+        txFormRef.current?.reset();
+        await fetchData(false);
+        await router.refresh();
+      } else {
+        toast.error(result.message);
+      }
+    });
+  };
+
+  if (loading) {
+    return (
+      <div className="space-y-8 animate-pulse text-slate-400">
+        <div className="h-8 w-1/3 bg-slate-200 rounded mb-4" />
+        <div className="h-32 bg-slate-100 rounded" />
+      </div>
+    );
+  }
+
+  if (notFound || !cari) {
+    return (
+      <div className="flex flex-col items-center justify-center py-32 text-center">
+        <div className="flex h-20 w-20 items-center justify-center rounded-2xl bg-slate-100 mb-6 font-black text-slate-300 text-4xl">!</div>
+        <h2 className="text-2xl font-extrabold text-slate-800 mb-2">Cari Bulunamadı</h2>
+        <p className="text-sm text-slate-400 mb-6">ID #{cariId} ile eşleşen bir cari hesap kaydı bulunamadı.</p>
+        <Link href="/contacts" className="flex items-center gap-2 rounded-full bg-primary px-5 py-2.5 text-sm font-bold text-white shadow-lg transition-all">
+          <span className="material-symbols-outlined text-[18px]">arrow_back</span>
+          Cari Rehberine Dön
+        </Link>
+      </div>
+    );
+  }
+
+  return (
+    <div className="w-full p-8 max-w-[1600px] mx-auto bg-transparent min-h-screen">
+      {/* ── BREADCRUMBS & HEADER ── */}
+      <div className="flex flex-col md:flex-row md:items-end justify-between gap-6">
+        <div>
+          <nav className="flex items-center gap-2 text-xs font-semibold text-indigo-400 mb-2">
+            <Link href="/contacts" className="hover:text-primary transition-colors">Cari Hesaplar</Link>
+            <span className="material-symbols-outlined text-[12px]">chevron_right</span>
+            <span className="text-slate-500">Cari Detay</span>
+          </nav>
+          <div className="flex items-center gap-4">
+            <div className={`flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl bg-gradient-to-br ${avatarGradient(cari.type)} text-white text-lg font-black shadow-lg`}>
+              {cari.name.substring(0, 2).toUpperCase()}
+            </div>
+            <div>
+              <div className="flex items-center gap-3">
+                <h1 className="text-3xl font-black text-on-surface tracking-tight">{cari.name}</h1>
+                <span className={`inline-flex items-center rounded-full border px-3 py-0.5 text-[10px] font-black uppercase ${badgeStyle(cari.type)}`}>
+                  {cari.type === "customer" ? "Müşteri" : "Tedarikçi"}
+                </span>
+              </div>
+              <p className="mt-0.5 text-sm font-bold text-slate-400">
+                {cari.tax_number ? `VKN/TC: ${cari.tax_number}` : "VKN: —"} · {cari.address ? (cari.address.length > 50 ? cari.address.substring(0, 50) + "..." : cari.address) : "Adres Belirtilmemiş"}
+              </p>
+            </div>
+          </div>
+        </div>
+        <div className="flex items-center gap-3">
+          <div className="flex items-center gap-2 bg-white border border-indigo-100 rounded-xl px-4 py-2.5 shadow-sm">
+            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-tighter">Görünüm:</span>
+            <select
+              value={viewCurrency}
+              onChange={(e) => setViewCurrency(e.target.value)}
+              className="bg-transparent border-none text-sm font-black text-primary outline-none focus:ring-0 cursor-pointer"
+            >
+              <option value="TRY">TRY (₺)</option>
+              <option value="USD">USD ($)</option>
+              <option value="EUR">EUR (€)</option>
+              <option value="GBP">GBP (£)</option>
+            </select>
+          </div>
+          <button onClick={() => setIsEditModalOpen(true)} className="flex items-center gap-2 rounded-xl bg-white border border-indigo-100 px-4 py-2.5 text-sm font-bold text-slate-600 hover:bg-slate-50 transition-all">
+            <span className="material-symbols-outlined text-[18px]">edit</span>
+            Düzenle
+          </button>
+          <Link href={`/invoices/new?contact_id=${cariId}`} className="flex items-center gap-2 rounded-xl bg-primary text-on-primary px-5 py-2.5 text-sm font-black shadow-lg hover:bg-opacity-90 transition-all">
+            <span className="material-symbols-outlined text-[18px]">receipt</span>
+            Yeni Fatura
+          </Link>
+        </div>
+      </div>
+
+      {/* ── BENTO GRID Info + Balance ── */}
+      <section className="grid grid-cols-1 gap-6 lg:grid-cols-3">
+        <div className="lg:col-span-2 rounded-2xl bg-white border border-indigo-50/50 shadow-sm p-6">
+          <div className="flex items-center gap-2 mb-6">
+            <span className="material-symbols-outlined text-primary text-xl">badge</span>
+            <h3 className="text-sm font-black text-on-surface uppercase tracking-widest">Cari Bilgileri</h3>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
+            <div className="flex items-start gap-4">
+              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-indigo-50/50">
+                <span className="material-symbols-outlined text-primary text-xl">call</span>
+              </div>
+              <div>
+                <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Telefon</p>
+                <p className="text-sm font-bold text-on-surface">{cari.phone || "—"}</p>
+              </div>
+            </div>
+
+            <div className="flex items-start gap-4">
+              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-indigo-50/50">
+                <span className="material-symbols-outlined text-primary text-xl">mail</span>
+              </div>
+              <div>
+                <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">E-posta</p>
+                <p className="text-sm font-bold text-on-surface">{cari.email || "—"}</p>
+              </div>
+            </div>
+
+            <div className="flex items-start gap-4">
+              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-indigo-50/50">
+                <span className="material-symbols-outlined text-primary text-xl">account_balance</span>
+              </div>
+              <div>
+                <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Vergi Bilgisi</p>
+                <p className="text-sm font-bold text-on-surface">
+                  {cari.tax_office || "—"} / {cari.tax_number || "—"}
+                </p>
+              </div>
+            </div>
+
+            <div className="flex items-start gap-4">
+              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-indigo-50/50">
+                <span className="material-symbols-outlined text-primary text-xl">location_on</span>
+              </div>
+              <div>
+                <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Adres</p>
+                <p className="text-sm font-bold text-on-surface leading-relaxed">{cari.address || "Belirtilmemiş"}</p>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div className="rounded-2xl bg-white border border-indigo-50/50 shadow-sm p-6 flex flex-col">
+          <div className="flex items-center gap-2 mb-6">
+            <span className={`material-symbols-outlined text-xl ${isBorclu ? "text-error" : "text-emerald-500"}`}>account_balance_wallet</span>
+            <h3 className="text-sm font-black text-on-surface uppercase tracking-widest">Bakiye Özeti</h3>
+          </div>
+
+          <div className={`rounded-2xl border p-6 text-center mb-6 ${bakiyeBg}`}>
+            <p className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-1">{bakiyeLabel}</p>
+            <p className={`text-3xl font-black tabular-nums ${bakiyeColor}`}>{fmt(convert(Math.abs(bakiye)), viewCurrency)}</p>
+          </div>
+
+          <div className="space-y-3 flex-1">
+            <div className="flex items-center justify-between rounded-xl bg-slate-50 border border-indigo-50/50 px-4 py-3">
+              <span className="text-xs font-bold text-slate-500">Bekleyen</span>
+              <span className="text-sm font-black text-on-surface tabular-nums">{fmt(convert(bekleyen), viewCurrency)}</span>
+            </div>
+            <div className="flex items-center justify-between rounded-xl bg-slate-50 border border-indigo-50/50 px-4 py-3">
+              <span className="text-xs font-bold text-slate-500">Gecikmiş</span>
+              <span className="text-sm font-black text-error tabular-nums">{fmt(convert(gecikmis), viewCurrency)}</span>
+            </div>
+          </div>
+
+          <button onClick={() => setIsTransactionModalOpen(true)} className="mt-6 flex w-full items-center justify-center gap-2 rounded-xl bg-primary py-3.5 text-sm font-black text-on-primary shadow-lg transition-all active:scale-95">
+            <span className="material-symbols-outlined text-lg">payments</span>
+            İşlem Yap
+          </button>
+        </div>
+      </section>
+
+      {/* ── TRANSACTION HISTORY ── */}
+      <section className="rounded-2xl bg-white border border-indigo-50/50 shadow-sm overflow-hidden">
+        <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between px-8 pt-6 pb-2">
+          <div className="flex items-center gap-2">
+            <span className="material-symbols-outlined text-primary text-xl">history</span>
+            <h3 className="text-sm font-black text-on-surface uppercase tracking-widest">İşlem Geçmişi</h3>
+          </div>
+          <span className="text-xs font-bold text-slate-300">{filtered.length} İşlem</span>
+        </div>
+
+        <div className="flex items-center gap-6 px-8 border-b border-indigo-50/50">
+          {TABS.map((tab) => (
+            <button
+              key={tab}
+              onClick={() => setActiveTab(tab)}
+              className={`relative pb-3 text-xs font-black uppercase tracking-wider transition-all ${
+                activeTab === tab ? "text-primary" : "text-slate-400 hover:text-slate-600"
+              }`}
+            >
+              {tab}
+              {activeTab === tab && (
+                <span className="absolute bottom-0 left-0 right-0 h-1 rounded-full bg-primary" />
+              )}
+            </button>
+          ))}
+        </div>
+
+        <div ref={tableRef} className={`overflow-x-auto transition-opacity duration-300 min-h-[400px] ${isAnimating ? "opacity-60" : "opacity-100"}`}>
+          <table className="table-auto w-full border-collapse">
+            <thead>
+              <tr className="bg-surface-container-low/50 text-slate-500">
+                <th className="px-8 py-4 text-[10px] font-black uppercase tracking-[0.1em] align-middle">Tarih</th>
+                <th className="px-4 py-4 text-[10px] font-black uppercase tracking-[0.1em] align-middle">İşlem</th>
+                <th className="px-4 py-4 text-[10px] font-black uppercase tracking-[0.1em] align-middle">Açıklama / Not</th>
+                <th className="px-4 py-4 text-[10px] font-black uppercase tracking-[0.1em] text-right align-middle">Tutar Değişimi</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-indigo-50/50">
+              {(!filtered || filtered.length === 0) ? (
+                <tr>
+                  <td colSpan={4} className="px-8 py-16 text-center align-middle">
+                    <span className="material-symbols-outlined text-slate-200 text-5xl block mb-3">history</span>
+                    <p className="text-slate-400 font-semibold">
+                      {allLogs.length === 0 
+                        ? "Bu cari hesaba ait işlem bulunmamaktadır."
+                        : "Seçilen filtre için işlem bulunamadı."
+                      }
+                    </p>
+                  </td>
+                </tr>
+              ) : (
+                filtered
+                  .slice(currentPage * ITEMS_PER_PAGE, (currentPage + 1) * ITEMS_PER_PAGE)
+                  .map((log) => {
+                    const { icon, color, label } = actionTypeToDisplay(log.action_type);
+                    const { date, time } = fmtDate(log.created_at);
+                    return (
+                      <tr key={log.id} className="group hover:bg-indigo-50/30 transition-colors align-middle">
+                        <td className="px-8 py-5 align-middle">
+                          <div className="flex flex-col">
+                            <span className="text-sm font-semibold text-slate-500">{date}</span>
+                            <span className="text-[10px] text-slate-400">{time}</span>
+                          </div>
+                        </td>
+                        <td className="px-4 py-5 align-middle">
+                          <div className="flex items-center gap-2">
+                            <span className={`material-symbols-outlined text-lg ${color}`}>{icon}</span>
+                            <span className="text-sm font-bold text-on-surface">{label}</span>
+                          </div>
+                        </td>
+                        <td className="px-4 py-5 align-middle">
+                          <span className="text-sm text-slate-500 italic line-clamp-2 break-words" title={log.note || ""}>{log.note || "—"}</span>
+                        </td>
+                        <td className="px-4 py-5 text-right font-black text-on-surface tabular-nums align-middle">
+                          <span className={log.amount_change < 0 ? "text-error" : "text-emerald-500"}>
+                            {log.amount_change > 0 ? "+" : ""}{fmt(convert(Math.abs(log.amount_change)), viewCurrency)}
+                          </span>
+                        </td>
+                      </tr>
+                    );
+                  })
+              )}
+            </tbody>
+          </table>
+        </div>
+
+        <div className="p-6 bg-surface-container-low/30 border-t border-indigo-50 flex justify-between items-center">
+          <p className="text-xs text-slate-500">
+            {filtered.length === 0
+              ? "Kayıt bulunamadı"
+              : `${Math.min(filtered.length, (currentPage + 1) * ITEMS_PER_PAGE)} / ${filtered.length} kayıt gösteriliyor (Sayfa ${currentPage + 1})`}
+          </p>
+          <div className="flex gap-2">
+            <button
+              onClick={() => {
+                setIsAnimating(true);
+                setCurrentPage(currentPage - 1);
+                setTimeout(() => setIsAnimating(false), 300);
+              }}
+              disabled={currentPage === 0}
+              className="px-4 py-2 text-xs font-bold rounded-lg border border-indigo-50 transition-all bg-white flex items-center gap-2 disabled:text-slate-300 disabled:cursor-not-allowed disabled:opacity-50 enabled:text-primary enabled:hover:bg-indigo-50"
+            >
+              <span className="material-symbols-outlined text-sm">arrow_back</span>
+              Önceki
+            </button>
+            <button
+              onClick={() => {
+                setIsAnimating(true);
+                setCurrentPage(currentPage + 1);
+                setTimeout(() => setIsAnimating(false), 300);
+              }}
+              disabled={(currentPage + 1) * ITEMS_PER_PAGE >= filtered.length}
+              className="px-4 py-2 text-xs font-bold rounded-lg border border-indigo-50 transition-all bg-white flex items-center gap-2 disabled:text-slate-300 disabled:cursor-not-allowed disabled:opacity-50 enabled:text-primary enabled:hover:bg-indigo-50"
+            >
+              <span className="material-symbols-outlined text-sm">arrow_forward</span>
+              Sonraki
+            </button>
+          </div>
+        </div>
+      </section>
+
+      {/* ── MODALS ── */}
+      {isEditModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 backdrop-blur-sm">
+          <div className="bg-white rounded-3xl w-full max-w-2xl p-8 shadow-2xl">
+            <div className="flex items-center justify-between mb-6">
+              <h2 className="text-xl font-black text-on-surface">Cari Bilgilerini Düzenle</h2>
+              <button onClick={() => setIsEditModalOpen(false)} className="text-slate-400 hover:text-error transition-colors">
+                <span className="material-symbols-outlined">close</span>
+              </button>
+            </div>
+            <form ref={editFormRef} onSubmit={handleEditSubmit} className="space-y-4">
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="mb-1.5 block text-xs font-bold uppercase tracking-widest text-slate-400">Cari Türü</label>
+                  <select name="tip" defaultValue={cari.type === "customer" ? "Müşteri" : "Tedarikçi"} className="w-full rounded-xl border border-indigo-100 bg-white px-4 py-2.5 text-sm outline-none focus:ring-2 focus:ring-primary">
+                    <option value="Müşteri">Müşteri</option>
+                    <option value="Tedarikçi">Tedarikçi</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="mb-1.5 block text-xs font-bold uppercase tracking-widest text-slate-400">Firma / Şahıs Adı</label>
+                  <input name="unvan" type="text" defaultValue={cari.name} required className="w-full rounded-xl border border-indigo-100 bg-white px-4 py-2.5 text-sm outline-none focus:ring-2 focus:ring-primary" />
+                </div>
+                <div>
+                  <label className="mb-1.5 block text-xs font-bold uppercase tracking-widest text-slate-400">Vergi No</label>
+                  <input name="vergi_no" type="text" defaultValue={cari.tax_number || ""} className="w-full rounded-xl border border-indigo-100 bg-white px-4 py-2.5 text-sm font-mono outline-none focus:ring-2 focus:ring-primary" />
+                </div>
+                <div>
+                  <label className="mb-1.5 block text-xs font-bold uppercase tracking-widest text-slate-400">Vergi Dairesi</label>
+                  <input name="vergi_dairesi" type="text" defaultValue={cari.tax_office || ""} className="w-full rounded-xl border border-indigo-100 bg-white px-4 py-2.5 text-sm outline-none focus:ring-2 focus:ring-primary" />
+                </div>
+                <div>
+                  <label className="mb-1.5 block text-xs font-bold uppercase tracking-widest text-slate-400">Telefon</label>
+                  <input name="telefon" type="tel" defaultValue={cari.phone || ""} className="w-full rounded-xl border border-indigo-100 bg-white px-4 py-2.5 text-sm outline-none focus:ring-2 focus:ring-primary" />
+                </div>
+                <div>
+                  <label className="mb-1.5 block text-xs font-bold uppercase tracking-widest text-slate-400">E-posta</label>
+                  <input name="email" type="email" defaultValue={cari.email || ""} className="w-full rounded-xl border border-indigo-100 bg-white px-4 py-2.5 text-sm outline-none focus:ring-2 focus:ring-primary" />
+                </div>
+                <div className="col-span-2">
+                  <label className="mb-1.5 block text-xs font-bold uppercase tracking-widest text-slate-400">Adres</label>
+                  <textarea name="adres" rows={2} defaultValue={cari.address || ""} className="w-full rounded-xl border border-indigo-100 bg-white px-4 py-2.5 text-sm resize-none outline-none focus:ring-2 focus:ring-primary" />
+                </div>
+              </div>
+              <div className="flex justify-end gap-3 mt-6">
+                <button type="button" onClick={() => setIsEditModalOpen(false)} className="px-5 py-2.5 rounded-xl font-bold text-slate-500 hover:bg-slate-50">İptal</button>
+                <button type="submit" disabled={isPendingEdit} className="px-6 py-2.5 rounded-xl font-black bg-primary text-on-primary shadow-lg hover:bg-opacity-90 disabled:opacity-50">
+                  {isPendingEdit ? "Kaydediliyor..." : "Kaydet"}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {isTransactionModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 backdrop-blur-sm">
+          <div className="bg-white rounded-3xl w-full max-w-md p-8 shadow-2xl">
+            <div className="flex items-center justify-between mb-6">
+              <h2 className="text-xl font-black text-on-surface">İşlem Yap (Nakit)</h2>
+              <button onClick={() => setIsTransactionModalOpen(false)} className="text-slate-400 hover:text-error transition-colors">
+                <span className="material-symbols-outlined">close</span>
+              </button>
+            </div>
+            <form ref={txFormRef} onSubmit={handleTxSubmit} className="space-y-4">
+              <div>
+                <label className="mb-1.5 block text-xs font-bold uppercase tracking-widest text-slate-400">İşlem Türü</label>
+                <div className="flex gap-2 p-1 bg-slate-50 rounded-xl border border-indigo-100">
+                  <button
+                    type="button"
+                    onClick={() => setIslemTipi("Tahsilat")}
+                    className={`flex-1 rounded-lg py-2 text-sm font-bold transition-all ${
+                      islemTipi === "Tahsilat" ? "bg-primary text-on-primary shadow-sm" : "text-slate-500 hover:bg-slate-100"
+                    }`}
+                  >Tahsilat (Giriş)</button>
+                  <button
+                    type="button"
+                    onClick={() => setIslemTipi("Ödeme")}
+                    className={`flex-1 rounded-lg py-2 text-sm font-bold transition-all ${
+                      islemTipi === "Ödeme" ? "bg-primary text-on-primary shadow-sm" : "text-slate-500 hover:bg-slate-100"
+                    }`}
+                  >Ödeme (Çıkış)</button>
+                </div>
+              </div>
+              <div>
+                <label className="mb-1.5 block text-xs font-bold uppercase tracking-widest text-slate-400">Tutar (TRY)</label>
+                <input name="tutar" type="number" step="0.01" min="0" required placeholder="0.00" className="w-full rounded-xl border border-indigo-100 bg-white px-4 py-2.5 text-sm outline-none focus:ring-2 focus:ring-primary font-black" />
+              </div>
+              <div>
+                <label className="mb-1.5 block text-xs font-bold uppercase tracking-widest text-slate-400">Notlar / Açıklama</label>
+                <textarea name="notlar" rows={3} placeholder="İşlem ile ilgili notlarınız..." className="w-full rounded-xl border border-indigo-100 bg-white px-4 py-2.5 text-sm resize-none outline-none focus:ring-2 focus:ring-primary" />
+              </div>
+              <div className="flex justify-end gap-3 mt-6">
+                <button type="button" onClick={() => setIsTransactionModalOpen(false)} className="px-5 py-2.5 rounded-xl font-bold text-slate-500 hover:bg-slate-50">İptal</button>
+                <button type="submit" disabled={isPendingTx} className="px-6 py-2.5 rounded-xl font-black bg-primary text-on-primary shadow-lg hover:bg-opacity-90 disabled:opacity-50">
+                  {isPendingTx ? "Kaydediliyor..." : "İşlemi Tamamla"}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}

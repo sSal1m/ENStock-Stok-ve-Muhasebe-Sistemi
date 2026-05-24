@@ -5,6 +5,8 @@ import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import { supabase } from "@/lib/supabaseClient";
 import toast from "react-hot-toast";
+import { useCurrencyConverter } from "@/hooks/useCurrencyConverter";
+import CurrencySwitcher from "@/components/common/CurrencySwitcher";
 
 interface QuoteItem {
   id: string;
@@ -26,6 +28,8 @@ interface QuoteDetails {
   subtotal: number;
   tax_total: number;
   total_amount: number;
+  currency: string | null;
+  exchange_rate: number | null;
   notes: string | null;
   contact_id: string;
   contacts: {
@@ -40,6 +44,7 @@ export default function QuoteDetailsPage() {
   const params = useParams();
   const quoteId = params.id as string;
   const router = useRouter();
+  const { viewCurrency, setViewCurrency, convertFull, format: fmtCurrency } = useCurrencyConverter();
 
   const [quote, setQuote] = useState<QuoteDetails | null>(null);
   const [items, setItems] = useState<QuoteItem[]>([]);
@@ -110,7 +115,7 @@ export default function QuoteDetailsPage() {
     try {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error("Kullanıcı bulunamadı");
-      
+
       const today = new Date();
       const year = today.getFullYear();
       const month = String(today.getMonth() + 1).padStart(2, '0');
@@ -177,7 +182,7 @@ export default function QuoteDetailsPage() {
       let companyName = "Şirket Adı Belirtilmemiş";
       let companyAddress = "";
       let companyTaxId = "";
-      
+
       const localSettingsRaw = localStorage.getItem(`business_settings_${user.id}`);
       if (localSettingsRaw) {
         const localSettings = JSON.parse(localSettingsRaw);
@@ -254,13 +259,15 @@ export default function QuoteDetailsPage() {
     );
   }
 
-  const formatCurrency = (val: number) => {
-    return new Intl.NumberFormat('tr-TR', { style: 'currency', currency: 'TRY' }).format(val);
-  };
+  // Teklif tutarları teklifin kendi para biriminde saklanır (quote.currency).
+  // viewCurrency'ye convertFull ile çevirip formatlanır.
+  const quoteCurrency = quote.currency || "TRY";
+  const formatCurrency = (val: number) =>
+    fmtCurrency(convertFull(val, quoteCurrency, viewCurrency), viewCurrency);
 
   return (
     <div className="w-full p-8 max-w-[1200px] mx-auto min-h-screen bg-slate-50">
-      
+
       {/* HEADER & ACTIONS */}
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-8">
         <div>
@@ -272,18 +279,17 @@ export default function QuoteDetailsPage() {
             <h1 className="text-3xl font-extrabold text-slate-900">
               {quote.quote_number}
             </h1>
-            <span className={`px-3 py-1 text-xs font-bold uppercase rounded-lg ${
-              quote.status.toLowerCase() === 'pending' ? "bg-amber-100 text-amber-700" :
-              quote.status.toLowerCase() === 'approved' ? "bg-emerald-100 text-emerald-700" :
-              "bg-red-100 text-red-700"
-            }`}>
-               {quote.status.toLowerCase() === 'pending' ? "BEKLEMEDE" :
+            <span className={`px-3 py-1 text-xs font-bold uppercase rounded-lg ${quote.status.toLowerCase() === 'pending' ? "bg-amber-100 text-amber-700" :
+                quote.status.toLowerCase() === 'approved' ? "bg-emerald-100 text-emerald-700" :
+                  "bg-red-100 text-red-700"
+              }`}>
+              {quote.status.toLowerCase() === 'pending' ? "BEKLEMEDE" :
                 quote.status.toLowerCase() === 'approved' ? "ONAYLANDI" :
-                "REDDEDİLDİ"}
+                  "REDDEDİLDİ"}
             </span>
           </div>
         </div>
-        
+
         <div className="flex gap-3 w-full md:w-auto">
           {quote.status.toLowerCase() === 'pending' && (
             <button
@@ -307,7 +313,7 @@ export default function QuoteDetailsPage() {
             </button>
           )}
 
-          <button 
+          <button
             onClick={handleDownloadPdf}
             disabled={downloading}
             className="flex-1 md:flex-none flex items-center justify-center gap-2 bg-white border border-emerald-200 text-emerald-700 px-6 py-2.5 rounded-lg font-semibold shadow-sm hover:bg-emerald-50 active:scale-95 transition-all"
@@ -315,6 +321,8 @@ export default function QuoteDetailsPage() {
             <span className="material-symbols-outlined text-[20px]">{downloading ? 'sync' : 'download'}</span>
             PDF İndir
           </button>
+
+          <CurrencySwitcher value={viewCurrency} onChange={setViewCurrency} />
         </div>
       </div>
 
@@ -322,37 +330,37 @@ export default function QuoteDetailsPage() {
         {/* MAIN QUOTE DETAILS */}
         <div className="md:col-span-2 space-y-6">
           <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-8">
-             <div className="flex justify-between items-start mb-10">
-               <div>
-                  <h3 className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-1">Cari Hesap</h3>
-                  <Link href={`/contacts/${quote.contact_id}`} className="text-xl font-black text-purple-700 hover:underline">
-                    {quote.contacts?.name}
-                  </Link>
-                  <p className="text-sm text-slate-500 mt-2">VKN/TC: {quote.contacts?.tax_number || 'Belirtilmemiş'}</p>
-                  <p className="text-sm text-slate-500">VD: {quote.contacts?.tax_office || 'Belirtilmemiş'}</p>
-               </div>
-               <div className="text-right">
-                  <h3 className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-1">Teklif Tarihi</h3>
-                  <p className="text-lg font-bold text-slate-900">{new Date(quote.issue_date).toLocaleDateString('tr-TR')}</p>
-               </div>
-             </div>
+            <div className="flex justify-between items-start mb-10">
+              <div>
+                <h3 className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-1">Cari Hesap</h3>
+                <Link href={`/contacts/${quote.contact_id}`} className="text-xl font-black text-purple-700 hover:underline">
+                  {quote.contacts?.name}
+                </Link>
+                <p className="text-sm text-slate-500 mt-2">VKN/TC: {quote.contacts?.tax_number || 'Belirtilmemiş'}</p>
+                <p className="text-sm text-slate-500">VD: {quote.contacts?.tax_office || 'Belirtilmemiş'}</p>
+              </div>
+              <div className="text-right">
+                <h3 className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-1">Teklif Tarihi</h3>
+                <p className="text-lg font-bold text-slate-900">{new Date(quote.issue_date).toLocaleDateString('tr-TR')}</p>
+              </div>
+            </div>
 
-             <div className="overflow-x-auto rounded-xl border border-slate-200">
-               <table className="w-full text-left">
-                  <thead className="bg-slate-50 text-slate-600">
-                    <tr>
-                      <th className="px-5 py-3 text-xs font-bold uppercase tracking-wider">Hizmet / Ürün</th>
-                      <th className="px-5 py-3 text-xs font-bold uppercase tracking-wider text-center">Miktar</th>
-                      <th className="px-5 py-3 text-xs font-bold uppercase tracking-wider text-right">B.Fiyat</th>
-                      <th className="px-5 py-3 text-xs font-bold uppercase tracking-wider text-right">KDV</th>
-                      <th className="px-5 py-3 text-xs font-bold uppercase tracking-wider text-right">Toplam</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-slate-200">
-                    {items.map((item) => {
-                      const lineSubtotal = item.quantity * item.unit_price;
-                      const lineVat = lineSubtotal * (item.vat_rate / 100);
-                      return (
+            <div className="overflow-x-auto rounded-xl border border-slate-200">
+              <table className="w-full text-left">
+                <thead className="bg-slate-50 text-slate-600">
+                  <tr>
+                    <th className="px-5 py-3 text-xs font-bold uppercase tracking-wider">Hizmet / Ürün</th>
+                    <th className="px-5 py-3 text-xs font-bold uppercase tracking-wider text-center">Miktar</th>
+                    <th className="px-5 py-3 text-xs font-bold uppercase tracking-wider text-right">B.Fiyat</th>
+                    <th className="px-5 py-3 text-xs font-bold uppercase tracking-wider text-right">KDV</th>
+                    <th className="px-5 py-3 text-xs font-bold uppercase tracking-wider text-right">Toplam</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-200">
+                  {items.map((item) => {
+                    const lineSubtotal = item.quantity * item.unit_price;
+                    const lineVat = lineSubtotal * (item.vat_rate / 100);
+                    return (
                       <tr key={item.id}>
                         <td className="px-5 py-4 text-sm font-semibold text-slate-800">{item.products?.name || "Bilinmeyen Ürün"}</td>
                         <td className="px-5 py-4 text-sm text-slate-600 text-center">{item.quantity}</td>
@@ -360,24 +368,24 @@ export default function QuoteDetailsPage() {
                         <td className="px-5 py-4 text-sm text-slate-600 text-right">% {item.vat_rate}</td>
                         <td className="px-5 py-4 text-sm font-bold text-slate-900 text-right">{formatCurrency(lineSubtotal + lineVat)}</td>
                       </tr>
-                      );
-                    })}
-                    {items.length === 0 && (
-                      <tr><td colSpan={5} className="px-5 py-8 text-center text-slate-500">Kayıtlı kalem bulunmuyor.</td></tr>
-                    )}
-                  </tbody>
-               </table>
-             </div>
+                    );
+                  })}
+                  {items.length === 0 && (
+                    <tr><td colSpan={5} className="px-5 py-8 text-center text-slate-500">Kayıtlı kalem bulunmuyor.</td></tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
           </div>
 
           {quote.notes && (
-             <div className="bg-amber-50 rounded-2xl shadow-sm border border-amber-200 p-6">
-               <h3 className="text-xs font-bold text-amber-700 uppercase tracking-widest flex items-center gap-2 mb-2">
-                 <span className="material-symbols-outlined text-sm">edit_note</span>
-                 Teklif Notu
-               </h3>
-               <p className="text-amber-900 text-sm whitespace-pre-wrap">{quote.notes}</p>
-             </div>
+            <div className="bg-amber-50 rounded-2xl shadow-sm border border-amber-200 p-6">
+              <h3 className="text-xs font-bold text-amber-700 uppercase tracking-widest flex items-center gap-2 mb-2">
+                <span className="material-symbols-outlined text-sm">edit_note</span>
+                Teklif Notu
+              </h3>
+              <p className="text-amber-900 text-sm whitespace-pre-wrap">{quote.notes}</p>
+            </div>
           )}
         </div>
 
@@ -385,7 +393,7 @@ export default function QuoteDetailsPage() {
         <div className="md:col-span-1">
           <div className="bg-slate-800 rounded-2xl shadow-lg p-6 text-white sticky top-8">
             <h3 className="text-sm font-bold text-slate-400 uppercase tracking-widest mb-6 border-b border-slate-700 pb-4">Özet Toplamlar</h3>
-            
+
             <div className="space-y-4 mb-8">
               <div className="flex justify-between items-center text-slate-300 text-sm">
                 <span>Ara Toplam</span>
@@ -398,8 +406,8 @@ export default function QuoteDetailsPage() {
             </div>
 
             <div className="flex justify-between items-end border-t border-slate-700 pt-6">
-               <span className="text-sm font-bold text-slate-300 uppercase">Genel Toplam</span>
-               <span className="text-3xl font-black text-emerald-400">{formatCurrency(quote.total_amount)}</span>
+              <span className="text-sm font-bold text-slate-300 uppercase">Genel Toplam</span>
+              <span className="text-3xl font-black text-emerald-400">{formatCurrency(quote.total_amount)}</span>
             </div>
           </div>
         </div>

@@ -2,7 +2,7 @@
 
 import { useState, useRef, useCallback, useEffect } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { createInvoiceAction, searchContacts, searchProducts, getNextInvoiceNumber, type InvoiceLineItem } from "@/app/(dashboard)/invoices/actions";
+import { createInvoiceAction, searchContacts, searchProducts, getNextInvoiceNumber, updateProposalAction, type InvoiceLineItem } from "@/app/(dashboard)/invoices/actions";
 import { supabase } from "@/lib/supabaseClient";
 import Toast from "@/components/invoices/Toast";
 import { useCurrencyConverter } from "@/hooks/useCurrencyConverter";
@@ -45,12 +45,32 @@ interface Toast {
   title: string;
 }
 
-export default function CreateInvoiceForm({ userId }: { userId: string }) {
+interface InvoiceFormInitialData {
+  id: string;
+  invoice_number: string;
+  contact_id: string;
+  type: "sales" | "purchase";
+  issue_date: string;
+  notes?: string;
+  line_items?: InvoiceLineItem[];
+  currency?: string;
+}
+
+export default function CreateInvoiceForm({
+  userId,
+  initialData,
+  forceProposalMode,
+}: {
+  userId: string;
+  initialData?: InvoiceFormInitialData;
+  forceProposalMode?: boolean;
+}) {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const editInvoiceId = searchParams.get("id");  // ✅ Draft fatura ID'si
+  const editInvoiceId = searchParams.get("id") || initialData?.id;  // ✅ Draft fatura ID'si
+  const preselectedContactId = searchParams.get("contact_id"); // ✅ URL'den gelen cari ID
   const [isEditMode, setIsEditMode] = useState(!!editInvoiceId);
-  
+
   const [toasts, setToasts] = useState<Toast[]>([]);
   const [invoiceType, setInvoiceType] = useState<"sales" | "purchase">("sales");
   const [invoiceNumber, setInvoiceNumber] = useState<string>("");
@@ -62,6 +82,26 @@ export default function CreateInvoiceForm({ userId }: { userId: string }) {
 
   const [issueDate, setIssueDate] = useState(new Date().toISOString().split("T")[0]);
   const [notes, setNotes] = useState("");
+
+  const [paymentTerm, setPaymentTerm] = useState<string>("Peşin");
+  const [customTermDays, setCustomTermDays] = useState<string | number>("");
+  const [isPaid, setIsPaid] = useState<boolean>(false);
+
+  const calculateDueDate = (issueDateStr: string, term: string, customDays: number | string): string => {
+    const date = new Date(issueDateStr);
+    if (isNaN(date.getTime())) return issueDateStr;
+    
+    let days = 0;
+    if (term === "7 Gün") days = 7;
+    else if (term === "15 Gün") days = 15;
+    else if (term === "30 Gün") days = 30;
+    else if (term === "Özel Süre") {
+      days = parseInt(customDays as string, 10) || 0;
+    }
+    
+    date.setDate(date.getDate() + days);
+    return date.toISOString().split("T")[0];
+  };
 
   const [lineItems, setLineItems] = useState<LineItem[]>([]);
   const [productSearch, setProductSearch] = useState<Record<string, string>>({});
@@ -80,23 +120,44 @@ export default function CreateInvoiceForm({ userId }: { userId: string }) {
     if (prevCurrencyRef.current !== currency && rates && lineItems.length > 0) {
       setLineItems(prev => prev.map(item => ({
         ...item,
-        unit_price: convertFull(item.unit_price, prevCurrencyRef.current, currency)
+        unit_price: convertFull(Number(item.unit_price) || 0, prevCurrencyRef.current, currency)
       })));
     }
     prevCurrencyRef.current = currency;
   }, [currency, rates, convertFull]);
 
+  // Initialize with existing data if editing
+  useEffect(() => {
+    if (initialData) {
+      setInvoiceNumber(initialData.invoice_number);
+      setInvoiceType(initialData.type);
+      setIssueDate(initialData.issue_date);
+      setNotes(initialData.notes || "");
+      if (initialData.line_items) {
+        setLineItems(initialData.line_items.map((item, idx) => ({
+          ...item,
+          id: `${idx}`,
+        })));
+      }
+      if (initialData.currency) {
+        setCurrency(initialData.currency);
+      }
+    }
+  }, [initialData]);
+
   // Initialize invoice number
   useEffect(() => {
     const initData = async () => {
-
-      if (!editInvoiceId) {
+      if (!editInvoiceId && !initialData) {
         const nextNum = await getNextInvoiceNumber(userId, invoiceType);
         setInvoiceNumber(nextNum);
       }
     };
     initData();
-  }, [userId, invoiceType, editInvoiceId]);
+  }, [userId, invoiceType, editInvoiceId, initialData]);
+
+  // Proposal mode: set invoice type to proposal for database
+  const finalInvoiceType = forceProposalMode ? ("sales" as "sales" | "purchase") : invoiceType;
 
   // ✅ Load draft invoice data if editing
   useEffect(() => {
@@ -127,6 +188,37 @@ export default function CreateInvoiceForm({ userId }: { userId: string }) {
         setNotes(invoiceData.notes || "");
         setInvoiceNumber(invoiceData.invoice_number);
         if (invoiceData.currency) setCurrency(invoiceData.currency);
+
+        // Set paymentTerm and customTermDays based on due_date and issue_date
+        if (invoiceData.due_date && invoiceData.issue_date) {
+          const start = new Date(invoiceData.issue_date);
+          const end = new Date(invoiceData.due_date);
+          const diffTime = Math.abs(end.getTime() - start.getTime());
+          const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+          
+          if (diffDays === 0) {
+            setPaymentTerm("Peşin");
+            setCustomTermDays("");
+          } else if (diffDays === 7) {
+            setPaymentTerm("7 Gün");
+            setCustomTermDays("");
+          } else if (diffDays === 15) {
+            setPaymentTerm("15 Gün");
+            setCustomTermDays("");
+          } else if (diffDays === 30) {
+            setPaymentTerm("30 Gün");
+            setCustomTermDays("");
+          } else {
+            setPaymentTerm("Özel Süre");
+            setCustomTermDays(diffDays);
+          }
+        } else {
+          setPaymentTerm("Peşin");
+          setCustomTermDays("");
+        }
+
+        // Set isPaid state based on status
+        setIsPaid(invoiceData.status === "paid");
 
         // Fetch and set contact
         const { data: contactData, error: contactError } = await supabase
@@ -181,6 +273,29 @@ export default function CreateInvoiceForm({ userId }: { userId: string }) {
     loadDraftInvoice();
   }, [editInvoiceId]);
 
+  // ✅ Load preselected contact
+  useEffect(() => {
+    if (preselectedContactId && !editInvoiceId) {
+      const loadContact = async () => {
+        try {
+          const { data, error } = await supabase
+            .from("contacts")
+            .select("id, name, tax_number, tax_office, type")
+            .eq("id", preselectedContactId)
+            .single();
+
+          if (!error && data) {
+            setSelectedContact(data as Contact);
+            setInvoiceType(data.type === "supplier" ? "purchase" : "sales");
+          }
+        } catch (error) {
+          console.error("Cari yükleme hatası:", error);
+        }
+      };
+      loadContact();
+    }
+  }, [preselectedContactId, editInvoiceId]);
+
   // Add toast notification
   const addToast = (type: Toast["type"], title: string, message: string) => {
     const id = Math.random().toString(36).substr(2, 9);
@@ -233,27 +348,27 @@ export default function CreateInvoiceForm({ userId }: { userId: string }) {
   // Select product
   const handleSelectProduct = (lineItemId: string, product: Product) => {
     let unitPrice = invoiceType === "sales" ? product.sale_price : product.purchase_price;
-    
+
     // 💱 Döviz dönüşümü (Hook üzerinden)
     if (currency !== "TRY" && rates) {
-       if (product.currency === currency) {
-          unitPrice = invoiceType === "sales" ? product.sale_price_in_currency : product.purchase_price_in_currency;
-       } else {
-          unitPrice = convertFull(unitPrice, "TRY", currency);
-       }
+      if (product.currency === currency) {
+        unitPrice = invoiceType === "sales" ? product.sale_price_in_currency : product.purchase_price_in_currency;
+      } else {
+        unitPrice = convertFull(unitPrice, "TRY", currency);
+      }
     }
 
     setLineItems((prev) =>
       prev.map((item) =>
         item.id === lineItemId
           ? {
-               ...item,
-               product_id: product.id,
-               product_name: product.name,
-               unit_price: unitPrice,
-               vat_rate: product.tax_rate,
-               stock_quantity: product.stock_quantity,
-            }
+            ...item,
+            product_id: product.id,
+            product_name: product.name,
+            unit_price: unitPrice,
+            vat_rate: product.tax_rate,
+            stock_quantity: product.stock_quantity,
+          }
           : item
       )
     );
@@ -343,11 +458,50 @@ export default function CreateInvoiceForm({ userId }: { userId: string }) {
     setIsLoading(true);
 
     try {
+      // ✅ Proposal edit mode
+      if (forceProposalMode && editInvoiceId) {
+        const formData = new FormData();
+        formData.set("user_id", userId);
+        formData.set("proposal_id", editInvoiceId);
+        formData.set("contact_id", selectedContact!.id);
+        formData.set("issue_date", issueDate);
+        formData.set("notes", notes || "");
+        formData.set("line_items", JSON.stringify(lineItems.map((item) => ({
+          product_id: item.product_id,
+          quantity: Number(item.quantity),
+          unit_price: Number(item.unit_price),
+          vat_rate: Number(item.vat_rate),
+        }))));
+
+        const response = await updateProposalAction(formData);
+        if (response.success) {
+          addToast("success", "📝 Teklif Güncellendi", response.message);
+          setTimeout(() => {
+            router.push("/proposals");
+          }, 2000);
+        } else {
+          const errorDetails = response.errors ? Object.values(response.errors).join(" | ") : "";
+          const fullMessage = errorDetails ? `${response.message} (${errorDetails})` : response.message;
+          addToast("error", "❌ Hata Oluştu", fullMessage);
+        }
+        setIsLoading(false);
+        return;
+      }
+
+      const computedDueDate = calculateDueDate(issueDate, paymentTerm, customTermDays);
+      
+      let termValue = "0";
+      if (paymentTerm === "7 Gün") termValue = "7";
+      else if (paymentTerm === "15 Gün") termValue = "15";
+      else if (paymentTerm === "30 Gün") termValue = "30";
+      else if (paymentTerm === "Özel Süre") termValue = String(customTermDays || "0");
+
       const response = await createInvoiceAction({
         user_id: userId,
         contact_id: selectedContact!.id,
         invoice_type: invoiceType,
         issue_date: issueDate,
+        due_date: computedDueDate,
         notes: notes || undefined,
         line_items: lineItems.map((item) => ({
           product_id: item.product_id,
@@ -360,13 +514,16 @@ export default function CreateInvoiceForm({ userId }: { userId: string }) {
         invoice_number: invoiceNumber, // ✅ Manuel atanan fatura numarası
         currency: currency, // ✅ NEW
         exchange_rate: currency === "TRY" ? 1 : rates?.[currency]?.selling || 1, // ✅ NEW
+        payment_term: termValue,
+        payment_status: isPaid,
       });
 
       if (response.success) {
         addToast("success", "📝 Taslak Kaydedildi", response.message);
-        
+
+        const redirectPath = forceProposalMode ? "/proposals" : "/invoices";
         setTimeout(() => {
-          router.push("/invoices");
+          router.push(redirectPath);
         }, 2000);
       } else {
         const errorDetails = response.errors ? Object.values(response.errors).join(" | ") : "";
@@ -469,11 +626,50 @@ export default function CreateInvoiceForm({ userId }: { userId: string }) {
     setIsLoading(true);
 
     try {
+      // ✅ Proposal edit mode
+      if (forceProposalMode && editInvoiceId) {
+        const formData = new FormData();
+        formData.set("user_id", userId);
+        formData.set("proposal_id", editInvoiceId);
+        formData.set("contact_id", selectedContact!.id);
+        formData.set("issue_date", issueDate);
+        formData.set("notes", notes || "");
+        formData.set("line_items", JSON.stringify(lineItems.map((item) => ({
+          product_id: item.product_id,
+          quantity: Number(item.quantity),
+          unit_price: Number(item.unit_price),
+          vat_rate: Number(item.vat_rate),
+        }))));
+
+        const response = await updateProposalAction(formData);
+        if (response.success) {
+          addToast("success", "✅ Teklif Kesildi!", response.message);
+          setTimeout(() => {
+            router.push("/proposals");
+          }, 2000);
+        } else {
+          const errorDetails = response.errors ? Object.values(response.errors).join(" | ") : "";
+          const fullMessage = errorDetails ? `${response.message} (${errorDetails})` : response.message;
+          addToast("error", "❌ Hata Oluştu", fullMessage);
+        }
+        setIsLoading(false);
+        return;
+      }
+
+      const computedDueDate = calculateDueDate(issueDate, paymentTerm, customTermDays);
+      
+      let termValue = "0";
+      if (paymentTerm === "7 Gün") termValue = "7";
+      else if (paymentTerm === "15 Gün") termValue = "15";
+      else if (paymentTerm === "30 Gün") termValue = "30";
+      else if (paymentTerm === "Özel Süre") termValue = String(customTermDays || "0");
+
       const response = await createInvoiceAction({
         user_id: userId,
         contact_id: selectedContact!.id,
         invoice_type: invoiceType,
         issue_date: issueDate,
+        due_date: computedDueDate,
         notes: notes || undefined,
         line_items: lineItems.map((item) => ({
           product_id: item.product_id,
@@ -481,18 +677,21 @@ export default function CreateInvoiceForm({ userId }: { userId: string }) {
           unit_price: Number(item.unit_price),
           vat_rate: Number(item.vat_rate),
         })),
-        status: "pending",  // ✅ Kesilmiş fatura olarak kaydet
+        status: isPaid ? "paid" : "pending",  // ✅ Fatura Ödendi mi? toggle switch durumuna göre paid veya pending
         invoice_id: editInvoiceId || undefined,  // ✅ Update varsa ID
         invoice_number: invoiceNumber, // ✅ Manuel atanan fatura numarası
         currency: currency, // ✅ NEW
         exchange_rate: currency === "TRY" ? 1 : rates?.[currency]?.selling || 1, // ✅ NEW
+        payment_term: termValue,
+        payment_status: isPaid,
       });
 
       if (response.success) {
         addToast("success", "✅ Fatura Kesildi!", response.message);
-        
+
+        const redirectPath = forceProposalMode ? "/proposals" : "/invoices";
         setTimeout(() => {
-          router.push("/invoices");
+          router.push(redirectPath);
         }, 2000);
       } else {
         const errorDetails = response.errors ? Object.values(response.errors).join(" | ") : "";
@@ -573,21 +772,19 @@ export default function CreateInvoiceForm({ userId }: { userId: string }) {
               <div className="flex p-1 bg-slate-100 rounded-lg w-fit">
                 <button
                   onClick={() => setInvoiceType("sales")}
-                  className={`px-6 py-2 rounded-md font-bold text-sm transition-all ${
-                    invoiceType === "sales"
+                  className={`px-6 py-2 rounded-md font-bold text-sm transition-all ${invoiceType === "sales"
                       ? "bg-purple-600 text-white shadow-sm"
                       : "text-slate-600 hover:text-slate-700"
-                  }`}
+                    }`}
                 >
                   Satış Faturası
                 </button>
                 <button
                   onClick={() => setInvoiceType("purchase")}
-                  className={`px-6 py-2 rounded-md font-bold text-sm transition-all ${
-                    invoiceType === "purchase"
+                  className={`px-6 py-2 rounded-md font-bold text-sm transition-all ${invoiceType === "purchase"
                       ? "bg-purple-600 text-white shadow-sm"
                       : "text-slate-600 hover:text-slate-700"
-                  }`}
+                    }`}
                 >
                   Alış Faturası
                 </button>
@@ -762,7 +959,7 @@ export default function CreateInvoiceForm({ userId }: { userId: string }) {
                           type="text"
                           disabled={!!item.product_id}
                           value={
-                            item.product_name 
+                            item.product_name
                               ? `${item.product_name} (${item.product_id})`
                               : productSearch[item.id] || ""
                           }
@@ -820,9 +1017,8 @@ export default function CreateInvoiceForm({ userId }: { userId: string }) {
                     <td className="px-6 py-6">
                       <div className="flex items-center border-2 border-slate-300 rounded-lg overflow-hidden bg-slate-50">
                         <input
-                          className={`w-full bg-transparent border-none focus:ring-0 text-center py-2 text-base font-semibold ${
-                            hasStockWarning ? "text-red-600 font-bold" : "text-slate-900"
-                          }`}
+                          className={`w-full bg-transparent border-none focus:ring-0 text-center py-2 text-base font-semibold ${hasStockWarning ? "text-red-600 font-bold" : "text-slate-900"
+                            }`}
                           type="number"
                           min="0"
                           value={item.quantity === 0 ? "" : item.quantity}
@@ -888,17 +1084,92 @@ export default function CreateInvoiceForm({ userId }: { userId: string }) {
 
         {/* Bottom Section: Notes & Summary */}
         <div className="grid grid-cols-12 gap-6 items-end">
-          <div className="col-span-12 lg:col-span-7">
-            <label className="block text-xs font-semibold text-slate-600 uppercase tracking-wide mb-3">
-              Fatura Notları
-            </label>
-            <textarea
-              className="w-full bg-slate-50 border border-slate-300 rounded-lg p-4 text-sm focus:ring-2 focus:ring-purple-500 focus:border-transparent transition-all placeholder:text-slate-400"
-              placeholder="Müşteriye iletilmesini istediğiniz özel notları buraya ekleyin..."
-              rows={5}
-              value={notes}
-              onChange={(e) => setNotes(e.target.value)}
-            />
+          <div className="col-span-12 lg:col-span-7 space-y-6">
+            {/* Vade & Ödeme Bilgileri Kartı */}
+            <div className="bg-white rounded-2xl p-6 shadow-sm border border-slate-200">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6 items-center">
+                {/* Vade Süresi Seçim Alanı */}
+                <div>
+                  <label className="block text-xs font-semibold text-slate-600 uppercase tracking-wide mb-3">
+                    Vade Süresi
+                  </label>
+                  <div className="flex flex-col sm:flex-row gap-3 items-start sm:items-center">
+                    <select
+                      value={paymentTerm}
+                      onChange={(e) => {
+                        const val = e.target.value;
+                        setPaymentTerm(val);
+                        if (val !== "Özel Süre") {
+                          setCustomTermDays("");
+                        }
+                      }}
+                      className="w-full bg-slate-50 border border-slate-300 rounded-lg px-4 py-3 text-base font-semibold focus:ring-2 focus:ring-purple-500 focus:border-purple-500 hover:border-slate-400 transition-all bg-white"
+                    >
+                      <option value="Peşin">Peşin</option>
+                      <option value="7 Gün">7 Gün</option>
+                      <option value="15 Gün">15 Gün</option>
+                      <option value="30 Gün">30 Gün</option>
+                      <option value="Özel Süre">Özel Süre</option>
+                    </select>
+                    
+                    {paymentTerm === "Özel Süre" && (
+                      <div className="flex items-center gap-2 w-full sm:w-auto shrink-0">
+                        <input
+                          type="number"
+                          placeholder="Gün sayısı..."
+                          value={customTermDays === "" ? "" : customTermDays}
+                          onChange={(e) => setCustomTermDays(e.target.value)}
+                          className="w-full sm:w-28 bg-slate-50 border-2 border-slate-300 rounded-lg px-4 py-3 text-base font-semibold focus:ring-2 focus:ring-purple-500 focus:border-purple-500 transition-all bg-white"
+                        />
+                        <span className="text-slate-600 font-bold text-sm whitespace-nowrap">Gün</span>
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                {/* Ödeme Durumu Switch Alanı */}
+                <div className="flex items-center justify-between bg-slate-50 border border-slate-200 rounded-xl p-4">
+                  <div className="flex items-center gap-3">
+                    <span className={`material-symbols-outlined text-2xl transition-colors duration-200 ${isPaid ? "text-emerald-500 animate-pulse" : "text-slate-400"}`}>
+                      {isPaid ? "check_circle" : "pending"}
+                    </span>
+                    <div>
+                      <h4 className="font-bold text-slate-800 text-sm">Ödeme Durumu</h4>
+                      <span className={`inline-block text-xs font-bold px-2 py-0.5 rounded mt-0.5 ${isPaid ? "bg-emerald-100 text-emerald-700" : "bg-amber-100 text-amber-700"}`}>
+                        {isPaid ? "ÖDENDİ" : "BEKLİYOR"}
+                      </span>
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setIsPaid(!isPaid)}
+                    className={`relative inline-flex h-7 w-14 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-purple-500 focus:ring-offset-2 ${
+                      isPaid ? "bg-emerald-500" : "bg-slate-300"
+                    }`}
+                  >
+                    <span
+                      className={`pointer-events-none inline-block h-6 w-6 transform rounded-full bg-white shadow-md ring-0 transition duration-200 ease-in-out ${
+                        isPaid ? "translate-x-7" : "translate-x-0"
+                      }`}
+                    />
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            {/* Fatura Notları */}
+            <div>
+              <label className="block text-xs font-semibold text-slate-600 uppercase tracking-wide mb-3">
+                Fatura Notları
+              </label>
+              <textarea
+                className="w-full bg-slate-50 border border-slate-300 rounded-lg p-4 text-sm focus:ring-2 focus:ring-purple-500 focus:border-transparent transition-all placeholder:text-slate-400"
+                placeholder="Müşteriye iletilmesini istediğiniz özel notları buraya ekleyin..."
+                rows={5}
+                value={notes}
+                onChange={(e) => setNotes(e.target.value)}
+              />
+            </div>
           </div>
           <div className="col-span-12 lg:col-span-5 space-y-6">
             <div className="bg-white rounded-2xl p-8 space-y-4 shadow-sm border border-slate-200">
@@ -921,6 +1192,7 @@ export default function CreateInvoiceForm({ userId }: { userId: string }) {
                 </span>
               </div>
             </div>
+
             <div className="flex gap-4">
               <button
                 type="button"
@@ -931,7 +1203,7 @@ export default function CreateInvoiceForm({ userId }: { userId: string }) {
                 <span className="material-symbols-outlined text-lg">visibility</span>
                 Teklif Önizle
               </button>
-              <button 
+              <button
                 type="button"
                 onClick={handleSaveDraft}
                 disabled={isLoading || !selectedContact || lineItems.length === 0}

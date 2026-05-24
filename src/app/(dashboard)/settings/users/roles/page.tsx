@@ -3,20 +3,50 @@
 import React, { useState, useEffect } from "react";
 import Image from "next/image";
 import { supabase } from "@/lib/supabaseClient";
-import toast from "react-hot-toast";
+import toast, { Toaster } from "react-hot-toast";
+import { updateRolePermissionAction } from "./actions";
+
 
 const MODULES = [
-  { id: "stock", title: "Stok Yönetimi", description: "Ürün ve Depo Hareketleri", icon: "inventory_2", color: "blue" },
-  { id: "contacts", title: "Cari Hesaplar", description: "Müşteri ve Tedarikçi Portföyü", icon: "groups", color: "indigo" },
-  { id: "invoices", title: "Faturalar", description: "Alış, Satış ve Gider Faturası", icon: "receipt_long", color: "purple" },
-  { id: "reports", title: "Raporlar", description: "Finansal Analiz ve Grafik", icon: "analytics", color: "emerald" },
+  {
+    id: "stock",
+    title: "Stok Yönetimi",
+    description: "Ürün ve Depo Hareketleri",
+    icon: "inventory_2",
+    color: "blue",
+    actions: { view: true, create: true, edit: true, delete: true },
+  },
+  {
+    id: "contacts",
+    title: "Cari Kart",
+    description: "Müşteri ve Tedarikçi Portföyü",
+    icon: "groups",
+    color: "indigo",
+    actions: { view: true, create: true, edit: true, delete: true },
+  },
+  {
+    id: "invoices",
+    title: "Fatura",
+    description: "Alış, Satış ve Gider Faturası",
+    icon: "receipt_long",
+    color: "purple",
+    actions: { view: true, create: true, edit: true, delete: true },
+  },
+  {
+    id: "reports",
+    title: "Raporlar",
+    description: "Finansal Analiz ve Grafik",
+    icon: "analytics",
+    color: "emerald",
+    actions: { view: true, create: true, edit: true, delete: true },
+  },
 ];
 
 const ROLES = [
-  { id: "admin", label: "Admin" },
+  { id: "admin", label: "Yönetici" },
   { id: "accounting", label: "Muhasebe" },
-  { id: "staff", label: "Personel" },
-  { id: "sales", label: "Satış" },
+  { id: "warehouse", label: "Depo Personeli" },
+  { id: "manager", label: "Personel" },
 ];
 
 export default function RolesPermissionsPage() {
@@ -27,64 +57,178 @@ export default function RolesPermissionsPage() {
 
   const fetchRoleCounts = async () => {
     try {
-      const { data, error } = await supabase.from("profiles").select("role");
-      if (error) throw error;
+      const { data: { user: authUser } } = await supabase.auth.getUser();
+      if (!authUser) return;
+
+      const { fetchTeamScopedData } = await import("@/app/(dashboard)/teamActions");
+      const { data } = await fetchTeamScopedData(authUser.id, "profiles", "role", {
+        excludeDeleted: false,
+        teamFilterColumn: "id"
+      });
+
       const counts: Record<string, number> = {};
-      data.forEach(p => {
-        const r = p.role?.toLowerCase() || 'staff';
+      (data || []).forEach(p => {
+        // Fallback to warehouse or manager if needed, but usually it matches ROLES exactly
+        let r = p.role?.toLowerCase() || 'warehouse'; 
+        if (r === 'sales' || r === 'staff') r = 'manager';
         counts[r] = (counts[r] || 0) + 1;
       });
       setRoleCounts(counts);
-    } catch (e) {
-      console.error("Error fetching counts:", e);
+    } catch (e: any) {
+      console.error("Error fetching role counts detail:", e);
     }
   };
 
-  const loadMatrix = () => {
-    const saved = localStorage.getItem("roles_permission_matrix");
-    if (saved) {
-      try {
-        setMatrix(JSON.parse(saved));
-      } catch (e) {
-        console.error("Matrix load error:", e);
-      }
-    } else {
-      // Default initial matrix
-      const initial: Record<string, any> = {};
-      ROLES.forEach(r => {
-        initial[r.id] = {};
-        MODULES.forEach(m => {
-          initial[r.id][m.id] = { view: true, create: r.id === 'admin', edit: r.id === 'admin', delete: r.id === 'admin' };
+  const loadMatrix = async () => {
+    try {
+      const { data, error } = await supabase.from("role_permissions").select("*");
+      if (error) throw error;
+
+      if (data && data.length > 0) {
+        const newMatrix: Record<string, any> = {};
+        // Initialize with default empty structures for all roles
+        ROLES.forEach(r => {
+          newMatrix[r.id] = {};
+          MODULES.forEach(m => {
+            newMatrix[r.id][m.id] = { view: false, create: false, edit: false, delete: false };
+          });
         });
-      });
-      setMatrix(initial);
+
+        // Fill with DB data
+        data.forEach(p => {
+          if (newMatrix[p.role]) {
+            newMatrix[p.role][p.module] = {
+              view: p.can_view,
+              create: p.can_create,
+              edit: p.can_edit,
+              delete: p.can_delete
+            };
+          }
+        });
+        setMatrix(newMatrix);
+      } else {
+        // Default initial matrix if DB is empty
+        const initial: Record<string, any> = {};
+        ROLES.forEach(r => {
+          initial[r.id] = {};
+          MODULES.forEach(m => {
+            let canView = false;
+            let canAll = false;
+
+            if (r.id === 'admin') {
+              canView = true;
+              canAll = true;
+            } else if (r.id === 'accounting') {
+              if (['invoices', 'reports', 'contacts'].includes(m.id)) {
+                canView = true;
+                canAll = true;
+              }
+            } else if (r.id === 'warehouse') {
+              if (m.id === 'stock') {
+                canView = true;
+                canAll = true;
+              }
+            } else if (r.id === 'manager') {
+              if (['stock', 'contacts', 'invoices'].includes(m.id)) {
+                canView = true;
+                // Manager can create/edit but not delete usually
+                if (m.id !== 'reports') canAll = true;
+              }
+            }
+
+            initial[r.id][m.id] = {
+              view: canView,
+              create: canAll,
+              edit: canAll,
+              delete: r.id === 'admin' // Only admin deletes by default
+            };
+          });
+        });
+        setMatrix(initial);
+      }
+    } catch (e) {
+      console.error("Matrix load error:", e);
+      toast.error("Yetkiler yüklenirken bir hata oluştu.");
     }
   };
 
   useEffect(() => {
-    setIsLoading(true);
-    fetchRoleCounts();
-    loadMatrix();
-    setIsLoading(false);
+    async function init() {
+      setIsLoading(true);
+      await Promise.all([fetchRoleCounts(), loadMatrix()]);
+      setIsLoading(false);
+    }
+    init();
   }, []);
 
-  const togglePermission = (moduleId: string, permKey: string) => {
+  const togglePermission = async (moduleId: string, permKey: 'view' | 'create' | 'edit' | 'delete') => {
+    // 1. Optimistic UI - Ekranda anında değişsin
+    const previousMatrix = { ...matrix };
+    let newPerms: any = {};
+
     setMatrix(prev => {
       const newMatrix = { ...prev };
       const rolePerms = { ...(newMatrix[activeRoleId] || {}) };
       const modulePerms = { ...(rolePerms[moduleId] || { view: false, create: false, edit: false, delete: false }) };
-      
+
       modulePerms[permKey] = !modulePerms[permKey];
+      newPerms = { ...modulePerms }; // Sunucuya göndermek için kopyala
+
       rolePerms[moduleId] = modulePerms;
       newMatrix[activeRoleId] = rolePerms;
-      
       return newMatrix;
     });
+
+    // 2. Server Action ile veritabanına anında yaz (Auto-Save)
+    const result = await updateRolePermissionAction(activeRoleId, moduleId, {
+      can_view: newPerms.view,
+      can_create: newPerms.create,
+      can_edit: newPerms.edit,
+      can_delete: newPerms.delete
+    });
+
+    if (!result.success) {
+      toast.error(result.error || "Yetki güncellenirken hata oluştu.");
+      // Hata olursa UI'ı eski haline döndür
+      setMatrix(previousMatrix);
+    }
   };
 
-  const handleSave = () => {
-    localStorage.setItem("roles_permission_matrix", JSON.stringify(matrix));
-    toast.success("Yetki matrisi başarıyla kaydedildi.");
+  const handleSave = async () => {
+    const toastId = toast.loading("Yetkiler kaydediliyor...");
+    try {
+      const upsertData: any[] = [];
+
+      Object.entries(matrix).forEach(([role, modules]) => {
+        Object.entries(modules as any).forEach(([module, perms]: [string, any]) => {
+          upsertData.push({
+            role,
+            module,
+            can_view: perms.view,
+            can_create: perms.create,
+            can_edit: perms.edit,
+            can_delete: perms.delete
+          });
+        });
+      });
+
+      const { error } = await supabase
+        .from("role_permissions")
+        .upsert(upsertData, { onConflict: 'role,module' });
+
+      if (error) throw error;
+
+      toast.success("Yetki matrisi veritabanına başarıyla kaydedildi.", { id: toastId });
+    } catch (e: any) {
+      console.error("Save error full details:", e);
+      let errorMsg = e.message || "Bilinmeyen bir hata oluştu.";
+
+      if (e.code === 'PGRST116' || e.message?.includes('relation "role_permissions" does not exist')) {
+        errorMsg = "Veritabanında 'role_permissions' tablosu bulunamadı. Lütfen SQL kodunu çalıştırın.";
+      }
+
+      toast.error("Hata: " + errorMsg, { id: toastId, duration: 5000 });
+    }
   };
 
   const handleReset = () => {
@@ -97,7 +241,7 @@ export default function RolesPermissionsPage() {
         });
         return newMatrix;
       });
-      toast.success("Rol izinleri sıfırlandı.");
+      toast.success("Rol izinleri sıfırlandı. Kaydetmeyi unutmayın.");
     }
   };
 
@@ -105,6 +249,7 @@ export default function RolesPermissionsPage() {
 
   return (
     <>
+      <Toaster position="top-right" />
       {/* Header Section with Bento Elements */}
       <div className="grid grid-cols-12 gap-6 mb-8">
         <div className="col-span-12 lg:col-span-8 bg-surface-container-low p-8 rounded-3xl relative overflow-hidden">
@@ -140,14 +285,13 @@ export default function RolesPermissionsPage() {
           </div>
           <div className="flex items-center bg-surface-container-lowest p-1 rounded-xl shadow-sm overflow-x-auto max-w-full">
             {ROLES.map(role => (
-              <button 
+              <button
                 key={role.id}
                 onClick={() => setActiveRoleId(role.id)}
-                className={`px-6 py-2 transition-all font-body rounded-lg text-sm whitespace-nowrap ${
-                  activeRoleId === role.id 
-                    ? "bg-primary text-white font-bold shadow-md" 
-                    : "text-slate-500 font-semibold hover:bg-slate-50"
-                }`}
+                className={`px-6 py-2 transition-all font-body rounded-lg text-sm whitespace-nowrap ${activeRoleId === role.id
+                  ? "bg-primary text-white font-bold shadow-md"
+                  : "text-slate-500 font-semibold hover:bg-slate-50"
+                  }`}
               >
                 {role.label}
               </button>
@@ -160,29 +304,41 @@ export default function RolesPermissionsPage() {
           <table className="w-full text-left border-separate border-spacing-y-4 px-6 font-body">
             <thead>
               <tr className="text-on-surface-variant">
-                <th className="py-4 px-6 font-label text-[11px] uppercase tracking-widest font-bold opacity-70">Modül Adı</th>
+                <th className="py-4 px-6 font-label text-[11px] uppercase tracking-widest font-bold opacity-70">Modul Adı</th>
                 <th className="py-4 px-6 font-label text-[11px] uppercase tracking-widest font-bold opacity-70 text-center">Görüntüle</th>
-                <th className="py-4 px-6 font-label text-[11px] uppercase tracking-widest font-bold opacity-70 text-center">Ekle</th>
-                <th className="py-4 px-6 font-label text-[11px] uppercase tracking-widest font-bold opacity-70 text-center">Düzenle</th>
-                <th className="py-4 px-6 font-label text-[11px] uppercase tracking-widest font-bold opacity-70 text-center">Sil</th>
+                {/* Ekleme: en az bir modülün create aksiyonu varsa sütunu göster */}
+                {MODULES.some(m => m.actions.create) && (
+                  <th className="py-4 px-6 font-label text-[11px] uppercase tracking-widest font-bold opacity-70 text-center">Ekle</th>
+                )}
+                {/* Düzenleme: en az bir modülün edit aksiyonu varsa sütunu göster */}
+                {MODULES.some(m => m.actions.edit) && (
+                  <th className="py-4 px-6 font-label text-[11px] uppercase tracking-widest font-bold opacity-70 text-center">Düzenleme</th>
+                )}
+                {/* Silme: en az bir modülün delete aksiyonu varsa sütunu göster */}
+                {MODULES.some(m => m.actions.delete) && (
+                  <th className="py-4 px-6 font-label text-[11px] uppercase tracking-widest font-bold opacity-70 text-center">Sil</th>
+                )}
                 <th className="py-4 px-6 font-label text-[11px] uppercase tracking-widest font-bold opacity-70 text-right">Durum</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-50/50">
               {MODULES.map(module => {
                 const perms = activeRolePerms[module.id] || { view: false, create: false, edit: false, delete: false };
-                const isFullAccess = perms.view && perms.create && perms.edit && perms.delete;
-                
+                const forceViewOnly = false;
+                // Kural gereği "tam erişim" badge'i: sadece müvcut aksiyonlar değerlendirilir
+                const availableActions = (Object.keys(module.actions) as Array<keyof typeof module.actions>)
+                  .filter(k => module.actions[k]);
+                const isFullAccess = availableActions.every(k => perms[k]);
+
                 return (
                   <tr key={module.id} className="group hover:bg-slate-50/20 transition-all duration-200">
                     <td className="py-5 px-6 rounded-l-2xl">
                       <div className="flex items-center space-x-4">
-                        <div className={`w-10 h-10 rounded-xl flex items-center justify-center transition-transform group-hover:scale-110 ${
-                          module.color === 'blue' ? "bg-blue-50 text-blue-600" :
+                        <div className={`w-10 h-10 rounded-xl flex items-center justify-center transition-transform group-hover:scale-110 ${module.color === 'blue' ? "bg-blue-50 text-blue-600" :
                           module.color === 'indigo' ? "bg-indigo-50 text-indigo-600" :
-                          module.color === 'purple' ? "bg-purple-50 text-purple-600" :
-                          "bg-emerald-50 text-emerald-600"
-                        }`}>
+                            module.color === 'purple' ? "bg-purple-50 text-purple-600" :
+                              "bg-emerald-50 text-emerald-600"
+                          }`}>
                           <span className="material-symbols-outlined text-xl">{module.icon}</span>
                         </div>
                         <div>
@@ -191,24 +347,63 @@ export default function RolesPermissionsPage() {
                         </div>
                       </div>
                     </td>
+
+                    {/* Görüntüleme — her modülün var */}
                     <td className="py-5 px-6 text-center">
-                      <Switch checked={perms.view} onChange={() => togglePermission(module.id, 'view')} />
+                      <Switch
+                        checked={forceViewOnly ? true : perms.view}
+                        onChange={() => togglePermission(module.id, 'view')}
+                        disabled={forceViewOnly}
+                      />
                     </td>
-                    <td className="py-5 px-6 text-center">
-                      <Switch checked={perms.create} onChange={() => togglePermission(module.id, 'create')} />
-                    </td>
-                    <td className="py-5 px-6 text-center">
-                      <Switch checked={perms.edit} onChange={() => togglePermission(module.id, 'edit')} />
-                    </td>
-                    <td className="py-5 px-6 text-center">
-                      <Switch checked={perms.delete} onChange={() => togglePermission(module.id, 'delete')} />
-                    </td>
+
+                    {/* Ekleme — modül kuralına göre hücre gösterilir ya da boş kalır */}
+                    {MODULES.some(m => m.actions.create) && (
+                      <td className="py-5 px-6 text-center">
+                        {module.actions.create ? (
+                          <Switch
+                            checked={perms.create}
+                            onChange={() => togglePermission(module.id, 'create')}
+                          />
+                        ) : (
+                          <span className="text-slate-200 text-lg select-none" title="Bu modül için mevcut değil">—</span>
+                        )}
+                      </td>
+                    )}
+
+                    {/* Düzenleme — modül kuralına göre hücre gösterilir ya da boş kalır */}
+                    {MODULES.some(m => m.actions.edit) && (
+                      <td className="py-5 px-6 text-center">
+                        {module.actions.edit ? (
+                          <Switch
+                            checked={perms.edit}
+                            onChange={() => togglePermission(module.id, 'edit')}
+                          />
+                        ) : (
+                          <span className="text-slate-200 text-lg select-none" title="Bu modül için mevcut değil">—</span>
+                        )}
+                      </td>
+                    )}
+
+                    {/* Silme — modül kuralına göre hücre gösterilir ya da boş kalır */}
+                    {MODULES.some(m => m.actions.delete) && (
+                      <td className="py-5 px-6 text-center">
+                        {module.actions.delete ? (
+                          <Switch
+                            checked={perms.delete}
+                            onChange={() => togglePermission(module.id, 'delete')}
+                          />
+                        ) : (
+                          <span className="text-slate-200 text-lg select-none" title="Bu modül için mevcut değil">—</span>
+                        )}
+                      </td>
+                    )}
+
                     <td className="py-5 px-6 rounded-r-2xl text-right">
-                      <span className={`text-[9px] font-bold px-3 py-1.5 rounded-full border transition-all ${
-                        isFullAccess 
-                          ? "bg-tertiary-container/10 text-on-tertiary-fixed-variant border-tertiary-container/20 tracking-widest" 
-                          : "bg-slate-100 text-slate-500 border-slate-200 tracking-tighter"
-                      }`}>
+                      <span className={`text-[9px] font-bold px-3 py-1.5 rounded-full border transition-all ${isFullAccess
+                        ? "bg-tertiary-container/10 text-on-tertiary-fixed-variant border-tertiary-container/20 tracking-widest"
+                        : "bg-slate-100 text-slate-500 border-slate-200 tracking-tighter"
+                        }`}>
                         {isFullAccess ? "TAM ERİŞİM" : "KISITLI"}
                       </span>
                     </td>
@@ -221,13 +416,13 @@ export default function RolesPermissionsPage() {
 
         {/* Table Footer */}
         <div className="p-8 border-t border-outline-variant/10 flex justify-end space-x-4 bg-surface-container-low/50">
-          <button 
+          <button
             onClick={handleReset}
             className="px-8 py-3 rounded-xl text-sm font-semibold text-on-surface hover:bg-white transition-all font-body active:scale-95"
           >
             Sıfırla
           </button>
-          <button 
+          <button
             onClick={handleSave}
             className="px-10 py-3 rounded-xl text-sm font-bold text-white bg-gradient-to-br from-primary to-primary-container shadow-lg shadow-indigo-200 active:scale-95 transition-all font-body hover:opacity-95"
           >
@@ -239,15 +434,15 @@ export default function RolesPermissionsPage() {
       {/* Role Summary Cards (Bento Style) */}
       <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mt-12 pb-12">
         {ROLES.map(role => (
-          <SummaryCard 
+          <SummaryCard
             key={role.id}
             icon={
-              role.id === 'admin' ? "manage_accounts" : 
-              role.id === 'accounting' ? "payments" : 
-              role.id === 'staff' ? "person" : "point_of_sale"
+              role.id === 'admin' ? "manage_accounts" :
+                role.id === 'accounting' ? "payments" :
+                  role.id === 'warehouse' ? "inventory_2" : "supervisor_account"
             }
-            label={`${role.label} Kullanıcı`} 
-            count={roleCounts[role.id] || 0} 
+            label={`${role.label} Kullanıcı`}
+            count={roleCounts[role.id] || 0}
           />
         ))}
       </div>
@@ -255,27 +450,38 @@ export default function RolesPermissionsPage() {
   );
 }
 
-function Switch({ checked, onChange }: { checked: boolean, onChange: () => void }) {
+function Switch({ checked, onChange, disabled = false }: { checked: boolean; onChange: () => void; disabled?: boolean }) {
   return (
-    <div 
-      className="inline-flex items-center cursor-pointer relative select-none"
+    <div
+      className={`inline-flex items-center relative select-none ${disabled ? "cursor-not-allowed opacity-70" : "cursor-pointer"
+        }`}
       onClick={(e) => {
         e.preventDefault();
         e.stopPropagation();
-        onChange();
+        if (!disabled) onChange();
       }}
-      role="button"
-      aria-pressed={checked}
+      role="switch"
+      aria-checked={checked}
+      aria-disabled={disabled}
+      title={disabled ? "Bu ayar şimdilik kilitlidir" : undefined}
     >
       {/* Switch Background */}
-      <div className={`block w-10 h-5 rounded-full transition-all duration-300 ease-in-out ${
-        checked ? 'bg-indigo-600 shadow-inner' : 'bg-slate-200'
-      }`}></div>
-      
+      <div className={`block w-10 h-5 rounded-full transition-all duration-300 ease-in-out ${checked
+        ? disabled ? 'bg-indigo-400 shadow-inner' : 'bg-indigo-600 shadow-inner'
+        : 'bg-slate-200'
+        }`}></div>
+
       {/* Switch Dot */}
-      <div className={`absolute top-0.5 left-0.5 bg-white w-4 h-4 rounded-full transition-all duration-300 ease-in-out shadow-md transform ${
-        checked ? 'translate-x-5 scale-110' : 'translate-x-0 scale-100'
-      }`}></div>
+      <div className={`absolute top-0.5 left-0.5 bg-white w-4 h-4 rounded-full transition-all duration-300 ease-in-out shadow-md transform ${checked ? 'translate-x-5 scale-110' : 'translate-x-0 scale-100'
+        }`}></div>
+
+      {/* Kilit ikonu — disabled ise */}
+      {disabled && (
+        <span
+          className="absolute -top-1.5 -right-1.5 material-symbols-outlined text-[10px] text-slate-400"
+          style={{ fontSize: 10 }}
+        >lock</span>
+      )}
     </div>
   );
 }

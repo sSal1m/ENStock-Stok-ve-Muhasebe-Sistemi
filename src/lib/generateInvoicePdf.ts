@@ -7,19 +7,19 @@ export interface PdfInvoiceData {
   companyAddress: string;
   companyTaxId: string;
   companyLogoUrl?: string | null;
-  
+
   // Fatura bilgileri
   invoiceNumber: string;
   issueDate: string;
   currency: string;
   status: string;
   notes?: string;
-  
+
   // Cari bilgileri
   contactName: string;
   contactTaxNumber?: string;
   contactTaxOffice?: string;
-  
+
   // Kalemler
   items: {
     productName: string;
@@ -28,7 +28,7 @@ export interface PdfInvoiceData {
     vatRate: number;
     lineTotal: number;
   }[];
-  
+
   // Toplamlar
   subtotal: number;
   vatTotal: number;
@@ -40,7 +40,7 @@ export async function generateInvoicePdf(data: PdfInvoiceData, documentType: 'in
   const { default: autoTable } = await import('jspdf-autotable');
 
   const doc = new jsPDF();
-  
+
   // Add Roboto font with fallback
   let fontName = 'helvetica';
   try {
@@ -77,13 +77,13 @@ export async function generateInvoicePdf(data: PdfInvoiceData, documentType: 'in
   doc.setFontSize(16);
   doc.setTextColor(0, 0, 0);
   doc.text(data.companyName || 'Şirket Adı Belirtilmemiş', 20, currentY);
-  
+
   doc.setFontSize(10);
   doc.setTextColor(textColor[0], textColor[1], textColor[2]);
   // Use splitTextToSize to handle long addresses
   const splitAddress = doc.splitTextToSize(data.companyAddress || '', 80);
   doc.text(splitAddress, 20, currentY + 8);
-  
+
   const addressHeight = splitAddress.length * 5;
   doc.text(`Vergi No: ${data.companyTaxId || '-'}`, 20, currentY + 8 + addressHeight + 2);
 
@@ -98,12 +98,12 @@ export async function generateInvoicePdf(data: PdfInvoiceData, documentType: 'in
   doc.setFontSize(10);
   doc.setTextColor(lightGray[0], lightGray[1], lightGray[2]);
   doc.text('SAYIN / MÜŞTERİ', 20, currentY);
-  
+
   currentY += 8;
   doc.setFontSize(12);
   doc.setTextColor(0, 0, 0);
   doc.text(data.contactName || 'Cari Belirtilmemiş', 20, currentY);
-  
+
   currentY += 6;
   doc.setFontSize(10);
   doc.setTextColor(textColor[0], textColor[1], textColor[2]);
@@ -182,7 +182,7 @@ export async function generateInvoicePdf(data: PdfInvoiceData, documentType: 'in
   currentY += 6;
   doc.setDrawColor(226, 232, 240);
   doc.line(totalsX - valueWidth - 25, currentY, totalsX, currentY);
-  
+
   currentY += 8;
   doc.setFontSize(12);
   doc.setTextColor(primaryColor[0], primaryColor[1], primaryColor[2]);
@@ -195,7 +195,7 @@ export async function generateInvoicePdf(data: PdfInvoiceData, documentType: 'in
     doc.setFontSize(10);
     doc.setTextColor(0, 0, 0);
     doc.text('Notlar:', 20, currentY);
-    
+
     currentY += 6;
     doc.setFontSize(9);
     doc.setTextColor(textColor[0], textColor[1], textColor[2]);

@@ -5,6 +5,9 @@ import { useParams, useRouter } from "next/navigation";
 import toast, { Toaster } from "react-hot-toast";
 import { supabase } from "@/lib/supabaseClient";
 import { useCurrencyConverter } from "@/hooks/useCurrencyConverter";
+import { logActivityAction } from "@/app/(dashboard)/activity-log/actions";
+import { uploadProductImageAction } from "@/app/(dashboard)/settings/profile/actions";
+import { parseDescription, formatDescription } from "@/lib/productImageHelper";
 
 interface Category {
   id: string;
@@ -47,6 +50,51 @@ export default function EditProductPage() {
   const [userId, setUserId] = useState<string | null>(null);
   const { rates, convertFull } = useCurrencyConverter();
 
+  const [imageUrl, setImageUrl] = useState<string>("");
+  const [isImageUploading, setIsImageUploading] = useState<boolean>(false);
+  const [rawDescriptionText, setRawDescriptionText] = useState<string>("");
+
+  const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file || !userId) return;
+
+    if (file.size > 5 * 1024 * 1024) {
+      toast.error("Dosya boyutu 5MB'den büyük olamaz.");
+      return;
+    }
+
+    setIsImageUploading(true);
+    const toastId = toast.loading("Görsel yükleniyor...");
+    try {
+      const reader = new FileReader();
+      reader.readAsDataURL(file);
+      reader.onloadend = async () => {
+        try {
+          const base64Data = (reader.result as string).split(",")[1];
+          const result = await uploadProductImageAction(base64Data, file.name, file.type, userId);
+
+          if (!result.success || !result.publicUrl) {
+            throw new Error(result.error || "Görsel yükleme başarısız.");
+          }
+
+          setImageUrl(result.publicUrl);
+          toast.success("Ürün görseli başarıyla yüklendi.", { id: toastId });
+        } catch (innerErr: any) {
+          toast.error(`Yükleme hatası: ${innerErr.message}`, { id: toastId });
+        } finally {
+          setIsImageUploading(false);
+        }
+      };
+
+      reader.onerror = () => {
+        throw new Error("Dosya okunamadı.");
+      };
+    } catch (err: any) {
+      toast.error(`Yükleme hatası: ${err.message}`, { id: toastId });
+      setIsImageUploading(false);
+    }
+  };
+
   // ── Kullanıcı ID'sini Al ────────────────────────────────────────────────
   useEffect(() => {
     async function getUser() {
@@ -79,6 +127,10 @@ export default function EditProductPage() {
         setCategories(catRes.data || []);
         
         const p = prodRes.data;
+        const { description: descText, imageUrl: parsedImgUrl } = parseDescription(p.description || "");
+        setRawDescriptionText(descText || "");
+        setImageUrl(parsedImgUrl || "");
+
         setForm({
           name: p.name || "",
           sku: p.sku || "",
@@ -148,10 +200,13 @@ export default function EditProductPage() {
       const purchasePriceTRY = convertFull(purchasePrice, form.currency, "TRY");
       const salePriceTRY = convertFull(salePrice, form.currency, "TRY");
 
+      const finalDescription = formatDescription(rawDescriptionText, imageUrl);
+
       const updates = {
         name: form.name.trim(),
         sku: form.sku.trim(),
         category_id: form.category_id || null,
+        description: finalDescription || null,
         currency: form.currency,
         purchase_price_in_currency: purchasePrice,
         sale_price_in_currency: salePrice,
@@ -214,7 +269,24 @@ export default function EditProductPage() {
       } else {
         console.log("✅ Inventory log başarıyla kaydedildi");
       }
-      
+
+      // Audit trail (activity_logs)
+      await logActivityAction({
+        userId,
+        module: "product",
+        action: "update",
+        entityId: id,
+        entityName: form.name.trim(),
+        description: `"${form.name.trim()}" ürünü güncellendi`,
+        metadata: {
+          sku: form.sku.trim(),
+          stock_quantity: Math.floor(stockQty),
+          purchase_price: purchasePrice,
+          sale_price: salePrice,
+          currency: form.currency,
+        },
+      });
+
       // Toast bildirimi göster
       toast.success(`"${form.name}" başarıyla güncellendi!`, {
         duration: 3000,
@@ -472,19 +544,44 @@ export default function EditProductPage() {
         {/* Sağ Sütun: Görseller, Kâr Analizi ve Meta Bilgileri */}
         <div className="lg:col-span-4 flex flex-col gap-8">
           
-          {/* Ürün Görseli (Gelecekte eklenecek, şimdilik statik UI) */}
+          {/* Ürün Görseli */}
           <div className="bg-surface-container-lowest rounded-xl p-6 shadow-sm ring-1 ring-outline-variant/10">
-            <label className="text-[11px] font-bold uppercase tracking-wider text-outline mb-4 block">Ürün Görseli</label>
-            <div className="aspect-square w-full rounded-lg overflow-hidden bg-surface-container shadow-inner mb-4 relative group flex items-center justify-center">
-              <span className="text-indigo-200 font-black text-9xl select-none">
-                {form.name ? form.name.charAt(0).toUpperCase() : "?"}
-              </span>
-              <div className="absolute inset-0 bg-primary/40 backdrop-blur-sm opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center cursor-pointer">
-                <span className="material-symbols-outlined text-white text-3xl">add_a_photo</span>
+            <label className="text-[11px] font-bold uppercase tracking-wider text-outline mb-4 block font-headline">Ürün Görseli</label>
+            <div className="aspect-square w-full rounded-lg overflow-hidden bg-surface-container shadow-inner mb-4 relative group flex items-center justify-center cursor-pointer border border-outline-variant/20 hover:border-primary/40 transition-colors">
+              {imageUrl ? (
+                <img
+                  src={imageUrl}
+                  alt={form.name}
+                  className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105"
+                />
+              ) : (
+                <span className="text-indigo-200 font-black text-9xl select-none">
+                  {form.name ? form.name.charAt(0).toUpperCase() : "?"}
+                </span>
+              )}
+              
+              <div className="absolute inset-0 bg-primary/40 backdrop-blur-sm opacity-0 group-hover:opacity-100 transition-opacity flex flex-col items-center justify-center gap-2">
+                {isImageUploading ? (
+                  <div className="w-10 h-10 border-4 border-white/20 border-t-white rounded-full animate-spin"></div>
+                ) : (
+                  <>
+                    <span className="material-symbols-outlined text-white text-3xl">add_a_photo</span>
+                    <span className="text-white text-xs font-bold uppercase tracking-wider">
+                      {imageUrl ? "Görseli Değiştir" : "Görsel Ekle"}
+                    </span>
+                  </>
+                )}
               </div>
+              <input
+                className="absolute inset-0 opacity-0 cursor-pointer w-full h-full"
+                type="file"
+                accept="image/*"
+                onChange={handleImageUpload}
+                disabled={isImageUploading}
+              />
             </div>
             <p className="text-xs text-on-surface-variant leading-relaxed italic text-center">
-              Görseli değiştirmek için üzerine tıklayın. Önerilen boyut: 800x800px.
+              {isImageUploading ? "Görsel yükleniyor..." : "Görseli değiştirmek veya eklemek için üzerine tıklayın."}
             </p>
           </div>
 

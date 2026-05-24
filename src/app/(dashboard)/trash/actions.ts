@@ -2,30 +2,31 @@
 
 import { createClient } from "@supabase/supabase-js";
 import { revalidatePath } from "next/cache";
+import { logActivity } from "@/lib/activityLogger";
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
 const supabaseServer = createClient(supabaseUrl, supabaseServiceKey);
 
 /* ═══════════════════════════════════════════
-   TEAM RESOLUTION HELPER (SERVER-SIDE)
+   TEAM RESOLUTION HELPER (SERVER-SIDE
    ═══════════════════════════════════════════ */
 
 async function resolveTeamIdsServer(userId: string): Promise<string[]> {
   try {
     const { data: myProfile } = await supabaseServer
       .from("profiles")
-      .select("company_name")
+      .select("business_id")
       .eq("id", userId)
       .single();
 
-    const company = myProfile?.company_name;
-    if (!company) return [userId];
+    const businessId = myProfile?.business_id;
+    if (!businessId) return [userId];
 
     const { data: teamProfiles } = await supabaseServer
       .from("profiles")
       .select("id")
-      .eq("company_name", company);
+      .eq("business_id", businessId);
 
     if (teamProfiles && teamProfiles.length > 0) {
       return teamProfiles.map((p) => p.id);
@@ -49,6 +50,12 @@ function applyTeamFilterServer(query: any, teamIds: string[], column = "user_id"
 
 export async function softDeleteProduct(productId: string, userId: string) {
   try {
+    const { data: product } = await supabaseServer
+      .from("products")
+      .select("name, sku")
+      .eq("id", productId)
+      .single();
+
     const { error } = await supabaseServer
       .from("products")
       .update({ deleted_at: new Date().toISOString() })
@@ -59,6 +66,16 @@ export async function softDeleteProduct(productId: string, userId: string) {
       console.error("Soft delete product error:", error);
       return { success: false, message: `Silme hatası: ${error.message}` };
     }
+
+    await logActivity({
+      userId,
+      module: "product",
+      action: "delete",
+      entityId: productId,
+      entityName: product?.name ?? null,
+      description: `"${product?.name ?? "Ürün"}" çöp kutusuna taşındı`,
+      metadata: { sku: product?.sku ?? null },
+    });
 
     revalidatePath("/inventory");
     revalidatePath("/trash");
@@ -75,6 +92,12 @@ export async function softDeleteProduct(productId: string, userId: string) {
 
 export async function softDeleteContact(contactId: string, userId: string) {
   try {
+    const { data: contact } = await supabaseServer
+      .from("contacts")
+      .select("name, type")
+      .eq("id", contactId)
+      .single();
+
     const { error } = await supabaseServer
       .from("contacts")
       .update({ deleted_at: new Date().toISOString() })
@@ -85,6 +108,16 @@ export async function softDeleteContact(contactId: string, userId: string) {
       console.error("Soft delete contact error:", error);
       return { success: false, message: `Silme hatası: ${error.message}` };
     }
+
+    await logActivity({
+      userId,
+      module: "contact",
+      action: "delete",
+      entityId: contactId,
+      entityName: contact?.name ?? null,
+      description: `"${contact?.name ?? "Cari"}" çöp kutusuna taşındı`,
+      metadata: { type: contact?.type ?? null },
+    });
 
     revalidatePath("/contacts");
     revalidatePath("/trash");
@@ -104,7 +137,7 @@ export async function softDeleteInvoice(invoiceId: string, userId: string) {
     // 1. Fatura bilgilerini al (bakiye geri alma için)
     const { data: invoice, error: fetchError } = await supabaseServer
       .from("invoices")
-      .select("id, type, total_amount, contact_id, status")
+      .select("id, invoice_number, type, total_amount, exchange_rate, contact_id, status")
       .eq("id", invoiceId)
       .eq("user_id", userId)
       .single();
@@ -130,7 +163,9 @@ export async function softDeleteInvoice(invoiceId: string, userId: string) {
     if (invoice.status !== "draft" && invoice.contact_id) {
       // Orijinal fatura oluşturulurken: sales → +total, purchase → -total
       // Geri alma: sales → -total, purchase → +total
-      const balanceReversal = invoice.type === "sale" ? -Number(invoice.total_amount) : Number(invoice.total_amount);
+      // current_balance TRY'de tutulur, fatura currency'sinden exchange_rate ile normalize edilir.
+      const totalAmountTry = Number(invoice.total_amount) * Number(invoice.exchange_rate || 1);
+      const balanceReversal = invoice.type === "sale" ? -totalAmountTry : totalAmountTry;
 
       const { data: contact } = await supabaseServer
         .from("contacts")
@@ -149,6 +184,21 @@ export async function softDeleteInvoice(invoiceId: string, userId: string) {
       }
     }
 
+    await logActivity({
+      userId,
+      module: "invoice",
+      action: "delete",
+      entityId: invoiceId,
+      entityName: invoice.invoice_number ?? null,
+      description: `"${invoice.invoice_number ?? "Fatura"}" çöp kutusuna taşındı (${invoice.type === "sale" ? "Satış" : "Alış"} - ${Number(invoice.total_amount).toLocaleString("tr-TR")} TRY)`,
+      metadata: {
+        type: invoice.type,
+        total_amount: invoice.total_amount,
+        status: invoice.status,
+        contact_id: invoice.contact_id,
+      },
+    });
+
     revalidatePath("/invoices");
     revalidatePath("/contacts");
     revalidatePath("/trash");
@@ -165,6 +215,12 @@ export async function softDeleteInvoice(invoiceId: string, userId: string) {
 
 export async function restoreProduct(productId: string, userId: string) {
   try {
+    const { data: product } = await supabaseServer
+      .from("products")
+      .select("name")
+      .eq("id", productId)
+      .single();
+
     const { error } = await supabaseServer
       .from("products")
       .update({ deleted_at: null })
@@ -175,6 +231,15 @@ export async function restoreProduct(productId: string, userId: string) {
       console.error("Restore product error:", error);
       return { success: false, message: `Geri yükleme hatası: ${error.message}` };
     }
+
+    await logActivity({
+      userId,
+      module: "product",
+      action: "restore",
+      entityId: productId,
+      entityName: product?.name ?? null,
+      description: `"${product?.name ?? "Ürün"}" çöp kutusundan geri yüklendi`,
+    });
 
     revalidatePath("/inventory");
     revalidatePath("/trash");
@@ -191,6 +256,12 @@ export async function restoreProduct(productId: string, userId: string) {
 
 export async function restoreContact(contactId: string, userId: string) {
   try {
+    const { data: contact } = await supabaseServer
+      .from("contacts")
+      .select("name")
+      .eq("id", contactId)
+      .single();
+
     const { error } = await supabaseServer
       .from("contacts")
       .update({ deleted_at: null })
@@ -201,6 +272,15 @@ export async function restoreContact(contactId: string, userId: string) {
       console.error("Restore contact error:", error);
       return { success: false, message: `Geri yükleme hatası: ${error.message}` };
     }
+
+    await logActivity({
+      userId,
+      module: "contact",
+      action: "restore",
+      entityId: contactId,
+      entityName: contact?.name ?? null,
+      description: `"${contact?.name ?? "Cari"}" çöp kutusundan geri yüklendi`,
+    });
 
     revalidatePath("/contacts");
     revalidatePath("/trash");
@@ -220,7 +300,7 @@ export async function restoreInvoice(invoiceId: string, userId: string) {
     // 1. Fatura bilgilerini al (bakiye tekrar ekleme için)
     const { data: invoice, error: fetchError } = await supabaseServer
       .from("invoices")
-      .select("id, type, total_amount, contact_id, status")
+      .select("id, invoice_number, type, total_amount, exchange_rate, contact_id, status")
       .eq("id", invoiceId)
       .eq("user_id", userId)
       .single();
@@ -246,7 +326,9 @@ export async function restoreInvoice(invoiceId: string, userId: string) {
     if (invoice.status !== "draft" && invoice.contact_id) {
       // Fatura geri yüklenince bakiye etkisi tekrar eklenir:
       // sales → +total, purchase → -total
-      const balanceChange = invoice.type === "sale" ? Number(invoice.total_amount) : -Number(invoice.total_amount);
+      // current_balance TRY'de tutulur; fatura currency'sinden exchange_rate ile normalize.
+      const totalAmountTry = Number(invoice.total_amount) * Number(invoice.exchange_rate || 1);
+      const balanceChange = invoice.type === "sale" ? totalAmountTry : -totalAmountTry;
 
       const { data: contact } = await supabaseServer
         .from("contacts")
@@ -265,6 +347,16 @@ export async function restoreInvoice(invoiceId: string, userId: string) {
       }
     }
 
+    await logActivity({
+      userId,
+      module: "invoice",
+      action: "restore",
+      entityId: invoiceId,
+      entityName: invoice.invoice_number ?? null,
+      description: `"${invoice.invoice_number ?? "Fatura"}" çöp kutusundan geri yüklendi`,
+      metadata: { type: invoice.type, total_amount: invoice.total_amount },
+    });
+
     revalidatePath("/invoices");
     revalidatePath("/contacts");
     revalidatePath("/trash");
@@ -281,6 +373,12 @@ export async function restoreInvoice(invoiceId: string, userId: string) {
 
 export async function permanentDeleteProduct(productId: string, userId: string) {
   try {
+    const { data: product } = await supabaseServer
+      .from("products")
+      .select("name, sku")
+      .eq("id", productId)
+      .single();
+
     const { error } = await supabaseServer
       .from("products")
       .delete()
@@ -291,6 +389,16 @@ export async function permanentDeleteProduct(productId: string, userId: string) 
       console.error("Permanent delete product error:", error);
       return { success: false, message: `Kalıcı silme hatası: ${error.message}` };
     }
+
+    await logActivity({
+      userId,
+      module: "product",
+      action: "permanent_delete",
+      entityId: productId,
+      entityName: product?.name ?? null,
+      description: `"${product?.name ?? "Ürün"}" kalıcı olarak silindi`,
+      metadata: { sku: product?.sku ?? null },
+    });
 
     revalidatePath("/trash");
     return { success: true, message: "Ürün kalıcı olarak silindi." };
@@ -306,6 +414,12 @@ export async function permanentDeleteProduct(productId: string, userId: string) 
 
 export async function permanentDeleteContact(contactId: string, userId: string) {
   try {
+    const { data: contact } = await supabaseServer
+      .from("contacts")
+      .select("name, type")
+      .eq("id", contactId)
+      .single();
+
     const { error } = await supabaseServer
       .from("contacts")
       .delete()
@@ -316,6 +430,16 @@ export async function permanentDeleteContact(contactId: string, userId: string) 
       console.error("Permanent delete contact error:", error);
       return { success: false, message: `Kalıcı silme hatası: ${error.message}` };
     }
+
+    await logActivity({
+      userId,
+      module: "contact",
+      action: "permanent_delete",
+      entityId: contactId,
+      entityName: contact?.name ?? null,
+      description: `"${contact?.name ?? "Cari"}" kalıcı olarak silindi`,
+      metadata: { type: contact?.type ?? null },
+    });
 
     revalidatePath("/trash");
     return { success: true, message: "Cari hesap kalıcı olarak silindi." };
@@ -331,6 +455,12 @@ export async function permanentDeleteContact(contactId: string, userId: string) 
 
 export async function permanentDeleteInvoice(invoiceId: string, userId: string) {
   try {
+    const { data: invoice } = await supabaseServer
+      .from("invoices")
+      .select("invoice_number, type, total_amount")
+      .eq("id", invoiceId)
+      .single();
+
     // Önce fatura kalemlerini sil
     await supabaseServer
       .from("invoice_items")
@@ -347,6 +477,16 @@ export async function permanentDeleteInvoice(invoiceId: string, userId: string) 
       console.error("Permanent delete invoice error:", error);
       return { success: false, message: `Kalıcı silme hatası: ${error.message}` };
     }
+
+    await logActivity({
+      userId,
+      module: "invoice",
+      action: "permanent_delete",
+      entityId: invoiceId,
+      entityName: invoice?.invoice_number ?? null,
+      description: `"${invoice?.invoice_number ?? "Fatura"}" kalıcı olarak silindi`,
+      metadata: { type: invoice?.type ?? null, total_amount: invoice?.total_amount ?? null },
+    });
 
     revalidatePath("/trash");
     return { success: true, message: "Fatura kalıcı olarak silindi." };

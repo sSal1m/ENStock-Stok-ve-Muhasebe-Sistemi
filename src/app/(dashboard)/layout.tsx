@@ -1,3 +1,4 @@
+
 'use client';
 
 import { useEffect, useState } from 'react';
@@ -5,6 +6,7 @@ import { useRouter } from 'next/navigation';
 import { supabase } from '@/lib/supabaseClient';
 import Sidebar from '@/components/layout/Sidebar';
 import Header from '@/components/layout/Header';
+import { usePermissions } from '@/hooks/usePermissions';
 
 export default function DashboardLayout({
   children,
@@ -13,7 +15,24 @@ export default function DashboardLayout({
 }) {
   const [isLoading, setIsLoading] = useState(true);
   const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const { hasPermission, isLoading: permsLoading, role } = usePermissions();
   const router = useRouter();
+
+  useEffect(() => {
+    try {
+      const prefs = localStorage.getItem('user_preferences');
+      if (prefs) {
+        const parsed = JSON.parse(prefs);
+        if (parsed.darkMode) {
+          document.documentElement.classList.add('dark');
+        } else {
+          document.documentElement.classList.remove('dark');
+        }
+      }
+    } catch (e) {
+      console.error('Theme load error:', e);
+    }
+  }, []);
 
   useEffect(() => {
     const checkAuth = async () => {
@@ -24,6 +43,13 @@ export default function DashboardLayout({
 
         if (user) {
           setIsAuthenticated(true);
+
+          // Davet ile gelen kullanıcı pending durumunda ise aktif yap
+          await supabase
+            .from('profiles')
+            .update({ status: 'active' })
+            .eq('id', user.id)
+            .eq('status', 'pending');
         } else {
           router.push('/login');
         }
@@ -36,9 +62,39 @@ export default function DashboardLayout({
     };
 
     checkAuth();
-  }, [router]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
-  if (isLoading) {
+  // Permissions yüklenince route bazlı kontrol yap
+  useEffect(() => {
+    if (permsLoading || !isAuthenticated) return;
+
+    const pathname = window.location.pathname;
+    const getModuleId = (path: string) => {
+      if (path.includes('/inventory')) return 'stock';
+      if (path.includes('/contacts')) return 'contacts';
+      if (path.includes('/invoices')) return 'invoices';
+      if (path.includes('/reports')) return 'reports';
+      if (path.includes('/quotes')) return 'quotes';
+      if (path.includes('/settings/users')) return 'users';
+      if (path.includes('/settings/business')) return 'business';
+      return null;
+    };
+
+    const moduleId = getModuleId(pathname);
+
+    // Admin-only modules
+    if ((moduleId === 'users' || moduleId === 'business') && role !== 'admin') {
+      router.push('/unauthorized');
+      return;
+    }
+    if (moduleId && moduleId !== 'users' && moduleId !== 'business' && !hasPermission(moduleId, 'view')) {
+      router.push('/unauthorized');
+    }
+
+  }, [permsLoading, isAuthenticated, role, hasPermission, router]);
+
+  if (isLoading || permsLoading) {
     return (
       <div className="h-screen flex items-center justify-center bg-surface">
         <div className="text-center">

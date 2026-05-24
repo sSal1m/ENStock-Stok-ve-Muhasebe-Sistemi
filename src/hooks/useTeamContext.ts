@@ -25,30 +25,21 @@ export function useTeamContext() {
 
       setCurrentUserId(user.id);
 
-      // 1. Get this user's profile to find their company
+      // 1. Get this user's profile to find their business_id
       const { data: myProfile } = await supabase
         .from("profiles")
-        .select("company_name")
+        .select("business_id, company_name")
         .eq("id", user.id)
         .single();
 
-      const company = myProfile?.company_name;
-      setCompanyName(company || null);
+      const businessId = myProfile?.business_id;
+      setCompanyName(myProfile?.company_name || null);
 
-      if (company) {
-        // 2. Find all team members with the same company_name
-        const { data: teamProfiles } = await supabase
-          .from("profiles")
-          .select("id")
-          .eq("company_name", company);
-
-        if (teamProfiles && teamProfiles.length > 0) {
-          const ids = teamProfiles.map((p) => p.id);
-          setTeamUserIds(ids);
-        } else {
-          // Fallback: only this user
-          setTeamUserIds([user.id]);
-        }
+      if (businessId) {
+        // 2. Fetch team IDs securely from server action (bypasses RLS)
+        const { getTeamIdsSecure } = await import("@/app/(dashboard)/teamActions");
+        const ids = await getTeamIdsSecure(user.id);
+        setTeamUserIds(ids);
       } else {
         // No company set, only show own data
         setTeamUserIds([user.id]);

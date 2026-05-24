@@ -1,9 +1,11 @@
 "use client";
 
-import { useState, useEffect } from "react";
-import { useParams } from "next/navigation";
+import { useState, useEffect, useTransition, useRef } from "react";
+import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import { supabase } from "@/lib/supabaseClient";
+import toast from "react-hot-toast";
+import { cariGuncelleAction, islemYapAction } from "../actions";
 import { useCurrencyConverter } from "@/hooks/useCurrencyConverter";
 
 /* ═══════════════════════════════════════════
@@ -22,36 +24,23 @@ interface ContactRecord {
   current_balance: number;
 }
 
-interface Islem {
-  id: number;
-  cari_id: string;
-  tarih: string;
-  fatura_no: string;
-  islem_turu: string;
-  tur_tipi: "satis" | "alis" | "odeme";
-  toplam: number;
-  durum: "Ödendi" | "Bekliyor" | "Gecikmiş";
+interface ContactLog {
+  id: string;
+  contact_id: string;
+  created_at: string;
+  action_type: "invoice_sale" | "invoice_purchase" | "manual_payment" | "manual_collection";
+  amount_change: number;
+  previous_balance: number;
+  new_balance: number;
+  note: string | null;
 }
 
 /* ═══════════════════════════════════════════
    CONSTANTS
    ═══════════════════════════════════════════ */
 
-const TABS = ["Tüm İşlemler", "Satışlar", "Alışlar", "Ödemeler"] as const;
+const TABS = ["Tüm İşlemler", "Satışlar", "Alışlar", "Ödemeler", "Tahsilatlar"] as const;
 type Tab = (typeof TABS)[number];
-
-/* ═══════════════════════════════════════════
-   MOCK FALLBACK
-   ═══════════════════════════════════════════ */
-
-const MOCK_ISLEMLER: Islem[] = [
-  { id: 1, cari_id: "", tarih: "28 Haz 2024", fatura_no: "FTR-2024-0847", islem_turu: "Satış Faturası", tur_tipi: "satis", toplam: 34250.0, durum: "Ödendi" },
-  { id: 2, cari_id: "", tarih: "25 Haz 2024", fatura_no: "FTR-2024-0831", islem_turu: "Alış Faturası", tur_tipi: "alis", toplam: 18750.0, durum: "Bekliyor" },
-  { id: 3, cari_id: "", tarih: "20 Haz 2024", fatura_no: "FTR-2024-0812", islem_turu: "Satış Faturası", tur_tipi: "satis", toplam: 52000.0, durum: "Gecikmiş" },
-  { id: 4, cari_id: "", tarih: "15 Haz 2024", fatura_no: "ODM-2024-0156", islem_turu: "Ödeme (Havale)", tur_tipi: "odeme", toplam: 45000.0, durum: "Ödendi" },
-  { id: 5, cari_id: "", tarih: "10 Haz 2024", fatura_no: "FTR-2024-0789", islem_turu: "Alış Faturası", tur_tipi: "alis", toplam: 27500.0, durum: "Ödendi" },
-  { id: 6, cari_id: "", tarih: "05 Haz 2024", fatura_no: "FTR-2024-0761", islem_turu: "Satış Faturası", tur_tipi: "satis", toplam: 41800.0, durum: "Bekliyor" },
-];
 
 /* ═══════════════════════════════════════════
    HELPERS
@@ -59,34 +48,28 @@ const MOCK_ISLEMLER: Islem[] = [
 
 // fmt function is now handled by the hook
 
-const durumStyle = (d: Islem["durum"]) => {
-  switch (d) {
-    case "Ödendi":
-      return "bg-emerald-50 text-emerald-700";
-    case "Bekliyor":
-      return "bg-amber-50 text-amber-700";
-    case "Gecikmiş":
-      return "bg-error-container/20 text-error";
+function fmtDate(iso: string): { date: string; time: string } {
+  const d = new Date(iso);
+  return {
+    date: d.toLocaleDateString("tr-TR", { day: "2-digit", month: "short", year: "numeric" }),
+    time: d.toLocaleTimeString("tr-TR", { hour: "2-digit", minute: "2-digit" }),
+  };
+}
+
+// durumStyle removed - contact_logs doesn't track status
+
+const actionTypeToDisplay = (actionType: string): { label: string; icon: string; color: string; category: Tab } => {
+  switch (actionType) {
+    case "invoice_sale":
+      return { label: "Satış Faturası", icon: "arrow_upward", color: "text-emerald-500", category: "Satışlar" };
+    case "invoice_purchase":
+      return { label: "Alış Faturası", icon: "arrow_downward", color: "text-error", category: "Alışlar" };
+    case "manual_payment":
+      return { label: "Ödeme", icon: "arrow_outward", color: "text-error", category: "Ödemeler" };
+    case "manual_collection":
+      return { label: "Tahsilat", icon: "south_west", color: "text-emerald-500", category: "Tahsilatlar" };
     default:
-      return "bg-slate-50 text-slate-700";
-  }
-};
-
-const turIcon = (t: Islem["tur_tipi"]) => {
-  switch (t) {
-    case "satis": return { icon: "arrow_upward", color: "text-emerald-500" };
-    case "alis": return { icon: "arrow_downward", color: "text-error" };
-    case "odeme": return { icon: "swap_horiz", color: "text-primary" };
-    default: return { icon: "info", color: "text-slate-400" };
-  }
-};
-
-const tabKategori = (t: Islem["tur_tipi"]): "Satışlar" | "Alışlar" | "Ödemeler" => {
-  switch (t) {
-    case "satis": return "Satışlar";
-    case "alis": return "Alışlar";
-    case "odeme": return "Ödemeler";
-    default: return "Satışlar";
+      return { label: "İşlem", icon: "info", color: "text-slate-400", category: "Tüm İşlemler" };
   }
 };
 
@@ -106,83 +89,83 @@ const badgeStyle = (tip: "customer" | "supplier") =>
 
 export default function ContactDetailPage() {
   const params = useParams();
+  const router = useRouter();
   const cariId = params.id as string;
 
   const [cari, setCari] = useState<ContactRecord | null>(null);
-  const [islemler, setIslemler] = useState<Islem[]>([]);
+  const [allLogs, setAllLogs] = useState<ContactLog[]>([]);
   const [loading, setLoading] = useState(true);
   const [notFound, setNotFound] = useState(false);
   const [activeTab, setActiveTab] = useState<Tab>("Tüm İşlemler");
 
+  const [currentPage, setCurrentPage] = useState(0);
+  const [isAnimating, setIsAnimating] = useState(false);
+  const tableRef = useRef<HTMLDivElement>(null);
+  const ITEMS_PER_PAGE = 5;
+
+  const [isEditModalOpen, setIsEditModalOpen] = useState(false);
+  const [isTransactionModalOpen, setIsTransactionModalOpen] = useState(false);
+  const [isPendingEdit, startTransitionEdit] = useTransition();
+  const [isPendingTx, startTransitionTx] = useTransition();
+  const editFormRef = useRef<HTMLFormElement>(null);
+  const txFormRef = useRef<HTMLFormElement>(null);
+  const [islemTipi, setIslemTipi] = useState<"Tahsilat" | "Ödeme">("Tahsilat");
+
   const { rates, viewCurrency, setViewCurrency, convert, format: fmt } = useCurrencyConverter();
 
-  // ── Fetch cari record ──
-  useEffect(() => {
-    const fetchData = async () => {
-      if (!cariId) return;
-      setLoading(true);
+  // ── Fetch cari record & transactions ──
+  const fetchData = async (showLoading = false) => {
+    if (!cariId) return;
+    if (showLoading) setLoading(true);
 
-      try {
-        const { data: cariData, error: cariError } = await supabase
-          .from("contacts")
-          .select("*")
-          .eq("id", cariId)
-          .single();
+    try {
+      const { data: cariData, error: cariError } = await supabase
+        .from("contacts")
+        .select("*")
+        .eq("id", cariId)
+        .single();
 
-        if (cariError || !cariData) {
-          console.error("Cari bulunamadı:", cariError);
-          setNotFound(true);
-          setLoading(false);
-          return;
-        }
-
-        setCari(cariData as ContactRecord);
-
-        // Fetch invoices for this contact (çöp kutusundakiler hariç)
-        const { data: invoiceData, error: invoiceError } = await supabase
-          .from("invoices")
-          .select("id, invoice_number, type, issue_date, total_amount, status")
-          .eq("contact_id", cariId)
-          .is("deleted_at", null)
-          .order("issue_date", { ascending: false });
-
-        if (invoiceError) {
-          console.error("Faturalar alınamadı:", invoiceError);
-          setIslemler(MOCK_ISLEMLER.map((i) => ({ ...i, cari_id: cariId })));
-        } else {
-          // Map invoices to Islem format
-          const mappedIslemler: Islem[] = (invoiceData || []).map((inv: any) => ({
-            id: Math.random(),
-            cari_id: cariId,
-            tarih: new Date(inv.issue_date).toLocaleDateString("tr-TR", {
-              day: "2-digit",
-              month: "short",
-              year: "numeric",
-            }),
-            fatura_no: inv.invoice_number || "FTR-???",
-            islem_turu: inv.type === "sale" ? "Satış Faturası" : "Alış Faturası",
-            tur_tipi: inv.type === "sale" ? "satis" : "alis",
-            toplam: Number(inv.total_amount) || 0,
-            durum: inv.status === "paid" ? "Ödendi" : inv.status === "pending" ? "Bekliyor" : "Gecikmiş",
-          }));
-          
-          setIslemler(mappedIslemler);
-        }
-      } catch (err) {
-        console.error("Fetch error:", err);
+      if (cariError || !cariData) {
+        console.error("Cari bulunamadı:", cariError);
         setNotFound(true);
-      } finally {
-        setLoading(false);
+        if (showLoading) setLoading(false);
+        return;
       }
-    };
 
-    fetchData();
+      setCari(cariData as ContactRecord);
+
+      // ✅ Fetch contact_logs (single source of truth)
+      const { data: logsRes, error: logsError } = await supabase
+        .from("contact_logs")
+        .select("id, contact_id, created_at, action_type, amount_change, previous_balance, new_balance, note")
+        .eq("contact_id", cariId)
+        .order("created_at", { ascending: false });
+
+      if (logsError) {
+        console.error("contact_logs alınamadı:", logsError);
+        setAllLogs([]);
+      } else if (logsRes) {
+        setAllLogs(logsRes as ContactLog[]);
+      } else {
+        setAllLogs([]);
+      }
+      setCurrentPage(0);
+    } catch (err) {
+      console.error("Fetch error:", err);
+      setNotFound(true);
+    } finally {
+      if (showLoading) setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchData(true);
   }, [cariId]);
 
   const filtered =
     activeTab === "Tüm İşlemler"
-      ? islemler
-      : islemler.filter((i) => tabKategori(i.tur_tipi) === activeTab);
+      ? allLogs
+      : allLogs.filter((log) => actionTypeToDisplay(log.action_type).category === activeTab);
 
   // convert function is now handled by the hook
 
@@ -192,8 +175,59 @@ export default function ContactDetailPage() {
   const bakiyeColor = isBorclu ? "text-error" : "text-emerald-600";
   const bakiyeBg = isBorclu ? "bg-error-container/20 border-error/10" : "bg-emerald-50/60 border-emerald-100";
 
-  const bekleyen = islemler.filter((i) => i.durum === "Bekliyor").reduce((s, i) => s + i.toplam, 0);
-  const gecikmis = islemler.filter((i) => i.durum === "Gecikmiş").reduce((s, i) => s + i.toplam, 0);
+  // ✅ Bekleyen ve Gecikmiş hesaplamaları contact_logs'tan kaldırıldı (audit trail olarak tutuluyor)
+  const bekleyen = 0; // contact_logs'ta status bilgisi yok (all completed)
+  const gecikmis = 0;
+
+  const handleEditSubmit = (e: React.FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+    const fd = new FormData(e.currentTarget);
+    startTransitionEdit(async () => {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) {
+        toast.error("Oturum açma gerekli.");
+        return;
+      }
+      fd.set("user_id", user.id);
+      fd.set("id", cariId);
+      
+      const result = await cariGuncelleAction(fd);
+      if (result.success) {
+        toast.success(result.message);
+        setIsEditModalOpen(false);
+        await fetchData(false); // Reload data dynamically
+        await router.refresh(); // Invalidate Next.js cache
+      } else {
+        toast.error(result.message);
+      }
+    });
+  };
+
+  const handleTxSubmit = (e: React.FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+    const fd = new FormData(e.currentTarget);
+    startTransitionTx(async () => {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) {
+        toast.error("Oturum açma gerekli.");
+        return;
+      }
+      fd.set("user_id", user.id);
+      fd.set("cari_id", cariId);
+      fd.set("islem_turu", islemTipi);
+      
+      const result = await islemYapAction(fd);
+      if (result.success) {
+        toast.success(result.message);
+        setIsTransactionModalOpen(false);
+        txFormRef.current?.reset();
+        await fetchData(false); // Reload data dynamically without full page reload
+        await router.refresh(); // Invalidate Next.js cache
+      } else {
+        toast.error(result.message);
+      }
+    });
+  };
 
   if (loading) {
     return (
@@ -259,14 +293,14 @@ export default function ContactDetailPage() {
               <option value="GBP">GBP (£)</option>
             </select>
           </div>
-          <button className="flex items-center gap-2 rounded-xl bg-white border border-indigo-100 px-4 py-2.5 text-sm font-bold text-slate-600 hover:bg-slate-50 transition-all">
+          <button onClick={() => setIsEditModalOpen(true)} className="flex items-center gap-2 rounded-xl bg-white border border-indigo-100 px-4 py-2.5 text-sm font-bold text-slate-600 hover:bg-slate-50 transition-all">
             <span className="material-symbols-outlined text-[18px]">edit</span>
             Düzenle
           </button>
-          <button className="flex items-center gap-2 rounded-xl bg-primary text-on-primary px-5 py-2.5 text-sm font-black shadow-lg hover:bg-opacity-90 transition-all">
+          <Link href={`/invoices/new?contact_id=${cariId}`} className="flex items-center gap-2 rounded-xl bg-primary text-on-primary px-5 py-2.5 text-sm font-black shadow-lg hover:bg-opacity-90 transition-all">
             <span className="material-symbols-outlined text-[18px]">receipt</span>
             Yeni Fatura
-          </button>
+          </Link>
         </div>
       </div>
 
@@ -345,7 +379,7 @@ export default function ContactDetailPage() {
             </div>
           </div>
 
-          <button className="mt-6 flex w-full items-center justify-center gap-2 rounded-xl bg-primary py-3.5 text-sm font-black text-on-primary shadow-lg transition-all active:scale-95">
+          <button onClick={() => setIsTransactionModalOpen(true)} className="mt-6 flex w-full items-center justify-center gap-2 rounded-xl bg-primary py-3.5 text-sm font-black text-on-primary shadow-lg transition-all active:scale-95">
             <span className="material-symbols-outlined text-lg">payments</span>
             İşlem Yap
           </button>
@@ -379,60 +413,199 @@ export default function ContactDetailPage() {
           ))}
         </div>
 
-        <div className="overflow-x-auto">
-          <table className="w-full text-left">
+        <div ref={tableRef} className={`overflow-x-auto transition-opacity duration-300 min-h-[400px] ${isAnimating ? "opacity-60" : "opacity-100"}`}>
+          <table className="table-auto w-full border-collapse">
             <thead>
               <tr className="bg-surface-container-low/50 text-slate-500">
-                <th className="px-8 py-4 text-[10px] font-black uppercase tracking-[0.1em]">Tarih</th>
-                <th className="px-4 py-4 text-[10px] font-black uppercase tracking-[0.1em]">Fatura No</th>
-                <th className="px-4 py-4 text-[10px] font-black uppercase tracking-[0.1em]">İşlem</th>
-                <th className="px-4 py-4 text-[10px] font-black uppercase tracking-[0.1em] text-right">Tutar</th>
-                <th className="px-8 py-4 text-[10px] font-black uppercase tracking-[0.1em] text-center">Durum</th>
+                <th className="px-8 py-4 text-[10px] font-black uppercase tracking-[0.1em] align-middle">Tarih</th>
+                <th className="px-4 py-4 text-[10px] font-black uppercase tracking-[0.1em] align-middle">İşlem</th>
+                <th className="px-4 py-4 text-[10px] font-black uppercase tracking-[0.1em] align-middle">Açıklama / Not</th>
+                <th className="px-4 py-4 text-[10px] font-black uppercase tracking-[0.1em] text-right align-middle">Tutar Değişimi</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-indigo-50/50">
-              {/* TODO: Connect to invoices table - currently using mock data as fallback */}
-              {(filtered && Array.isArray(filtered) ? filtered : []).map((tx) => {
-                const { icon, color } = turIcon(tx.tur_tipi);
-                return (
-                  <tr key={tx.id} className="group hover:bg-slate-50/50 transition-colors">
-                    <td className="px-8 py-4 text-xs font-bold text-slate-500 whitespace-nowrap">{tx.tarih}</td>
-                    <td className="px-4 py-4">
-                      <span className="inline-block rounded-lg bg-indigo-50/50 border border-indigo-100/50 px-2.5 py-1 font-mono text-[11px] font-black text-primary">
-                        {tx.fatura_no}
-                      </span>
-                    </td>
-                    <td className="px-4 py-4">
-                      <div className="flex items-center gap-2">
-                        <span className={`material-symbols-outlined text-lg ${color}`}>{icon}</span>
-                        <span className="text-sm font-bold text-on-surface">{tx.islem_turu}</span>
-                      </div>
-                    </td>
-                    <td className="px-4 py-4 text-right font-black text-on-surface tabular-nums">
-                      {tx.tur_tipi === "alis" ? "-" : ""}{fmt(convert(tx.toplam), viewCurrency)}
-                    </td>
-                    <td className="px-8 py-4 text-center">
-                      <span className={`inline-flex items-center rounded-full px-3 py-1 text-[10px] font-black uppercase tracking-wider ${durumStyle(tx.durum)}`}>
-                        {tx.durum}
-                      </span>
-                    </td>
-                  </tr>
-                );
-              })}
-              {(!filtered || filtered.length === 0) && (
+              {(!filtered || filtered.length === 0) ? (
                 <tr>
-                  <td colSpan={5} className="px-8 py-20 text-center text-slate-400 font-bold">
-                    {islemler.length === 0 
-                      ? "Bu cari hesaba ait işlem bulunmamaktadır."
-                      : "Seçilen filtre için işlem bulunamadı."
-                    }
+                  <td colSpan={4} className="px-8 py-16 text-center align-middle">
+                    <span className="material-symbols-outlined text-slate-200 text-5xl block mb-3">history</span>
+                    <p className="text-slate-400 font-semibold">
+                      {allLogs.length === 0 
+                        ? "Bu cari hesaba ait işlem bulunmamaktadır."
+                        : "Seçilen filtre için işlem bulunamadı."
+                      }
+                    </p>
                   </td>
                 </tr>
+              ) : (
+                filtered
+                  .slice(currentPage * ITEMS_PER_PAGE, (currentPage + 1) * ITEMS_PER_PAGE)
+                  .map((log) => {
+                    const { icon, color, label } = actionTypeToDisplay(log.action_type);
+                    const { date, time } = fmtDate(log.created_at);
+                    return (
+                      <tr key={log.id} className="group hover:bg-indigo-50/30 transition-colors align-middle">
+                        <td className="px-8 py-5 align-middle">
+                          <div className="flex flex-col">
+                            <span className="text-sm font-semibold text-slate-500">{date}</span>
+                            <span className="text-[10px] text-slate-400">{time}</span>
+                          </div>
+                        </td>
+                        <td className="px-4 py-5 align-middle">
+                          <div className="flex items-center gap-2">
+                            <span className={`material-symbols-outlined text-lg ${color}`}>{icon}</span>
+                            <span className="text-sm font-bold text-on-surface">{label}</span>
+                          </div>
+                        </td>
+                        <td className="px-4 py-5 align-middle">
+                          <span className="text-sm text-slate-500 italic line-clamp-2 break-words" title={log.note || ""}>{log.note || "—"}</span>
+                        </td>
+                        <td className="px-4 py-5 text-right font-black text-on-surface tabular-nums align-middle">
+                          {log.amount_change < 0 ? "-" : ""}{fmt(convert(Math.abs(log.amount_change)), viewCurrency)}
+                        </td>
+                      </tr>
+                    );
+                })
               )}
             </tbody>
           </table>
         </div>
+
+        <div className="p-6 bg-surface-container-low/30 border-t border-indigo-50 flex justify-between items-center">
+          <p className="text-xs text-slate-500">
+            {filtered.length === 0
+              ? "Kayıt bulunamadı"
+              : `${Math.min(filtered.length, (currentPage + 1) * ITEMS_PER_PAGE)} / ${filtered.length} kayıt gösteriliyor (Sayfa ${currentPage + 1})`}
+          </p>
+          <div className="flex gap-2">
+            <button
+              onClick={() => {
+                setIsAnimating(true);
+                setCurrentPage(currentPage - 1);
+                setTimeout(() => setIsAnimating(false), 300);
+              }}
+              disabled={currentPage === 0}
+              className="px-4 py-2 text-xs font-bold rounded-lg border border-indigo-50 transition-all bg-white flex items-center gap-2 disabled:text-slate-300 disabled:cursor-not-allowed disabled:opacity-50 enabled:text-primary enabled:hover:bg-indigo-50"
+            >
+              <span className="material-symbols-outlined text-sm">arrow_back</span>
+              Önceki
+            </button>
+            <button
+              onClick={() => {
+                setIsAnimating(true);
+                setCurrentPage(currentPage + 1);
+                setTimeout(() => setIsAnimating(false), 300);
+              }}
+              disabled={(currentPage + 1) * ITEMS_PER_PAGE >= filtered.length}
+              className="px-4 py-2 text-xs font-bold rounded-lg border border-indigo-50 transition-all bg-white flex items-center gap-2 disabled:text-slate-300 disabled:cursor-not-allowed disabled:opacity-50 enabled:text-primary enabled:hover:bg-indigo-50"
+            >
+              <span className="material-symbols-outlined text-sm">arrow_forward</span>
+              Sonraki
+            </button>
+          </div>
+        </div>
       </section>
+      {/* ── MODALS ── */}
+      {isEditModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 backdrop-blur-sm">
+          <div className="bg-white rounded-3xl w-full max-w-2xl p-8 shadow-2xl">
+            <div className="flex items-center justify-between mb-6">
+              <h2 className="text-xl font-black text-on-surface">Cari Bilgilerini Düzenle</h2>
+              <button onClick={() => setIsEditModalOpen(false)} className="text-slate-400 hover:text-error transition-colors">
+                <span className="material-symbols-outlined">close</span>
+              </button>
+            </div>
+            <form ref={editFormRef} onSubmit={handleEditSubmit} className="space-y-4">
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="mb-1.5 block text-xs font-bold uppercase tracking-widest text-slate-400">Cari Türü</label>
+                  <select name="tip" defaultValue={cari.type === "customer" ? "Müşteri" : "Tedarikçi"} className="w-full rounded-xl border border-indigo-100 bg-white px-4 py-2.5 text-sm outline-none focus:ring-2 focus:ring-primary">
+                    <option value="Müşteri">Müşteri</option>
+                    <option value="Tedarikçi">Tedarikçi</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="mb-1.5 block text-xs font-bold uppercase tracking-widest text-slate-400">Firma / Şahıs Adı</label>
+                  <input name="unvan" type="text" defaultValue={cari.name} required className="w-full rounded-xl border border-indigo-100 bg-white px-4 py-2.5 text-sm outline-none focus:ring-2 focus:ring-primary" />
+                </div>
+                <div>
+                  <label className="mb-1.5 block text-xs font-bold uppercase tracking-widest text-slate-400">Vergi No</label>
+                  <input name="vergi_no" type="text" defaultValue={cari.tax_number || ""} className="w-full rounded-xl border border-indigo-100 bg-white px-4 py-2.5 text-sm font-mono outline-none focus:ring-2 focus:ring-primary" />
+                </div>
+                <div>
+                  <label className="mb-1.5 block text-xs font-bold uppercase tracking-widest text-slate-400">Vergi Dairesi</label>
+                  <input name="vergi_dairesi" type="text" defaultValue={cari.tax_office || ""} className="w-full rounded-xl border border-indigo-100 bg-white px-4 py-2.5 text-sm outline-none focus:ring-2 focus:ring-primary" />
+                </div>
+                <div>
+                  <label className="mb-1.5 block text-xs font-bold uppercase tracking-widest text-slate-400">Telefon</label>
+                  <input name="telefon" type="tel" defaultValue={cari.phone || ""} className="w-full rounded-xl border border-indigo-100 bg-white px-4 py-2.5 text-sm outline-none focus:ring-2 focus:ring-primary" />
+                </div>
+                <div>
+                  <label className="mb-1.5 block text-xs font-bold uppercase tracking-widest text-slate-400">E-posta</label>
+                  <input name="email" type="email" defaultValue={cari.email || ""} className="w-full rounded-xl border border-indigo-100 bg-white px-4 py-2.5 text-sm outline-none focus:ring-2 focus:ring-primary" />
+                </div>
+                <div className="col-span-2">
+                  <label className="mb-1.5 block text-xs font-bold uppercase tracking-widest text-slate-400">Adres</label>
+                  <textarea name="adres" rows={2} defaultValue={cari.address || ""} className="w-full rounded-xl border border-indigo-100 bg-white px-4 py-2.5 text-sm resize-none outline-none focus:ring-2 focus:ring-primary" />
+                </div>
+              </div>
+              <div className="flex justify-end gap-3 mt-6">
+                <button type="button" onClick={() => setIsEditModalOpen(false)} className="px-5 py-2.5 rounded-xl font-bold text-slate-500 hover:bg-slate-50">İptal</button>
+                <button type="submit" disabled={isPendingEdit} className="px-6 py-2.5 rounded-xl font-black bg-primary text-on-primary shadow-lg hover:bg-opacity-90 disabled:opacity-50">
+                  {isPendingEdit ? "Kaydediliyor..." : "Kaydet"}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {isTransactionModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 backdrop-blur-sm">
+          <div className="bg-white rounded-3xl w-full max-w-md p-8 shadow-2xl">
+            <div className="flex items-center justify-between mb-6">
+              <h2 className="text-xl font-black text-on-surface">İşlem Yap (Nakit)</h2>
+              <button onClick={() => setIsTransactionModalOpen(false)} className="text-slate-400 hover:text-error transition-colors">
+                <span className="material-symbols-outlined">close</span>
+              </button>
+            </div>
+            <form ref={txFormRef} onSubmit={handleTxSubmit} className="space-y-4">
+              <div>
+                <label className="mb-1.5 block text-xs font-bold uppercase tracking-widest text-slate-400">İşlem Türü</label>
+                <div className="flex gap-2 p-1 bg-slate-50 rounded-xl border border-indigo-100">
+                  <button
+                    type="button"
+                    onClick={() => setIslemTipi("Tahsilat")}
+                    className={`flex-1 rounded-lg py-2 text-sm font-bold transition-all ${
+                      islemTipi === "Tahsilat" ? "bg-primary text-on-primary shadow-sm" : "text-slate-500 hover:bg-slate-100"
+                    }`}
+                  >Tahsilat (Giriş)</button>
+                  <button
+                    type="button"
+                    onClick={() => setIslemTipi("Ödeme")}
+                    className={`flex-1 rounded-lg py-2 text-sm font-bold transition-all ${
+                      islemTipi === "Ödeme" ? "bg-primary text-on-primary shadow-sm" : "text-slate-500 hover:bg-slate-100"
+                    }`}
+                  >Ödeme (Çıkış)</button>
+                </div>
+              </div>
+              <div>
+                <label className="mb-1.5 block text-xs font-bold uppercase tracking-widest text-slate-400">Tutar (TRY)</label>
+                <input name="tutar" type="number" step="0.01" min="0" required placeholder="0.00" className="w-full rounded-xl border border-indigo-100 bg-white px-4 py-2.5 text-sm outline-none focus:ring-2 focus:ring-primary font-black" />
+              </div>
+              <div>
+                <label className="mb-1.5 block text-xs font-bold uppercase tracking-widest text-slate-400">Notlar / Açıklama</label>
+                <textarea name="notlar" rows={3} placeholder="İşlem ile ilgili notlarınız..." className="w-full rounded-xl border border-indigo-100 bg-white px-4 py-2.5 text-sm resize-none outline-none focus:ring-2 focus:ring-primary" />
+              </div>
+              <div className="flex justify-end gap-3 mt-6">
+                <button type="button" onClick={() => setIsTransactionModalOpen(false)} className="px-5 py-2.5 rounded-xl font-bold text-slate-500 hover:bg-slate-50">İptal</button>
+                <button type="submit" disabled={isPendingTx} className="px-6 py-2.5 rounded-xl font-black bg-primary text-on-primary shadow-lg hover:bg-opacity-90 disabled:opacity-50">
+                  {isPendingTx ? "Kaydediliyor..." : "İşlemi Tamamla"}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

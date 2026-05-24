@@ -4,8 +4,10 @@ import React, { useState, useEffect, useRef } from "react";
 import Image from "next/image";
 import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabaseClient";
-import toast from "react-hot-toast";
+import toast, { Toaster } from "react-hot-toast";
 import * as XLSX from 'xlsx';
+
+import { getAdminBusinessAddress, uploadAvatarAction } from "./actions";
 
 export default function ProfilePage() {
   const router = useRouter();
@@ -39,18 +41,8 @@ export default function ProfilePage() {
 
   // --- Preferences States ---
   const [preferences, setPreferences] = useState({
-    darkMode: false,
     liveSync: true,
   });
-
-  // --- Dark Mode Effect ---
-  useEffect(() => {
-    if (preferences.darkMode) {
-      document.documentElement.classList.add("dark");
-    } else {
-      document.documentElement.classList.remove("dark");
-    }
-  }, [preferences.darkMode]);
 
   // --- Initial Fetch ---
   useEffect(() => {
@@ -75,43 +67,90 @@ export default function ProfilePage() {
           email: user.email || "",
           fullName: user.user_metadata?.full_name || "",
           avatarUrl: user.user_metadata?.avatar_url || null,
-          companyName: "Henüz Belirtilmemiş",
-          taxId: "—",
-          businessSector: "Diğer",
-          address: "Henüz Belirtilmemiş",
+          companyName: "Sovereign Holdings Ltd.",
+          taxId: "GB 938 4210 02",
+          businessSector: "Doğrulanmış İşletme",
+          address: user.user_metadata?.business_address || "88 Canary Wharf, Level 42, London E14 5AA",
           logoUrl: null as string | null,
         };
 
         if (!profileError && profileData) {
+          let adminData = null;
+          
+          if (profileData.role !== 'admin') {
+            let adminQuery = supabase
+              .from("profiles")
+              .select("id, company_name, tax_id, business_sector, logo_url")
+              .eq("role", "admin")
+              .limit(1);
+            
+            if (profileData.business_id) {
+              adminQuery = adminQuery.eq("business_id", profileData.business_id);
+            } else if (profileData.company_name) {
+              adminQuery = adminQuery.eq("company_name", profileData.company_name);
+            } else {
+              adminQuery = null as any;
+            }
+
+            if (adminQuery) {
+              const { data: fetchedAdmin } = await adminQuery.maybeSingle();
+              if (fetchedAdmin) {
+                adminData = fetchedAdmin;
+              }
+            }
+          }
+
           baseProfileData = {
             ...baseProfileData,
             fullName: profileData.full_name || baseProfileData.fullName,
             avatarUrl: profileData.avatar_url || baseProfileData.avatarUrl,
-            companyName: profileData.company_name || baseProfileData.companyName,
-            taxId: profileData.tax_id || baseProfileData.taxId,
-            businessSector: profileData.business_sector || baseProfileData.businessSector,
+            companyName: adminData?.company_name || profileData.company_name || baseProfileData.companyName,
+            taxId: adminData?.tax_id || profileData.tax_id || baseProfileData.taxId,
+            businessSector: adminData?.business_sector || profileData.business_sector || baseProfileData.businessSector,
+            logoUrl: adminData?.logo_url || profileData.logo_url || baseProfileData.logoUrl,
           };
-        }
 
-        // Merge with local business settings (for missing Supabase columns)
-        const localBusinessRaw = localStorage.getItem(`business_settings_${user.id}`);
-        if (localBusinessRaw) {
-          try {
-            const localData = JSON.parse(localBusinessRaw);
-            baseProfileData = {
-              ...baseProfileData,
-              companyName: localData.companyName || baseProfileData.companyName,
-              taxId: localData.taxId || baseProfileData.taxId,
-              businessSector: localData.businessSector || baseProfileData.businessSector,
-              address: localData.address || baseProfileData.address,
-              logoUrl: localData.logoUrl || baseProfileData.logoUrl,
-            };
-          } catch (e) {
-            console.error("Local data parsing error:", e);
+          // Try to load business settings from localStorage (user's or admin's if found)
+          const targetIds = [user.id];
+          if (adminData?.id) targetIds.push(adminData.id);
+
+          for (const targetId of targetIds) {
+            const localBusinessRaw = localStorage.getItem(`business_settings_${targetId}`);
+            if (localBusinessRaw) {
+              try {
+                const localData = JSON.parse(localBusinessRaw);
+                baseProfileData = {
+                  ...baseProfileData,
+                  companyName: localData.companyName || baseProfileData.companyName,
+                  taxId: localData.taxId || baseProfileData.taxId,
+                  businessSector: localData.businessSector || baseProfileData.businessSector,
+                  address: localData.address || baseProfileData.address,
+                  logoUrl: localData.logoUrl || baseProfileData.logoUrl,
+                };
+                // If we found and parsed data successfully, we can stop checking
+                break; 
+              } catch (e) {
+                console.error("Local data parsing error:", e);
+              }
+            }
+          }
+
+          // If user is not admin and we found an admin, fetch the address securely from server action
+          if (profileData.role !== 'admin' && adminData?.id) {
+            try {
+              const adminAddress = await getAdminBusinessAddress(adminData.id);
+              if (adminAddress) {
+                baseProfileData.address = adminAddress;
+              }
+            } catch (err) {
+              console.error("Failed to fetch admin address:", err);
+            }
           }
         }
 
         setProfile(baseProfileData);
+
+
 
         const storedPrefs = localStorage.getItem("user_preferences");
         if (storedPrefs) {
@@ -171,33 +210,38 @@ export default function ProfilePage() {
     setIsAvatarUploading(true);
     const toastId = toast.loading("Fotoğraf yükleniyor...");
     try {
-      const fileExt = file.name.split(".").pop();
-      const fileName = `${profile.id}-${Math.random()}.${fileExt}`;
-      const filePath = `avatars/${fileName}`;
+      // Dosyayı Base64'e dönüştür
+      const reader = new FileReader();
+      reader.readAsDataURL(file);
+      reader.onloadend = async () => {
+        try {
+          const base64Data = (reader.result as string).split(",")[1];
+          
+          // Server Action'ı çağır (Admin yetkileri ile yükler, RLS politikalarını atlar)
+          const result = await uploadAvatarAction(base64Data, file.name, file.type, profile.id);
+          
+          if (!result.success || !result.publicUrl) {
+            throw new Error(result.error || "Yükleme başarısız oldu.");
+          }
 
-      const { error: uploadError } = await supabase.storage
-        .from("avatars")
-        .upload(filePath, file);
+          // Oturum bilgilerini yenilemek için auth kullanıcısını güncel duruma çekelim
+          await supabase.auth.refreshSession();
 
-      if (uploadError) throw uploadError;
-
-      const { data: { publicUrl } } = supabase.storage
-        .from("avatars")
-        .getPublicUrl(filePath);
-
-      const { error: updateError } = await supabase
-        .from("profiles")
-        .update({ avatar_url: publicUrl })
-        .eq("id", profile.id);
-
-      if (updateError) throw updateError;
-
-      setProfile(prev => prev ? { ...prev, avatarUrl: publicUrl } : null);
-      setAvatarTimestamp(Date.now());
-      toast.success("Fotoğraf güncellendi.", { id: toastId });
+          setProfile(prev => prev ? { ...prev, avatarUrl: result.publicUrl } : null);
+          setAvatarTimestamp(Date.now());
+          toast.success("Fotoğraf başarıyla güncellendi.", { id: toastId });
+        } catch (innerErr: any) {
+          toast.error(`Yükleme hatası: ${innerErr.message}`, { id: toastId });
+        } finally {
+          setIsAvatarUploading(false);
+        }
+      };
+      
+      reader.onerror = () => {
+        throw new Error("Dosya okunamadı.");
+      };
     } catch (err: any) {
       toast.error(`Yükleme hatası: ${err.message}`, { id: toastId });
-    } finally {
       setIsAvatarUploading(false);
     }
   };
@@ -265,11 +309,11 @@ export default function ProfilePage() {
     toast.success("Mimari yapılandırma XLSX olarak indirildi.");
   };
 
-  const togglePreference = (key: "darkMode" | "liveSync") => {
+  const togglePreference = (key: "liveSync") => {
     const newPrefs = { ...preferences, [key]: !preferences[key] };
     setPreferences(newPrefs);
     localStorage.setItem("user_preferences", JSON.stringify(newPrefs));
-    toast.success(key === "darkMode" ? (newPrefs.darkMode ? "Gece modu aktif" : "Gündüz modu aktif") : "Senkronizasyon güncellendi");
+    toast.success("Senkronizasyon güncellendi");
   };
 
   if (isLoading) {
@@ -285,32 +329,7 @@ export default function ProfilePage() {
 
   return (
     <div className="grid grid-cols-12 gap-8">
-      {/* Dynamic Styling Hook for Dark Mode (Scoped Override) */}
-      <style jsx global>{`
-        .dark {
-          --color-background: #0f111a;
-          --color-surface: #0f111a;
-          --color-surface-dim: #05060a;
-          --color-surface-bright: #1a1d2d;
-          --color-surface-variant: #2d3142;
-          --color-surface-container-lowest: #141724;
-          --color-surface-container-low: #1c2033;
-          --color-surface-container: #242942;
-          --color-surface-container-high: #2c3251;
-          --color-surface-container-highest: #343b60;
-          --color-on-surface: #eef0ff;
-          --color-on-surface-variant: #bfc4d9;
-          --color-outline: #6e738c;
-          --color-outline-variant: #44495e;
-          --color-on-background: #eef0ff;
-        }
-        .dark .bg-surface-container-low { background-color: var(--color-surface-container-low); }
-        .dark .bg-surface-container-lowest { background-color: var(--color-surface-container-lowest); }
-        .dark .bg-surface-container-high { background-color: var(--color-surface-container-high); }
-        .dark .text-on-surface { color: var(--color-on-surface); }
-        .dark .text-on-surface-variant { color: var(--color-on-surface-variant); }
-      `}</style>
-
+      <Toaster position="top-right" />
       {/* Left Column: User Profile */}
       <div className="col-span-12 lg:col-span-7 space-y-8">
         {/* Profile Information Card */}
@@ -336,6 +355,7 @@ export default function ProfilePage() {
                   src={profile?.avatarUrl ? `${profile.avatarUrl}?t=${avatarTimestamp}` : "https://lh3.googleusercontent.com/aida-public/AB6AXuBY5E2U5beAf0HPxnaZY_3SyyRPUzvnCyIBK8R7co4UYzbP8LSzDQTFYaWAjCrWObJ8b8an_PNCxkbdT39Lj-JVfjvS2Fj7hG2tLorvbgm8FWpmecUaQcfKyPK5RmWc4WQm22snPKPqESke94N3ANzD_ghrflBmp4Uu8JyNsOumn9J2tQOUOJ2K0ByOZChQ2-WhrXGeWwyNHxoNccGXrcTJE4Wab5TSUy3z3WoK2c_up-8q-jkCY5Xuf5Yw1dFITHkM_Zc-pJ04TlI"}
                   alt="Avatar"
                   fill
+                  sizes="(max-width: 768px) 100vw, (max-width: 1200px) 50vw, 33vw"
                   style={{ objectFit: "cover" }}
                   className={`w-full h-full object-cover transition-opacity ${isAvatarUploading ? "opacity-30" : "opacity-100"}`}
                 />
@@ -351,7 +371,12 @@ export default function ProfilePage() {
                   <span className="material-symbols-outlined text-white">photo_camera</span>
                 </div>
               </div>
-              <p className="text-[10px] text-center mt-3 uppercase tracking-wider font-bold text-on-surface-variant">Fotoğrafı Güncelle</p>
+              <p 
+                onClick={handleAvatarClick} 
+                className="text-[10px] text-center mt-3 uppercase tracking-wider font-bold text-on-surface-variant cursor-pointer hover:text-primary transition-colors"
+              >
+                Fotoğrafı Güncelle
+              </p>
             </div>
             <div className="flex-1 w-full space-y-6">
               <div className="grid grid-cols-1 gap-6">
@@ -498,18 +523,6 @@ export default function ProfilePage() {
             <h2 className="text-xl font-bold font-headline text-on-surface">Arayüz Kuralları</h2>
           </div>
           <div className="space-y-4">
-            <div
-              onClick={() => togglePreference("darkMode")}
-              className="flex items-center justify-between p-3 hover:bg-surface-container-low rounded-lg transition-colors cursor-pointer"
-            >
-              <div className="flex items-center gap-3">
-                <span className="material-symbols-outlined text-on-surface-variant">dark_mode</span>
-                <span className="text-sm font-medium text-on-surface">Gece Modu</span>
-              </div>
-              <div className={`w-10 h-5 rounded-full relative transition-colors ${preferences.darkMode ? "bg-primary" : "bg-outline-variant"}`}>
-                <div className={`absolute top-1 w-3 h-3 bg-white rounded-full transition-all ${preferences.darkMode ? "right-1" : "left-1"}`}></div>
-              </div>
-            </div>
             <div
               onClick={() => togglePreference("liveSync")}
               className="flex items-center justify-between p-3 hover:bg-surface-container-low rounded-lg transition-colors cursor-pointer"

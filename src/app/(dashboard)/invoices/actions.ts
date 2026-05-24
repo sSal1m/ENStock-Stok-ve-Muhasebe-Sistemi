@@ -2,6 +2,7 @@
 
 import { createClient } from "@supabase/supabase-js";
 import { revalidatePath } from "next/cache";
+import { logActivity } from "@/lib/activityLogger";
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
@@ -15,17 +16,17 @@ async function resolveTeamIdsServer(userId: string): Promise<string[]> {
   try {
     const { data: myProfile } = await supabaseServer
       .from("profiles")
-      .select("company_name")
+      .select("business_id")
       .eq("id", userId)
       .single();
 
-    const company = myProfile?.company_name;
-    if (!company) return [userId];
+    const businessId = myProfile?.business_id;
+    if (!businessId) return [userId];
 
     const { data: teamProfiles } = await supabaseServer
       .from("profiles")
       .select("id")
-      .eq("company_name", company);
+      .eq("business_id", businessId);
 
     if (teamProfiles && teamProfiles.length > 0) {
       return teamProfiles.map((p) => p.id);
@@ -61,11 +62,14 @@ export interface CreateInvoiceRequest {
   issue_date: string;
   notes?: string;
   line_items: InvoiceLineItem[];
-  status?: "draft" | "pending";  // ✅ draft veya pending statüsü
+  status?: "draft" | "pending" | "paid";  // ✅ draft, pending veya paid statüsü
   invoice_id?: string;  // ✅ NEW: draft faturayı update etmek için
   invoice_number?: string; // ✅ Manuel fatura numarası için
   currency?: string; // ✅ NEW: Para birimi (TRY, USD, EUR vb.)
   exchange_rate?: number; // ✅ NEW: Kur değeri
+  due_date?: string; // ✅ NEW: Vade tarihi (due date)
+  payment_term?: string | number; // ✅ Formdan gelen vade süresi
+  payment_status?: boolean | string; // ✅ Formdan gelen ödeme durumu
 }
 
 export interface InvoiceActionState {
@@ -225,8 +229,24 @@ export async function createInvoiceAction(request: CreateInvoiceRequest): Promis
   const { 
     user_id, contact_id, invoice_type, issue_date, notes, line_items, 
     status = "draft", invoice_id, invoice_number: reqInvoiceNumber,
-    currency = "TRY", exchange_rate = 1 
+    currency = "TRY", exchange_rate = 1, due_date: originalDueDate,
+    payment_term, payment_status
   } = request;
+
+  // 1. Formdan gelen "vade süresi" verisini al. Bu değer "7", "15" gibi string olarak gelebilir, bunu integer'a (gün sayısına) parse et.
+  const days = parseInt(String(payment_term || "0"), 10) || 0;
+
+  // 2. Bugünün tarihinin (Date) üzerine bu gün sayısını ekleyerek kesin bir vade tarihi (`due_date`) hesapla.
+  const today = new Date();
+  today.setDate(today.getDate() + days);
+  const finalDueDate = payment_term !== undefined ? today.toISOString() : (originalDueDate || null);
+
+  // 3. Formdan gelen ödeme durumu switch/checkbox değerini yakala ve kesin bir boolean (true/false) değere çevirerek `is_paid` değişkenine ata.
+  const is_paid = payment_status !== undefined
+    ? (typeof payment_status === 'string'
+        ? payment_status.toLowerCase() === 'true' || payment_status === '1' || payment_status === 'on'
+        : !!payment_status)
+    : (status === "paid");
 
   // 1) auth.getUser() kontrolü (Kullanıcının sisteme gerçekten login olup olmadığını ve token'ı doğrulamak için)
   // Not: supabaseServer service_role ile oluşturulduğundan, auth context'i taşıması için ek ayarlarınız olabilir.
@@ -335,6 +355,11 @@ export async function createInvoiceAction(request: CreateInvoiceRequest): Promis
        };
     }
 
+    // TRY karşılıkları — currency-blind agregasyonlar için (dashboard, raporlar)
+    const totalAmountTry = totalAmount * (exchange_rate || 1);
+    const subtotalTry    = subtotal    * (exchange_rate || 1);
+    const taxTotalTry    = vatTotal    * (exchange_rate || 1);
+
     if (invoice_id) {
       // ✅ Update existing draft invoice
       const { data: updatedInvoice, error: updateError } = await supabaseServer
@@ -344,13 +369,18 @@ export async function createInvoiceAction(request: CreateInvoiceRequest): Promis
           type: dbInvoiceType,
           invoice_number: finalInvoiceNumber,
           issue_date,
+          due_date: finalDueDate,
           subtotal,
           tax_total: vatTotal,
           total_amount: totalAmount,
+          subtotal_try: subtotalTry,
+          tax_total_try: taxTotalTry,
+          total_amount_try: totalAmountTry,
           notes: notes || null,
           status: status,
           currency,
           exchange_rate,
+          is_paid,
         })
         .eq("id", invoice_id)
         .select()
@@ -399,13 +429,18 @@ export async function createInvoiceAction(request: CreateInvoiceRequest): Promis
             type: dbInvoiceType,
             invoice_number: finalInvoiceNumber,
             issue_date,
+            due_date: finalDueDate,
             subtotal,
             tax_total: vatTotal,
             total_amount: totalAmount,
+            subtotal_try: subtotalTry,
+            tax_total_try: taxTotalTry,
+            total_amount_try: totalAmountTry,
             notes: notes || null,
             status: status,
             currency,
             exchange_rate,
+            is_paid,
           },
         ])
         .select()
@@ -595,8 +630,11 @@ export async function createInvoiceAction(request: CreateInvoiceRequest): Promis
       if (shouldProcessStock) {  // ✅ Only if transitioning from draft->paid
         // ✅ Hardcode enum mapping for cash_transactions.transaction_type
         const dbTransactionType = invoice_type.toLowerCase().includes('sale') ? 'sale' : 'purchase';
-        const amount = Number(totalAmount);
-        
+        // cash_transactions.amount HER ZAMAN TRY'de tutulur (raporlama agregasyonları
+        // currency-blind toplama yaptığı için). Fatura currency'sinden exchange_rate
+        // ile TRY'ye normalize ediliyor.
+        const amount = Number(totalAmount) * Number(exchange_rate || 1);
+
         const { error: transactionError } = await supabaseServer
           .from("cash_transactions")
           .insert([
@@ -631,10 +669,14 @@ export async function createInvoiceAction(request: CreateInvoiceRequest): Promis
       }
 
       // ═══════════════════════════════════════════
-      // STEP 6: UPDATE CONTACT BALANCE
+      // STEP 6: UPDATE CONTACT BALANCE + CREATE CONTACT LOG
       // ═══════════════════════════════════════════
+      // ✅ inventory_logs pattern: bakiye UPDATE + contact_logs INSERT
       if (shouldProcessStock) {  // ✅ Only if transitioning from draft->paid
-        const balanceChange = invoice_type === "sales" ? totalAmount : -totalAmount;
+        // contacts.current_balance ve contact_logs HER ZAMAN TRY'de tutulur.
+        // Fatura currency'sindeki tutar exchange_rate ile normalize edilir.
+        const totalAmountTryForBalance = Number(totalAmount) * Number(exchange_rate || 1);
+        const balanceChange = invoice_type === "sales" ? totalAmountTryForBalance : -totalAmountTryForBalance;
         
         const { data: currentContact, error: fetchError } = await supabaseServer
           .from("contacts")
@@ -645,8 +687,10 @@ export async function createInvoiceAction(request: CreateInvoiceRequest): Promis
         if (fetchError) {
           console.error("❌ [STEP 6] Error fetching contact balance:", fetchError);
         } else if (currentContact) {
-          const newBalance = Number(currentContact.current_balance || 0) + balanceChange;
+          const previousBalance = Number(currentContact.current_balance || 0);
+          const newBalance = previousBalance + balanceChange;
           
+          // ✅ UPDATE contact balance
           const { error: updateError } = await supabaseServer
             .from("contacts")
             .update({ current_balance: newBalance })
@@ -658,11 +702,41 @@ export async function createInvoiceAction(request: CreateInvoiceRequest): Promis
               contact_id,
             });
           } else {
-            console.log("✅ [STEP 6] Contact balance updated:", {
-              contact_id,
-              newBalance,
-              change: balanceChange,
-            });
+            // ✅ INSERT contact_logs record (audit trail)
+            const actionType = invoice_type === "sales" ? "invoice_sale" : "invoice_purchase";
+            const note = `Fatura ${newInvoice.invoice_number} - ${invoice_type === "sales" ? "Satış" : "Alış"} İşlemi`;
+            
+            const { error: logError } = await supabaseServer
+              .from("contact_logs")
+              .insert([
+                {
+                  business_id: user_id,
+                  contact_id,
+                  invoice_id: invoiceIdToUse,
+                  action_type: actionType,
+                  amount_change: balanceChange,
+                  previous_balance: previousBalance,
+                  new_balance: newBalance,
+                  note,
+                  created_by: user_id,
+                },
+              ]);
+
+            if (logError) {
+              console.error("❌ [STEP 6] Error creating contact log:", {
+                code: logError?.code,
+                message: logError?.message,
+                contact_id,
+              });
+            } else {
+              console.log("✅ [STEP 6] Contact balance updated & logged:", {
+                contact_id,
+                previousBalance,
+                newBalance,
+                change: balanceChange,
+                actionType,
+              });
+            }
           }
         }
       } else {
@@ -672,6 +746,24 @@ export async function createInvoiceAction(request: CreateInvoiceRequest): Promis
       // ✅ Draft statüsü: Sadece fatura ve kalemler kaydedilir
       console.log("📝 [DRAFT] Invoice saved as draft - no stock or balance changes");
     }
+
+    // Audit trail (activity_logs)
+    await logActivity({
+      userId: user_id,
+      module: "invoice",
+      action: invoice_id ? "update" : "create",
+      entityId: invoiceIdToUse,
+      entityName: newInvoice.invoice_number ?? finalInvoiceNumber,
+      description: `${invoice_id ? "Güncellendi" : "Oluşturuldu"}: ${invoice_type === "sales" ? "Satış" : "Alış"} faturası "${newInvoice.invoice_number ?? finalInvoiceNumber}" (${Number(totalAmount).toLocaleString("tr-TR")} ${currency}) - ${status === "draft" ? "Taslak" : "Kesildi"}`,
+      metadata: {
+        type: dbInvoiceType,
+        status,
+        total_amount: totalAmount,
+        currency,
+        contact_id,
+        line_items_count: line_items.length,
+      },
+    });
 
     revalidatePath("/invoices");
     revalidatePath("/contacts");
@@ -724,6 +816,297 @@ export async function createInvoiceAction(request: CreateInvoiceRequest): Promis
         system: errorMessage,
         details: errorStack,
       },
+    };
+  }
+}
+
+/* ═══════════════════════════════════════════
+   UPDATE PROPOSAL ACTION
+   ═══════════════════════════════════════════ */
+
+export async function updateProposalAction(
+  formData: FormData
+): Promise<InvoiceActionState> {
+  try {
+    const userId = formData.get("user_id") as string;
+    const proposalId = formData.get("proposal_id") as string;
+    const proposalType = formData.get("proposal_type") as "sale" | "purchase";
+    const issueDate = formData.get("issue_date") as string;
+    const notes = formData.get("notes") as string;
+    const contactId = formData.get("contact_id") as string;
+    const lineItemsJson = formData.get("line_items") as string;
+
+    if (!userId || !proposalId || !proposalType || !contactId) {
+      return {
+        success: false,
+        message: "Eksik bilgi. Teklif ve cari bilgisi zorunludur.",
+      };
+    }
+
+    const lineItems: InvoiceLineItem[] = JSON.parse(lineItemsJson || "[]");
+    
+    if (lineItems.length === 0) {
+      return {
+        success: false,
+        message: "Teklifte en az bir ürün olması zorunludur.",
+      };
+    }
+
+    // Calculate totals
+    let totalBeforeTax = 0;
+    let totalTax = 0;
+    const processedItems = lineItems.map((item) => {
+      const lineBefore = item.quantity * item.unit_price;
+      const lineVat = lineBefore * (item.vat_rate / 100);
+      totalBeforeTax += lineBefore;
+      totalTax += lineVat;
+      return {
+        product_id: item.product_id,
+        quantity: item.quantity,
+        unit_price: item.unit_price,
+        vat_rate: item.vat_rate,
+        line_total: lineBefore + lineVat,
+      };
+    });
+
+    const totalAmount = totalBeforeTax + totalTax;
+
+    // Delete old proposal items
+    await supabaseServer.from("invoice_items").delete().eq("invoice_id", proposalId);
+
+    // Insert new proposal items
+    const proposalItemsToInsert = processedItems.map((item) => ({
+      invoice_id: proposalId,
+      product_id: item.product_id,
+      quantity: item.quantity,
+      unit_price: item.unit_price,
+      vat_rate: item.vat_rate,
+      line_total: item.line_total,
+    }));
+
+    const { error: insertItemsError } = await supabaseServer
+      .from("invoice_items")
+      .insert(proposalItemsToInsert);
+
+    if (insertItemsError) {
+      return {
+        success: false,
+        message: "Teklif satırları eklenirken hata oluştu.",
+      };
+    }
+
+    // Update proposal
+    const { error: updateError } = await supabaseServer
+      .from("invoices")
+      .update({
+        contact_id: contactId,
+        issue_date: issueDate,
+        notes: notes || null,
+        total_amount: totalAmount,
+        tax_total: totalTax,
+        updated_at: new Date().toISOString(),
+      })
+      .eq("id", proposalId)
+      .eq("user_id", userId)
+      .eq("type", "proposal");
+
+    if (updateError) {
+      return {
+        success: false,
+        message: "Teklif güncellenirken hata oluştu: " + updateError.message,
+      };
+    }
+
+    const { data: proposal } = await supabaseServer
+      .from("invoices")
+      .select("invoice_number")
+      .eq("id", proposalId)
+      .single();
+
+    await logActivity({
+      userId,
+      module: "invoice",
+      action: "update",
+      entityId: proposalId,
+      entityName: proposal?.invoice_number ?? null,
+      description: `Teklif "${proposal?.invoice_number ?? proposalId}" güncellendi (${Number(totalAmount).toLocaleString("tr-TR")} TRY)`,
+      metadata: {
+        proposal_type: proposalType,
+        total_amount: totalAmount,
+        line_items_count: lineItems.length,
+      },
+    });
+
+    revalidatePath("/proposals");
+    revalidatePath(`/proposals/${proposalId}`);
+
+    return {
+      success: true,
+      message: "Teklif başarıyla güncellendi.",
+      invoice_id: proposalId,
+    };
+  } catch (error) {
+    console.error("Update proposal error:", error);
+    return {
+      success: false,
+      message: `Beklenmeyen hata: ${(error as Error).message}`,
+    };
+  }
+}
+
+/* ═══════════════════════════════════════════
+   UPDATE INVOICE ACTION
+   ═══════════════════════════════════════════ */
+
+export async function updateInvoiceAction(
+  formData: FormData
+): Promise<InvoiceActionState> {
+  try {
+    const userId = formData.get("user_id") as string;
+    const invoiceId = formData.get("invoice_id") as string;
+    const invoiceType = formData.get("invoice_type") as "sale" | "purchase";
+    const issueDate = formData.get("issue_date") as string;
+    const notes = formData.get("notes") as string;
+    const contactId = formData.get("contact_id") as string;
+    const lineItemsJson = formData.get("line_items") as string;
+
+    if (!userId || !invoiceId || !invoiceType || !contactId) {
+      return {
+        success: false,
+        message: "Eksik bilgi. Fatura ve cari bilgisi zorunludur.",
+      };
+    }
+
+    const lineItems: InvoiceLineItem[] = JSON.parse(lineItemsJson || "[]");
+    
+    if (lineItems.length === 0) {
+      return {
+        success: false,
+        message: "Faturada en az bir ürün olması zorunludur.",
+      };
+    }
+
+    // Calculate totals
+    let totalBeforeTax = 0;
+    let totalTax = 0;
+    const processedItems = lineItems.map((item) => {
+      const lineBefore = item.quantity * item.unit_price;
+      const lineVat = lineBefore * (item.vat_rate / 100);
+      totalBeforeTax += lineBefore;
+      totalTax += lineVat;
+      return {
+        product_id: item.product_id,
+        quantity: item.quantity,
+        unit_price: item.unit_price,
+        vat_rate: item.vat_rate,
+        line_total: lineBefore + lineVat,
+      };
+    });
+
+    const totalAmount = totalBeforeTax + totalTax;
+
+    // Delete old invoice items
+    const { error: deleteItemsError } = await supabaseServer
+      .from("invoice_items")
+      .delete()
+      .eq("invoice_id", invoiceId);
+
+    if (deleteItemsError) {
+      console.error("Error deleting invoice items:", deleteItemsError);
+      return {
+        success: false,
+        message: "Fatura satırları silinirken hata oluştu.",
+      };
+    }
+
+    // Insert new invoice items
+    const invoiceItemsToInsert = processedItems.map((item) => ({
+      invoice_id: invoiceId,
+      product_id: item.product_id,
+      quantity: item.quantity,
+      unit_price: item.unit_price,
+      vat_rate: item.vat_rate,
+      line_total: item.line_total,
+    }));
+
+    const { error: insertItemsError } = await supabaseServer
+      .from("invoice_items")
+      .insert(invoiceItemsToInsert);
+
+    if (insertItemsError) {
+      console.error("Error inserting invoice items:", insertItemsError);
+      return {
+        success: false,
+        message: "Fatura satırları eklenirken hata oluştu.",
+      };
+    }
+
+    // Mevcut faturanın exchange_rate'ini al ki TRY karşılığını güncelleyebilelim
+    const { data: existingInv } = await supabaseServer
+      .from("invoices")
+      .select("exchange_rate")
+      .eq("id", invoiceId)
+      .single();
+    const rate = Number(existingInv?.exchange_rate) || 1;
+
+    // Update invoice
+    const { error: updateError } = await supabaseServer
+      .from("invoices")
+      .update({
+        contact_id: contactId,
+        issue_date: issueDate,
+        notes: notes || null,
+        total_amount: totalAmount,
+        tax_total: totalTax,
+        total_amount_try: totalAmount * rate,
+        tax_total_try: totalTax * rate,
+        subtotal_try: (totalAmount - totalTax) * rate,
+        updated_at: new Date().toISOString(),
+      })
+      .eq("id", invoiceId)
+      .eq("user_id", userId);
+
+    if (updateError) {
+      console.error("Invoice update error:", updateError);
+      return {
+        success: false,
+        message: "Fatura güncellenirken hata oluştu: " + updateError.message,
+      };
+    }
+
+    const { data: invoiceRow } = await supabaseServer
+      .from("invoices")
+      .select("invoice_number")
+      .eq("id", invoiceId)
+      .single();
+
+    await logActivity({
+      userId,
+      module: "invoice",
+      action: "update",
+      entityId: invoiceId,
+      entityName: invoiceRow?.invoice_number ?? null,
+      description: `Fatura "${invoiceRow?.invoice_number ?? invoiceId}" güncellendi (${invoiceType === "sale" ? "Satış" : "Alış"} - ${Number(totalAmount).toLocaleString("tr-TR")} TRY)`,
+      metadata: {
+        invoice_type: invoiceType,
+        total_amount: totalAmount,
+        line_items_count: lineItems.length,
+      },
+    });
+
+    revalidatePath("/invoices");
+    revalidatePath(`/invoices/${invoiceId}`);
+
+    return {
+      success: true,
+      message: "Fatura başarıyla güncellendi.",
+      invoice_id: invoiceId,
+    };
+  } catch (error) {
+    console.error("Update invoice error:", error);
+    return {
+      success: false,
+      message: `Beklenmeyen hata: ${(error as Error).message}`,
     };
   }
 }

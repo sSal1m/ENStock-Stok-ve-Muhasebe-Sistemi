@@ -108,9 +108,9 @@ export default function Sidebar() {
   return (
     <aside className="w-64 bg-surface border-r border-surface-container-high h-screen overflow-y-auto sticky top-0 shadow-sm flex flex-col">
       {/* Logo/Brand Section */}
-      <div className="p-6 border-b border-surface-container-high flex items-center gap-3">
+      <div className="p-5 border-b border-surface-container-high flex items-center gap-4">
         {profile?.logo_url ? (
-          <div className="w-10 h-10 rounded-lg overflow-hidden border border-surface-container-high flex-shrink-0 relative">
+          <div className="w-14 h-14 rounded-xl overflow-hidden border border-surface-container-high flex-shrink-0 relative shadow-sm hover:scale-[1.03] transition-transform duration-200 bg-white dark:bg-slate-900 flex items-center justify-center">
             <img
               src={profile.logo_url}
               alt="Logo"
@@ -118,15 +118,15 @@ export default function Sidebar() {
             />
           </div>
         ) : (
-          <div className="w-10 h-10 rounded-lg bg-primary/10 flex items-center justify-center flex-shrink-0 text-primary border border-primary/20">
-            <span className="material-symbols-outlined text-2xl">corporate_fare</span>
+          <div className="w-14 h-14 rounded-xl bg-primary/10 flex items-center justify-center flex-shrink-0 text-primary border border-primary/20 shadow-sm hover:scale-[1.03] transition-transform duration-200">
+            <span className="material-symbols-outlined text-3xl">corporate_fare</span>
           </div>
         )}
-        <div className="min-w-0">
-          <h1 className="text-base font-bold text-primary truncate leading-tight">
+        <div className="min-w-0 flex-1">
+          <h1 className="text-base font-extrabold text-primary truncate leading-snug">
             {loading ? 'Yükleniyor...' : (profile?.company_name || 'Şirketim')}
           </h1>
-          <p className="text-xs text-on-surface/60 mt-0.5">Muhasebe & Yönetim</p>
+          <p className="text-[11px] font-medium text-on-surface/50 mt-0.5 uppercase tracking-wider">Muhasebe & Yönetim</p>
         </div>
       </div>
 

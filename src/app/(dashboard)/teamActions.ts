@@ -57,6 +57,7 @@ export interface InventoryProduct {
   id: string;
   sku: string;
   name: string;
+  description: string | null;
   purchase_price: number;
   sale_price: number;
   currency: string;
@@ -91,7 +92,7 @@ export async function fetchInventoryData(userId: string): Promise<InventoryData>
   const { data: productData } = await applyTeamFilterServer(
     supabaseAdmin
       .from("products")
-      .select("id, sku, name, purchase_price, sale_price, currency, purchase_price_in_currency, sale_price_in_currency, stock_quantity, critical_limit, categories(name)")
+      .select("id, sku, name, description, purchase_price, sale_price, currency, purchase_price_in_currency, sale_price_in_currency, stock_quantity, critical_limit, categories(name)")
       .is("deleted_at", null),
     teamIds
   ).order("name");

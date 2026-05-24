@@ -7,6 +7,8 @@ import { supabase } from "@/lib/supabaseClient";
 import { useCurrencyConverter } from "@/hooks/useCurrencyConverter";
 import { fetchDefaultCurrency } from "@/lib/defaultCurrency";
 import { logActivityAction } from "@/app/(dashboard)/activity-log/actions";
+import { uploadProductImageAction } from "@/app/(dashboard)/settings/profile/actions";
+import { formatDescription } from "@/lib/productImageHelper";
 
 // ─── Tipler ────────────────────────────────────────────────────────────────
 
@@ -67,6 +69,50 @@ export default function NewInventoryPage() {
   const [newCategoryName, setNewCategoryName] = useState("");
   const [savingCategory, setSavingCategory] = useState(false);
   const { rates, convertFull } = useCurrencyConverter();
+
+  const [imageUrl, setImageUrl] = useState<string>("");
+  const [isImageUploading, setIsImageUploading] = useState<boolean>(false);
+
+  const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file || !userId) return;
+
+    if (file.size > 5 * 1024 * 1024) {
+      toast.error("Dosya boyutu 5MB'den büyük olamaz.");
+      return;
+    }
+
+    setIsImageUploading(true);
+    const toastId = toast.loading("Görsel yükleniyor...");
+    try {
+      const reader = new FileReader();
+      reader.readAsDataURL(file);
+      reader.onloadend = async () => {
+        try {
+          const base64Data = (reader.result as string).split(",")[1];
+          const result = await uploadProductImageAction(base64Data, file.name, file.type, userId);
+
+          if (!result.success || !result.publicUrl) {
+            throw new Error(result.error || "Görsel yükleme başarısız.");
+          }
+
+          setImageUrl(result.publicUrl);
+          toast.success("Ürün görseli başarıyla yüklendi.", { id: toastId });
+        } catch (innerErr: any) {
+          toast.error(`Yükleme hatası: ${innerErr.message}`, { id: toastId });
+        } finally {
+          setIsImageUploading(false);
+        }
+      };
+
+      reader.onerror = () => {
+        throw new Error("Dosya okunamadı.");
+      };
+    } catch (err: any) {
+      toast.error(`Yükleme hatası: ${err.message}`, { id: toastId });
+      setIsImageUploading(false);
+    }
+  };
 
   // ── Kullanıcı ID'sini Al ve işletme default currency'sini forma uygula ─
   useEffect(() => {
@@ -238,13 +284,16 @@ export default function NewInventoryPage() {
     try {
       console.log("📝 Ürün kaydı başlatılıyor - User ID:", userId);
 
+      // formatDescription'ı kullanarak açıklama alanına görseli ekliyoruz
+      const finalDescription = formatDescription(form.description.trim(), imageUrl);
+
       // `.select()` ile yeni ürünün id'sini de al
       const productPayload = {
         user_id: userId,
         name: form.name.trim(),
         sku: form.sku.trim(),
         category_id: form.category_id,
-        description: form.description.trim() || null,
+        description: finalDescription || null,
         currency: form.currency,
         purchase_price_in_currency: toNum(form.purchase_price),
         sale_price_in_currency: toNum(form.sale_price),
@@ -684,19 +733,47 @@ export default function NewInventoryPage() {
                 <label className="block text-xs font-bold text-on-surface-variant uppercase tracking-wider mb-4">
                   Ürün Görseli
                 </label>
-                <div className="relative group cursor-pointer border-2 border-dashed border-outline-variant/30 rounded-xl bg-surface-container-low hover:bg-white hover:border-primary/40 transition-all p-8 text-center">
-                  <div className="w-16 h-16 bg-white rounded-full flex items-center justify-center mx-auto mb-4 shadow-sm group-hover:scale-110 transition-transform">
-                    <span className="material-symbols-outlined text-primary text-3xl">
-                      add_photo_alternate
-                    </span>
-                  </div>
-                  <p className="text-sm font-semibold text-on-surface mb-1">Görsel Yükle</p>
-                  <p className="text-[10px] text-on-surface-variant leading-relaxed">
-                    Sürükle bırak veya seçmek için tıklayın.
-                    <br />
-                    (PNG, JPG - Maks 5MB)
-                  </p>
-                  <input className="absolute inset-0 opacity-0 cursor-pointer w-full h-full" type="file" accept="image/*" />
+                <div className="relative group cursor-pointer border-2 border-dashed border-outline-variant/30 rounded-xl bg-surface-container-low hover:bg-white hover:border-primary/40 transition-all p-8 text-center min-h-[200px] flex flex-col justify-center items-center overflow-hidden">
+                  {imageUrl ? (
+                    <div className="relative w-full h-40 rounded-lg overflow-hidden group">
+                      <img
+                        src={imageUrl}
+                        alt="Ürün Görseli Önizleme"
+                        className="w-full h-full object-cover rounded-lg"
+                      />
+                      <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-4">
+                        <span className="material-symbols-outlined text-white text-2xl">edit</span>
+                        <span className="text-white text-xs font-bold uppercase tracking-wider">Değiştir</span>
+                      </div>
+                    </div>
+                  ) : (
+                    <>
+                      <div className="w-16 h-16 bg-white rounded-full flex items-center justify-center mx-auto mb-4 shadow-sm group-hover:scale-110 transition-transform">
+                        {isImageUploading ? (
+                          <div className="w-8 h-8 border-4 border-primary/20 border-t-primary rounded-full animate-spin"></div>
+                        ) : (
+                          <span className="material-symbols-outlined text-primary text-3xl">
+                            add_photo_alternate
+                          </span>
+                        )}
+                      </div>
+                      <p className="text-sm font-semibold text-on-surface mb-1">
+                        {isImageUploading ? "Yükleniyor..." : "Görsel Yükle"}
+                      </p>
+                      <p className="text-[10px] text-on-surface-variant leading-relaxed">
+                        Sürükle bırak veya seçmek için tıklayın.
+                        <br />
+                        (PNG, JPG - Maks 5MB)
+                      </p>
+                    </>
+                  )}
+                  <input
+                    className="absolute inset-0 opacity-0 cursor-pointer w-full h-full"
+                    type="file"
+                    accept="image/*"
+                    onChange={handleImageUpload}
+                    disabled={isImageUploading}
+                  />
                 </div>
               </div>
 

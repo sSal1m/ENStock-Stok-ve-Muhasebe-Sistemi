@@ -9,6 +9,7 @@ import DeleteConfirmationModal from "@/components/inventory/DeleteConfirmationMo
 import Link from "next/link";
 import { useCurrencyConverter } from "@/hooks/useCurrencyConverter";
 import * as XLSX from "xlsx";
+import { parseDescription } from "@/lib/productImageHelper";
 
 // ─── Tipler ────────────────────────────────────────────────────────────────
 
@@ -16,6 +17,7 @@ interface Product {
   id: string;
   sku: string;
   name: string;
+  description: string | null;
   purchase_price: number;
   sale_price: number;
   currency: string;
@@ -544,6 +546,7 @@ export default function InventoryPage() {
                 filtered.map((item) => {
                   const level = getStockLevel(item.stock_quantity, item.critical_limit);
                   const percent = getStockPercent(item.stock_quantity, item.critical_limit);
+                  const parsed = parseDescription(item.description);
                   
                   // 🔧 Kategori adını al - hem array hem object formatını destekle
                   let categoryName = "Kategorisiz";
@@ -560,12 +563,22 @@ export default function InventoryPage() {
                       {/* Ürün Adı & SKU */}
                       <td className="px-6 py-4">
                         <div className="flex items-center gap-3">
-                          {/* Ürün görseli yoksa harf avatar */}
-                          <div className="w-10 h-10 rounded-lg bg-indigo-50 flex-shrink-0 flex items-center justify-center">
-                            <span className="text-indigo-600 font-black text-base">
-                              {item.name.charAt(0).toUpperCase()}
-                            </span>
-                          </div>
+                          {/* Ürün görseli varsa göster, yoksa harf avatar */}
+                          {parsed.imageUrl ? (
+                            <div className="w-10 h-10 rounded-lg overflow-hidden flex-shrink-0 border border-indigo-100/50">
+                              <img
+                                src={parsed.imageUrl}
+                                alt={item.name}
+                                className="w-full h-full object-cover"
+                              />
+                            </div>
+                          ) : (
+                            <div className="w-10 h-10 rounded-lg bg-indigo-50 flex-shrink-0 flex items-center justify-center">
+                              <span className="text-indigo-600 font-black text-base">
+                                {item.name.charAt(0).toUpperCase()}
+                              </span>
+                            </div>
+                          )}
                           <div>
                             <Link href={`/inventory/${item.id}`} className="font-bold text-on-surface hover:text-primary transition-colors">{item.name}</Link>
                             <p className="text-xs text-slate-400 font-mono">{item.sku}</p>

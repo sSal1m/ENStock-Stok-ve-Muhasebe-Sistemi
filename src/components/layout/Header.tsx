@@ -11,6 +11,7 @@ interface UserProfile {
   full_name: string;
   company_name: string;
   role?: string;
+  avatar_url?: string | null;
 }
 
 // Path to page title mapping
@@ -111,7 +112,7 @@ export default function Header() {
           // Fetch user profile from profiles table
           const { data: profileData, error } = await supabase
             .from('profiles')
-            .select('full_name, company_name, role')
+            .select('full_name, company_name, role, avatar_url')
             .eq('id', authUser.id)
             .single();
 
@@ -121,12 +122,19 @@ export default function Header() {
               full_name: authUser.user_metadata?.full_name || 'Kullanıcı',
               company_name: 'Şirket',
               role: 'Kullanıcı',
+              avatar_url: authUser.user_metadata?.avatar_url || null,
             });
           } else {
-            setProfile(profileData || {
+            setProfile(profileData ? {
+              full_name: profileData.full_name || 'Kullanıcı',
+              company_name: profileData.company_name || 'Şirket',
+              role: profileData.role || 'Kullanıcı',
+              avatar_url: profileData.avatar_url || authUser.user_metadata?.avatar_url || null,
+            } : {
               full_name: 'Kullanıcı',
               company_name: 'Şirket',
               role: 'Kullanıcı',
+              avatar_url: authUser.user_metadata?.avatar_url || null,
             });
           }
         }
@@ -138,6 +146,24 @@ export default function Header() {
     };
 
     fetchUserData();
+
+    // Dinamik profil/avatar güncellemelerini yakalamak için auth state dinleyici
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+      if (session?.user) {
+        setProfile(prev => {
+          if (!prev) return null;
+          return {
+            ...prev,
+            avatar_url: session.user.user_metadata?.avatar_url || prev.avatar_url,
+            full_name: session.user.user_metadata?.full_name || prev.full_name,
+          };
+        });
+      }
+    });
+
+    return () => {
+      subscription.unsubscribe();
+    };
   }, []);
 
   const handleSignOut = async () => {
@@ -336,11 +362,19 @@ export default function Header() {
                     {userRole === 'admin' ? 'ADMIN' : 'Kullanıcı'}
                   </p>
                 </div>
-                <div className="w-8 h-8 rounded-full bg-gradient-to-br from-indigo-500 to-purple-500 flex items-center justify-center flex-shrink-0">
-                  <span className="text-white text-xs font-bold">
-                    {userDisplayName.charAt(0).toUpperCase()}
-                  </span>
-                </div>
+                 {profile?.avatar_url ? (
+                  <img
+                    src={profile.avatar_url}
+                    alt="Profil Resmi"
+                    className="w-8 h-8 rounded-full object-cover flex-shrink-0 ring-2 ring-primary/20"
+                  />
+                ) : (
+                  <div className="w-8 h-8 rounded-full bg-gradient-to-br from-indigo-500 to-purple-500 flex items-center justify-center flex-shrink-0">
+                    <span className="text-white text-xs font-bold">
+                      {userDisplayName.charAt(0).toUpperCase()}
+                    </span>
+                  </div>
+                )}
               </>
             )}
           </button>

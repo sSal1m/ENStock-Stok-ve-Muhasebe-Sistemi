@@ -19,6 +19,22 @@ export default function DashboardLayout({
   const router = useRouter();
 
   useEffect(() => {
+    try {
+      const prefs = localStorage.getItem('user_preferences');
+      if (prefs) {
+        const parsed = JSON.parse(prefs);
+        if (parsed.darkMode) {
+          document.documentElement.classList.add('dark');
+        } else {
+          document.documentElement.classList.remove('dark');
+        }
+      }
+    } catch (e) {
+      console.error('Theme load error:', e);
+    }
+  }, []);
+
+  useEffect(() => {
     const checkAuth = async () => {
       try {
         const {

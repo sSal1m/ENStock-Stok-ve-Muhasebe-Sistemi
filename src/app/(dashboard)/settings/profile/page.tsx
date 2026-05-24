@@ -7,7 +7,7 @@ import { supabase } from "@/lib/supabaseClient";
 import toast from "react-hot-toast";
 import * as XLSX from 'xlsx';
 
-import { getAdminBusinessAddress } from "./actions";
+import { getAdminBusinessAddress, uploadAvatarAction } from "./actions";
 
 export default function ProfilePage() {
   const router = useRouter();
@@ -220,33 +220,38 @@ export default function ProfilePage() {
     setIsAvatarUploading(true);
     const toastId = toast.loading("Fotoğraf yükleniyor...");
     try {
-      const fileExt = file.name.split(".").pop();
-      const fileName = `${profile.id}-${Math.random()}.${fileExt}`;
-      const filePath = `avatars/${fileName}`;
+      // Dosyayı Base64'e dönüştür
+      const reader = new FileReader();
+      reader.readAsDataURL(file);
+      reader.onloadend = async () => {
+        try {
+          const base64Data = (reader.result as string).split(",")[1];
+          
+          // Server Action'ı çağır (Admin yetkileri ile yükler, RLS politikalarını atlar)
+          const result = await uploadAvatarAction(base64Data, file.name, file.type, profile.id);
+          
+          if (!result.success || !result.publicUrl) {
+            throw new Error(result.error || "Yükleme başarısız oldu.");
+          }
 
-      const { error: uploadError } = await supabase.storage
-        .from("avatars")
-        .upload(filePath, file);
+          // Oturum bilgilerini yenilemek için auth kullanıcısını güncel duruma çekelim
+          await supabase.auth.refreshSession();
 
-      if (uploadError) throw uploadError;
-
-      const { data: { publicUrl } } = supabase.storage
-        .from("avatars")
-        .getPublicUrl(filePath);
-
-      const { error: updateError } = await supabase
-        .from("profiles")
-        .update({ avatar_url: publicUrl })
-        .eq("id", profile.id);
-
-      if (updateError) throw updateError;
-
-      setProfile(prev => prev ? { ...prev, avatarUrl: publicUrl } : null);
-      setAvatarTimestamp(Date.now());
-      toast.success("Fotoğraf güncellendi.", { id: toastId });
+          setProfile(prev => prev ? { ...prev, avatarUrl: result.publicUrl } : null);
+          setAvatarTimestamp(Date.now());
+          toast.success("Fotoğraf başarıyla güncellendi.", { id: toastId });
+        } catch (innerErr: any) {
+          toast.error(`Yükleme hatası: ${innerErr.message}`, { id: toastId });
+        } finally {
+          setIsAvatarUploading(false);
+        }
+      };
+      
+      reader.onerror = () => {
+        throw new Error("Dosya okunamadı.");
+      };
     } catch (err: any) {
       toast.error(`Yükleme hatası: ${err.message}`, { id: toastId });
-    } finally {
       setIsAvatarUploading(false);
     }
   };
@@ -401,7 +406,12 @@ export default function ProfilePage() {
                   <span className="material-symbols-outlined text-white">photo_camera</span>
                 </div>
               </div>
-              <p className="text-[10px] text-center mt-3 uppercase tracking-wider font-bold text-on-surface-variant">Fotoğrafı Güncelle</p>
+              <p 
+                onClick={handleAvatarClick} 
+                className="text-[10px] text-center mt-3 uppercase tracking-wider font-bold text-on-surface-variant cursor-pointer hover:text-primary transition-colors"
+              >
+                Fotoğrafı Güncelle
+              </p>
             </div>
             <div className="flex-1 w-full space-y-6">
               <div className="grid grid-cols-1 gap-6">

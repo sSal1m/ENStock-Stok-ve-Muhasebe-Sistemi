@@ -7,12 +7,14 @@ import { supabase } from "@/lib/supabaseClient";
 import StockAdjustmentModal from "@/components/inventory/StockAdjustmentModal";
 import { useCurrencyConverter } from "@/hooks/useCurrencyConverter";
 import CurrencySwitcher from "@/components/common/CurrencySwitcher";
+import { parseDescription } from "@/lib/productImageHelper";
 
 // ─── Tipler ────────────────────────────────────────────────────────────────
 interface Product {
   id: string;
   sku: string;
   name: string;
+  description: string | null;
   purchase_price: number;
   sale_price: number;
   currency: string;
@@ -126,7 +128,7 @@ export default function ProductDetailPage() {
     try {
       const { data: prod, error: prodErr } = await supabase
         .from("products")
-        .select("id, sku, name, purchase_price, sale_price, currency, purchase_price_in_currency, sale_price_in_currency, stock_quantity, critical_limit, tax_rate, categories(name)")
+        .select("id, sku, name, description, purchase_price, sale_price, currency, purchase_price_in_currency, sale_price_in_currency, stock_quantity, critical_limit, tax_rate, categories(name)")
         .eq("id", id)
         .eq("user_id", userId)
         .single();
@@ -293,6 +295,8 @@ export default function ProductDetailPage() {
 
   if (!product) return null;
 
+  const parsed = parseDescription(product.description || "");
+
   // ── Ana İçerik ────────────────────────────────────────────────────────────
   return (
     <div className="p-8 space-y-8 max-w-7xl mx-auto">
@@ -327,10 +331,18 @@ export default function ProductDetailPage() {
         <div className="flex flex-col lg:flex-row gap-10 items-start lg:items-center relative z-10">
 
           {/* Ürün Avatarı */}
-          <div className="w-full lg:w-48 h-48 bg-white rounded-2xl shadow-sm flex-shrink-0 flex items-center justify-center border border-indigo-50/50">
-            <span className="text-indigo-300 font-black text-7xl select-none">
-              {product.name.charAt(0).toUpperCase()}
-            </span>
+          <div className="w-full lg:w-48 h-48 bg-white rounded-2xl shadow-sm flex-shrink-0 flex items-center justify-center border border-indigo-50/50 overflow-hidden relative">
+            {parsed.imageUrl ? (
+              <img
+                src={parsed.imageUrl}
+                alt={product.name}
+                className="w-full h-full object-cover"
+              />
+            ) : (
+              <span className="text-indigo-300 font-black text-7xl select-none">
+                {product.name.charAt(0).toUpperCase()}
+              </span>
+            )}
           </div>
 
           {/* Orta Bilgi */}

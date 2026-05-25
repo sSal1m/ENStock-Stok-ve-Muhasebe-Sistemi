@@ -247,25 +247,25 @@ html.dark .text-slate-800, .dark .text-slate-800,
 html.dark .text-gray-800, .dark .text-gray-800,
 html.dark .text-slate-700, .dark .text-slate-700,
 html.dark .text-gray-700, .dark .text-gray-700,
-html.dark .text-indigo-900, .dark .text-indigo-900,
-html.dark header .text-slate-900, .dark header .text-slate-900,
-html.dark header .text-slate-800, .dark header .text-slate-800,
-html.dark header .text-slate-700, .dark header .text-slate-700 {
-  color: #ffffff !important;
-}
-
 html.dark .text-slate-600, .dark .text-slate-600,
 html.dark .text-gray-600, .dark .text-gray-600,
 html.dark .text-slate-500, .dark .text-slate-500,
 html.dark .text-gray-500, .dark .text-gray-500,
-html.dark header .text-slate-500, .dark header .text-slate-500 {
-  color: #bfc4d9 !important;
-}
-
 html.dark .text-slate-400, .dark .text-slate-400,
 html.dark .text-gray-400, .dark .text-gray-400,
+html.dark .text-indigo-900, .dark .text-indigo-900,
+html.dark .text-on-surface, .dark .text-on-surface,
+html.dark .text-on-surface-variant, .dark .text-on-surface-variant,
+html.dark header .text-slate-900, .dark header .text-slate-900,
+html.dark header .text-slate-800, .dark header .text-slate-800,
+html.dark header .text-slate-700, .dark header .text-slate-700,
+html.dark header .text-slate-500, .dark header .text-slate-500,
 html.dark header .text-slate-400, .dark header .text-slate-400 {
-  color: #9fa6c5 !important;
+  color: #ffffff !important;
+}
+
+html.dark .text-on-surface\/50, .dark .text-on-surface\/50 {
+  color: rgba(255, 255, 255, 0.5) !important;
 }
 
 /* Color Semantics Overrides for Light Mode Leftovers */
@@ -273,10 +273,18 @@ html.dark .text-indigo-700, .dark .text-indigo-700,
 html.dark .text-indigo-600, .dark .text-indigo-600 { color: #8c82ff !important; }
 html.dark .text-emerald-700, .dark .text-emerald-700,
 html.dark .text-emerald-600, .dark .text-emerald-600 { color: #52d9a3 !important; }
+
+/* Amber Color Semantics */
+html.dark .text-amber-800, .dark .text-amber-800,
 html.dark .text-amber-700, .dark .text-amber-700,
-html.dark .text-amber-600, .dark .text-amber-600,
+html.dark .text-amber-600, .dark .text-amber-600 { color: #ffbe6b !important; }
+html.dark .bg-amber-50\/60, .dark .bg-amber-50\/60 { background-color: rgba(44, 34, 20, 0.6) !important; }
+html.dark .border-amber-200\/50, .dark .border-amber-200\/50 { border-color: rgba(255, 190, 107, 0.2) !important; }
+
+/* Error & Red Color Semantics */
 html.dark .text-error, .dark .text-error,
 html.dark .text-red-600, .dark .text-red-600 { color: #ff7373 !important; }
+
 html.dark .text-teal-700, .dark .text-teal-700 { color: #62ebd9 !important; }
 html.dark .text-purple-700, .dark .text-purple-700 { color: #ca82ff !important; }
 

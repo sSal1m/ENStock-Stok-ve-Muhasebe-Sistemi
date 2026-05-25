@@ -42,6 +42,7 @@ export default function ProfilePage() {
   // --- Preferences States ---
   const [preferences, setPreferences] = useState({
     liveSync: true,
+    darkMode: false,
   });
 
   // --- Initial Fetch ---
@@ -154,7 +155,15 @@ export default function ProfilePage() {
 
         const storedPrefs = localStorage.getItem("user_preferences");
         if (storedPrefs) {
-          setPreferences(JSON.parse(storedPrefs));
+          try {
+            const parsed = JSON.parse(storedPrefs);
+            setPreferences(prev => ({
+              ...prev,
+              ...parsed
+            }));
+          } catch (e) {
+            console.error("Preferences load error:", e);
+          }
         }
       } catch (err) {
         console.error("Critical fetch error:", err);
@@ -309,11 +318,22 @@ export default function ProfilePage() {
     toast.success("Mimari yapılandırma XLSX olarak indirildi.");
   };
 
-  const togglePreference = (key: "liveSync") => {
+  const togglePreference = (key: "liveSync" | "darkMode") => {
     const newPrefs = { ...preferences, [key]: !preferences[key] };
     setPreferences(newPrefs);
     localStorage.setItem("user_preferences", JSON.stringify(newPrefs));
-    toast.success("Senkronizasyon güncellendi");
+    
+    if (key === "darkMode") {
+      if (newPrefs.darkMode) {
+        document.documentElement.classList.add("dark");
+        toast.success("Karanlık mod etkinleştirildi");
+      } else {
+        document.documentElement.classList.remove("dark");
+        toast.success("Aydınlık mod etkinleştirildi");
+      }
+    } else {
+      toast.success("Senkronizasyon güncellendi");
+    }
   };
 
   if (isLoading) {
@@ -525,7 +545,7 @@ export default function ProfilePage() {
           <div className="space-y-4">
             <div
               onClick={() => togglePreference("liveSync")}
-              className="flex items-center justify-between p-3 hover:bg-surface-container-low rounded-lg transition-colors cursor-pointer"
+              className="flex items-center justify-between p-3 hover:bg-surface-container-low rounded-lg transition-colors cursor-pointer border-b border-outline-variant/10 pb-4"
             >
               <div className="flex items-center gap-3">
                 <span className="material-symbols-outlined text-on-surface-variant">notifications_active</span>
@@ -533,6 +553,19 @@ export default function ProfilePage() {
               </div>
               <div className={`w-10 h-5 rounded-full relative transition-colors ${preferences.liveSync ? "bg-primary" : "bg-outline-variant"}`}>
                 <div className={`absolute top-1 w-3 h-3 bg-white rounded-full transition-all ${preferences.liveSync ? "right-1" : "left-1"}`}></div>
+              </div>
+            </div>
+
+            <div
+              onClick={() => togglePreference("darkMode")}
+              className="flex items-center justify-between p-3 hover:bg-surface-container-low rounded-lg transition-colors cursor-pointer"
+            >
+              <div className="flex items-center gap-3">
+                <span className="material-symbols-outlined text-on-surface-variant">dark_mode</span>
+                <span className="text-sm font-medium text-on-surface">Karanlık Mod</span>
+              </div>
+              <div className={`w-10 h-5 rounded-full relative transition-colors ${preferences.darkMode ? "bg-primary" : "bg-outline-variant"}`}>
+                <div className={`absolute top-1 w-3 h-3 bg-white rounded-full transition-all ${preferences.darkMode ? "right-1" : "left-1"}`}></div>
               </div>
             </div>
           </div>

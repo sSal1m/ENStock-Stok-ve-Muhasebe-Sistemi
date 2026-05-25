@@ -62,11 +62,14 @@ export interface CreateInvoiceRequest {
   issue_date: string;
   notes?: string;
   line_items: InvoiceLineItem[];
-  status?: "draft" | "pending";  // ✅ draft veya pending statüsü
+  status?: "draft" | "pending" | "paid";  // ✅ draft, pending veya paid statüsü
   invoice_id?: string;  // ✅ NEW: draft faturayı update etmek için
   invoice_number?: string; // ✅ Manuel fatura numarası için
   currency?: string; // ✅ NEW: Para birimi (TRY, USD, EUR vb.)
   exchange_rate?: number; // ✅ NEW: Kur değeri
+  due_date?: string; // ✅ NEW: Vade tarihi (due date)
+  payment_term?: string | number; // ✅ Formdan gelen vade süresi
+  payment_status?: boolean | string; // ✅ Formdan gelen ödeme durumu
 }
 
 export interface InvoiceActionState {
@@ -226,8 +229,24 @@ export async function createInvoiceAction(request: CreateInvoiceRequest): Promis
   const { 
     user_id, contact_id, invoice_type, issue_date, notes, line_items, 
     status = "draft", invoice_id, invoice_number: reqInvoiceNumber,
-    currency = "TRY", exchange_rate = 1 
+    currency = "TRY", exchange_rate = 1, due_date: originalDueDate,
+    payment_term, payment_status
   } = request;
+
+  // 1. Formdan gelen "vade süresi" verisini al. Bu değer "7", "15" gibi string olarak gelebilir, bunu integer'a (gün sayısına) parse et.
+  const days = parseInt(String(payment_term || "0"), 10) || 0;
+
+  // 2. Bugünün tarihinin (Date) üzerine bu gün sayısını ekleyerek kesin bir vade tarihi (`due_date`) hesapla.
+  const today = new Date();
+  today.setDate(today.getDate() + days);
+  const finalDueDate = payment_term !== undefined ? today.toISOString() : (originalDueDate || null);
+
+  // 3. Formdan gelen ödeme durumu switch/checkbox değerini yakala ve kesin bir boolean (true/false) değere çevirerek `is_paid` değişkenine ata.
+  const is_paid = payment_status !== undefined
+    ? (typeof payment_status === 'string'
+        ? payment_status.toLowerCase() === 'true' || payment_status === '1' || payment_status === 'on'
+        : !!payment_status)
+    : (status === "paid");
 
   // 1) auth.getUser() kontrolü (Kullanıcının sisteme gerçekten login olup olmadığını ve token'ı doğrulamak için)
   // Not: supabaseServer service_role ile oluşturulduğundan, auth context'i taşıması için ek ayarlarınız olabilir.
@@ -350,6 +369,7 @@ export async function createInvoiceAction(request: CreateInvoiceRequest): Promis
           type: dbInvoiceType,
           invoice_number: finalInvoiceNumber,
           issue_date,
+          due_date: finalDueDate,
           subtotal,
           tax_total: vatTotal,
           total_amount: totalAmount,
@@ -360,6 +380,7 @@ export async function createInvoiceAction(request: CreateInvoiceRequest): Promis
           status: status,
           currency,
           exchange_rate,
+          is_paid,
         })
         .eq("id", invoice_id)
         .select()
@@ -408,6 +429,7 @@ export async function createInvoiceAction(request: CreateInvoiceRequest): Promis
             type: dbInvoiceType,
             invoice_number: finalInvoiceNumber,
             issue_date,
+            due_date: finalDueDate,
             subtotal,
             tax_total: vatTotal,
             total_amount: totalAmount,
@@ -418,6 +440,7 @@ export async function createInvoiceAction(request: CreateInvoiceRequest): Promis
             status: status,
             currency,
             exchange_rate,
+            is_paid,
           },
         ])
         .select()

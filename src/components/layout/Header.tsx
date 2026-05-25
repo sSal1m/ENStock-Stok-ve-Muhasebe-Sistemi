@@ -38,6 +38,10 @@ const pathTitleMap: Record<string, string> = {
   '/reports': 'Genel Raporlar',
   '/reports/income-expense': 'Gelir-Gider Raporu',
   '/trash': 'Çöp Kutusu',
+  '/quotes': 'Teklifler',
+  '/quotes/new': 'Yeni Teklif',
+  '/quotes/[id]': 'Teklif Detayı',
+  '/quotes/[id]/edit': 'Teklifi Düzenle',
 };
 
 // Helper function to get page title from pathname
@@ -78,9 +82,12 @@ export default function Header() {
   const [loading, setLoading] = useState(true);
   const [showDropdown, setShowDropdown] = useState(false);
   const [showSettingsDropdown, setShowSettingsDropdown] = useState(false);
+  const [showNotificationsDropdown, setShowNotificationsDropdown] = useState(false);
+  const [overdueInvoices, setOverdueInvoices] = useState<any[]>([]);
   
   const userMenuRef = useRef<HTMLDivElement>(null);
   const settingsMenuRef = useRef<HTMLDivElement>(null);
+  const notificationsMenuRef = useRef<HTMLDivElement>(null);
   const router = useRouter();
 
   // Close dropdowns when clicking outside
@@ -91,6 +98,9 @@ export default function Header() {
       }
       if (settingsMenuRef.current && !settingsMenuRef.current.contains(event.target as Node)) {
         setShowSettingsDropdown(false);
+      }
+      if (notificationsMenuRef.current && !notificationsMenuRef.current.contains(event.target as Node)) {
+        setShowNotificationsDropdown(false);
       }
     }
     document.addEventListener('mousedown', handleClickOutside);
@@ -136,6 +146,32 @@ export default function Header() {
               role: 'Kullanıcı',
               avatar_url: authUser.user_metadata?.avatar_url || null,
             });
+          }
+
+          // Fetch overdue invoices
+          const { fetchTeamScopedData } = await import('@/app/(dashboard)/teamActions');
+          const { data: invoicesData } = await fetchTeamScopedData(
+            authUser.id,
+            "invoices",
+            "id, invoice_number, due_date, is_paid, status, contact_id, contacts(name)",
+            {
+              excludeDeleted: true,
+            }
+          );
+
+          if (invoicesData) {
+            const today = new Date();
+            today.setHours(0, 0, 0, 0);
+
+            const filteredOverdue = invoicesData.filter((inv: any) => {
+              if (inv.status === 'draft' || inv.status === 'paid' || inv.is_paid === true) return false;
+              if (!inv.due_date) return false;
+              const dueDate = new Date(inv.due_date);
+              dueDate.setHours(0, 0, 0, 0);
+              return dueDate < today;
+            });
+
+            setOverdueInvoices(filteredOverdue);
           }
         }
       } catch (error) {
@@ -225,16 +261,106 @@ export default function Header() {
           </span>
         </button>
 
-        {/* Notifications Button */}
-        <button
-          className="relative p-2.5 text-slate-500 hover:text-slate-700 hover:bg-slate-100 rounded-lg transition-colors group flex items-center justify-center"
-          title="Bildirimler"
-        >
-          <span className="material-symbols-outlined text-xl transition-transform duration-200 group-hover:scale-110">
-            notifications
-          </span>
-          <span className="absolute top-1.5 right-1.5 w-2 h-2 bg-red-500 rounded-full animate-pulse"></span>
-        </button>
+        {/* Notifications Button & Dropdown */}
+        <div className="relative" ref={notificationsMenuRef}>
+          <button
+            className={`p-2.5 rounded-lg transition-colors flex items-center justify-center group relative ${
+              showNotificationsDropdown 
+                ? 'bg-indigo-50 text-indigo-600' 
+                : 'text-slate-500 hover:text-slate-700 hover:bg-slate-100'
+            }`}
+            onClick={() => {
+              setShowNotificationsDropdown(!showNotificationsDropdown);
+              setShowSettingsDropdown(false);
+              setShowDropdown(false);
+            }}
+            title="Bildirimler"
+          >
+            <span className="material-symbols-outlined text-xl transition-transform duration-200 group-hover:scale-110">
+              notifications
+            </span>
+            {overdueInvoices.length > 0 && (
+              <span className="absolute -top-1 -right-1 bg-red-500 text-white text-[9px] font-black w-[18px] h-[18px] rounded-full flex items-center justify-center animate-pulse border border-white">
+                {overdueInvoices.length}
+              </span>
+            )}
+          </button>
+
+          {showNotificationsDropdown && (
+            <div className="absolute right-0 mt-2 w-80 bg-white border border-slate-200 rounded-xl shadow-lg z-50 overflow-hidden animate-in fade-in slide-in-from-top-2 duration-200">
+              {/* Notifications Header */}
+              <div className="p-4 bg-slate-50 border-b border-slate-200 flex justify-between items-center">
+                <div>
+                  <p className="font-bold text-slate-800 flex items-center gap-2">
+                    <span className="material-symbols-outlined text-sm text-red-500">warning</span>
+                    Vadesi Geçen Faturalar
+                  </p>
+                  <p className="text-[10px] text-slate-400 mt-0.5">Vadesi geçmiş alacak ve borç takibi</p>
+                </div>
+                {overdueInvoices.length > 0 && (
+                  <span className="bg-red-100 text-red-700 text-[10px] font-bold px-2 py-0.5 rounded-full">
+                    {overdueInvoices.length} Yeni
+                  </span>
+                )}
+              </div>
+
+              {/* Notifications Items */}
+              <div className="max-h-64 overflow-y-auto divide-y divide-slate-100">
+                {overdueInvoices.length === 0 ? (
+                  <div className="p-6 text-center text-slate-400 space-y-2">
+                    <span className="material-symbols-outlined text-3xl text-slate-300">notifications_off</span>
+                    <p className="text-xs font-semibold">Vadesi geçmiş fatura bulunmamaktadır.</p>
+                  </div>
+                ) : (
+                  overdueInvoices.map((inv) => (
+                    <div 
+                      key={inv.id} 
+                      className="p-3.5 hover:bg-slate-50 transition-colors text-left cursor-pointer flex gap-3 items-start"
+                      onClick={() => {
+                        router.push(`/invoices/new?id=${inv.id}`);
+                        setShowNotificationsDropdown(false);
+                      }}
+                    >
+                      <div className="w-8 h-8 rounded-lg bg-red-50 flex items-center justify-center shrink-0 text-red-500">
+                        <span className="material-symbols-outlined text-base">report</span>
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <div className="flex justify-between items-start gap-1">
+                          <p className="text-xs font-bold text-slate-800 truncate">
+                            {inv.invoice_number}
+                          </p>
+                          <span className="text-[9px] font-black text-red-600 bg-red-50 px-1.5 py-0.5 rounded shrink-0 uppercase tracking-wide">
+                            Vadesi Geçti
+                          </span>
+                        </div>
+                        <p className="text-[11px] font-bold text-slate-500 truncate mt-0.5">
+                          {inv.contacts?.name || "Bilinmeyen Cari"}
+                        </p>
+                        <p className="text-[9px] text-slate-400 font-medium mt-1">
+                          Vade Tarihi: {new Date(inv.due_date).toLocaleDateString('tr-TR')}
+                        </p>
+                      </div>
+                    </div>
+                  ))
+                )}
+              </div>
+
+              {/* Notifications Footer */}
+              <div className="p-3 bg-slate-50 border-t border-slate-200 text-center font-bold">
+                <button
+                  onClick={() => {
+                    router.push('/invoices');
+                    setShowNotificationsDropdown(false);
+                  }}
+                  className="text-[11px] font-black text-indigo-600 hover:text-indigo-700 hover:underline inline-flex items-center gap-1"
+                >
+                  Tüm Faturaları Görüntüle
+                  <span className="material-symbols-outlined text-xs">arrow_forward</span>
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
 
         {/* Settings Dropdown Button */}
         <div className="relative" ref={settingsMenuRef}>

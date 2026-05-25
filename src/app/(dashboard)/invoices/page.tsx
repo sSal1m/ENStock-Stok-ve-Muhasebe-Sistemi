@@ -18,6 +18,8 @@ interface Invoice {
   status: string;
   contact_id: string;
   currency: string;
+  is_paid?: boolean;
+  due_date?: string;
 }
 
 interface Contact {
@@ -79,6 +81,16 @@ export default function InvoicesPage() {
   useEffect(() => {
     fetchInvoices();
   }, []);
+
+  const isOverdue = (invoice: Invoice) => {
+    if (invoice.is_paid === true || invoice.status === "paid") return false;
+    if (!invoice.due_date) return false;
+    const dueDate = new Date(invoice.due_date);
+    const today = new Date();
+    dueDate.setHours(0, 0, 0, 0);
+    today.setHours(0, 0, 0, 0);
+    return dueDate < today;
+  };
 
   const filtered = invoices.filter((invoice) => {
     const typeMatch = filterType === "all" || invoice.type === (filterType === "sales" ? "sale" : filterType === "purchase" ? "purchase" : invoice.type);
@@ -401,15 +413,27 @@ export default function InvoicesPage() {
                           <p className="text-sm font-semibold text-on-surface">{format(calculateInView(invoice.total_amount, invoice.currency))}</p>
                         </td>
                         <td className="w-[120px] px-6 py-5 align-middle">
-                          <span
-                            className={`text-xs font-semibold px-3 py-1.5 rounded-full inline-flex items-center gap-1 ${
-                            invoice.status === "draft" ? "bg-slate-100 text-slate-700" : invoice.status === "pending" ? "bg-amber-50 text-amber-700" : "bg-emerald-50 text-emerald-700"
-                          }`}>
-                            <span className="material-symbols-outlined text-sm">
-                              {invoice.status === "draft" ? "description" : invoice.status === "pending" ? "schedule" : "check_circle"}
+                          {invoice.status === "draft" ? (
+                            <span className="bg-slate-100 text-slate-700 text-xs font-semibold px-3 py-1.5 rounded-full inline-flex items-center gap-1">
+                              <span className="material-symbols-outlined text-sm">description</span>
+                              TASLAK
                             </span>
-                            {invoice.status === "draft" ? "TASLAK" : invoice.status === "pending" ? "BEKLIYOR" : "ÖDENDİ"}
-                          </span>
+                          ) : invoice.is_paid === true || invoice.status === "paid" ? (
+                            <span className="bg-emerald-50 text-emerald-700 text-xs font-semibold px-3 py-1.5 rounded-full inline-flex items-center gap-1">
+                              <span className="material-symbols-outlined text-sm">check_circle</span>
+                              ÖDENDİ
+                            </span>
+                          ) : isOverdue(invoice) ? (
+                            <span className="bg-red-100 text-red-700 text-xs font-extrabold px-3 py-1.5 rounded-full inline-flex items-center gap-1">
+                              <span className="material-symbols-outlined text-sm">warning</span>
+                              VADESİ GEÇTİ
+                            </span>
+                          ) : (
+                            <span className="bg-amber-50 text-amber-700 text-xs font-semibold px-3 py-1.5 rounded-full inline-flex items-center gap-1">
+                              <span className="material-symbols-outlined text-sm">schedule</span>
+                              BEKLİYOR
+                            </span>
+                          )}
                         </td>
                         <td className="w-[100px] px-6 py-5 text-center">
                           <div className="flex items-center justify-center gap-1">

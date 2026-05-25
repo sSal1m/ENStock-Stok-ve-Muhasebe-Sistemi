@@ -152,6 +152,7 @@ export async function fetchTeamScopedData(
       else if (f.operator === "gte") query = query.gte(f.column, f.value);
       else if (f.operator === "lte") query = query.lte(f.column, f.value);
       else if (f.operator === "is") query = query.is(f.column, f.value);
+      else if (f.operator === "neq") query = query.neq(f.column, f.value);
       else if (f.operator === "not") query = query.not(f.column, "is", f.value);
     }
   }

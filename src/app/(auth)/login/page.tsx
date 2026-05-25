@@ -3,11 +3,7 @@
 import React, { useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-<<<<<<< HEAD
 import { loginAction } from './serverActions';
-=======
-import { supabase } from '@/lib/supabaseClient';
->>>>>>> 071e32fa12508a0b37cad08b48a39e0dcbaffd0d
 import { Toaster } from 'react-hot-toast';
 
 export default function LoginPage() {

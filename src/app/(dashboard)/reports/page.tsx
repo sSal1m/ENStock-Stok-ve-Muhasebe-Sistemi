@@ -236,7 +236,7 @@ export default function RaporlarSayfasi() {
           ══════════════════════════════════════ */}
       <section className="grid grid-cols-1 gap-6 lg:grid-cols-12">
         {/* ─ Donut Chart (Gelir Dağılımı) ─ */}
-        <div className="lg:col-span-4 rounded-2xl bg-white shadow-sm border border-slate-100 p-6 flex flex-col items-center">
+        <div className="lg:col-span-4 rounded-2xl bg-white shadow-sm border border-slate-100 p-6 flex flex-col">
           <div className="w-full flex items-center justify-between mb-4">
             <div className="flex items-center gap-2">
               <span className="material-symbols-outlined text-slate-400">pie_chart</span>
@@ -245,7 +245,7 @@ export default function RaporlarSayfasi() {
           </div>
           
           {pieData.length > 0 ? (
-            <div className="w-full h-64">
+            <div style={{ width: '100%', height: '280px' }}>
               <ResponsiveContainer width="100%" height="100%">
                 <PieChart>
                   <Pie
@@ -288,7 +288,7 @@ export default function RaporlarSayfasi() {
             </div>
           </div>
           
-          <div className="w-full flex-1 min-h-[250px]">
+          <div style={{ width: '100%', height: '320px' }}>
             {barData.length > 0 ? (
               <ResponsiveContainer width="100%" height="100%">
                 <BarChart

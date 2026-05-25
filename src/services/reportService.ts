@@ -47,7 +47,7 @@ export async function fetchDashboardSummary(userId: string): Promise<DashboardSu
       "id, total_amount, currency, exchange_rate, type, status, issue_date, contact_id",
       {
         excludeDeleted: true,
-        additionalFilters: [{ column: "status", operator: "not", value: "draft" }]
+        additionalFilters: [{ column: "status", operator: "neq", value: "draft" }]
       }
     );
 

@@ -3,7 +3,8 @@
 import React, { useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { supabase } from '@/lib/supabaseClient';
+import { loginAction } from './serverActions';
+import { Toaster } from 'react-hot-toast';
 
 export default function LoginPage() {
   const router = useRouter();
@@ -18,19 +19,10 @@ export default function LoginPage() {
     setLoading(true);
 
     try {
-      const { error: authError } = await supabase.auth.signInWithPassword({
-        email,
-        password,
-      });
+      const result = await loginAction(email, password);
 
-      if (authError) {
-        if (authError.message.includes('Invalid login credentials')) {
-          setError('Hata: Bilgilerinizi kontrol edin');
-        } else if (authError.message.includes('User not found')) {
-          setError('Hata: E-posta adresi bulunamadı');
-        } else {
-          setError(`Hata: ${authError.message}`);
-        }
+      if (!result.success) {
+        setError(`Hata: ${result.error}`);
         setLoading(false);
         return;
       }
@@ -45,6 +37,7 @@ export default function LoginPage() {
 
   return (
     <main className="min-h-screen flex flex-col md:flex-row overflow-hidden font-body bg-surface text-on-surface antialiased selection:bg-primary-fixed-dim">
+      <Toaster position="top-right" toastOptions={{ style: { fontSize: '13px', borderRadius: '8px' } }} />
       {/* Left Column: Indigo Gradient Brand Section */}
       <section className="hidden md:flex md:w-[40%] bg-gradient-to-br from-primary to-primary-container p-12 flex-col justify-between relative overflow-hidden">
         <div className="absolute inset-0 mesh-pattern opacity-40"></div>

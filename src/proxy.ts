@@ -7,7 +7,9 @@ export function proxy(request: NextRequest) {
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
   const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
 
-  const response = NextResponse.next();
+  let supabaseResponse = NextResponse.next({
+    request,
+  });
 
   const supabase = createServerClient(supabaseUrl, supabaseAnonKey, {
     cookies: {
@@ -18,16 +20,16 @@ export function proxy(request: NextRequest) {
         cookiesToSet: { name: string; value: string; options: CookieOptions }[]
       ) {
         cookiesToSet.forEach(({ name, value, options }) => {
-          response.cookies.set({ name, value, ...options });
+          supabaseResponse.cookies.set(name, value, options);
         });
       },
     },
   });
 
-  // Oturumu taze tut — auth cookie'leri response'a yansıtılır.
+  // Refresh token'ı yenile ve session'ı taze tut (async işlem)
   void supabase.auth.getUser();
 
-  return response;
+  return supabaseResponse;
 }
 
 export const config = {

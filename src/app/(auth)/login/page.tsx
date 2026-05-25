@@ -3,7 +3,11 @@
 import React, { useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
+<<<<<<< HEAD
+import { loginAction } from './serverActions';
+=======
 import { supabase } from '@/lib/supabaseClient';
+>>>>>>> 071e32fa12508a0b37cad08b48a39e0dcbaffd0d
 import { Toaster } from 'react-hot-toast';
 
 export default function LoginPage() {
@@ -21,19 +25,10 @@ export default function LoginPage() {
     setLoading(true);
 
     try {
-      const { error: authError } = await supabase.auth.signInWithPassword({
-        email,
-        password,
-      });
+      const result = await loginAction(email, password);
 
-      if (authError) {
-        if (authError.message.includes('Invalid login credentials')) {
-          setError('Hata: Bilgilerinizi kontrol edin');
-        } else if (authError.message.includes('User not found')) {
-          setError('Hata: E-posta adresi bulunamadı');
-        } else {
-          setError(`Hata: ${authError.message}`);
-        }
+      if (!result.success) {
+        setError(`Hata: ${result.error}`);
         setLoading(false);
         return;
       }

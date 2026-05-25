@@ -6,7 +6,6 @@ import { useCurrencyConverter } from "@/hooks/useCurrencyConverter";
 import { softDeleteInvoice } from "@/app/(dashboard)/trash/actions";
 import Link from "next/link";
 import toast from "react-hot-toast";
-import { resolveTeamIds, applyTeamFilter } from "@/lib/teamUtils";
 
 interface Invoice {
   id: string;
@@ -26,7 +25,7 @@ interface Contact {
 }
 
 export default function ProposalsPage() {
-  const { viewCurrency, setViewCurrency, convert, format } = useCurrencyConverter();
+  const { viewCurrency, setViewCurrency, convertFull, format } = useCurrencyConverter();
   const [proposals, setProposals] = useState<Invoice[]>([]);
   const [contacts, setContacts] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(true);
@@ -43,37 +42,37 @@ export default function ProposalsPage() {
       return;
     }
 
-    const teamIds = await resolveTeamIds(user.id);
-
-    // Fetch proposals (type = 'proposal')
-    const { data: proposalsData, error: proposalsError } = await applyTeamFilter(
-      supabase.from("invoices").select("*").eq("type", "proposal").is("deleted_at", null),
-      teamIds
-    ).order("issue_date", { ascending: false });
-
-    if (proposalsError) {
-      console.error("Error fetching proposals:", proposalsError);
-      setLoading(false);
-      return;
-    }
-
-    setProposals((proposalsData || []) as Invoice[]);
-
-    if (proposalsData && proposalsData.length > 0) {
-      const contactIds = [...new Set(proposalsData.map((i: any) => i.contact_id))];
-      const { data: contactsData } = await supabase
-        .from("contacts")
-        .select("id, name")
-        .in("id", contactIds);
-
-      const contactMap: Record<string, string> = {};
-      (contactsData || []).forEach((c: any) => {
-        contactMap[c.id] = c.name;
+    try {
+      const { fetchTeamScopedData } = await import("@/app/(dashboard)/teamActions");
+      
+      // Fetch proposals (type = 'proposal')
+      const { data: proposalsData } = await fetchTeamScopedData(user.id, "invoices", "*", {
+        excludeDeleted: true,
+        additionalFilters: [{ column: "type", operator: "eq", value: "proposal" }],
+        orderBy: "issue_date",
+        orderAscending: false
       });
-      setContacts(contactMap);
-    }
 
-    setLoading(false);
+      setProposals((proposalsData || []) as Invoice[]);
+
+      if (proposalsData && proposalsData.length > 0) {
+        const contactIds = [...new Set(proposalsData.map((i: any) => i.contact_id))];
+        const { data: contactsData } = await fetchTeamScopedData(user.id, "contacts", "id, name", {
+          excludeDeleted: false
+        });
+
+        const contactMap: Record<string, string> = {};
+        // Only map contacts that exist
+        (contactsData || []).forEach((c: any) => {
+          contactMap[c.id] = c.name;
+        });
+        setContacts(contactMap);
+      }
+    } catch (error) {
+      console.error("Error fetching proposals:", error);
+    } finally {
+      setLoading(false);
+    }
   };
 
   useEffect(() => {
@@ -94,12 +93,20 @@ export default function ProposalsPage() {
     return typeMatch && searchMatch;
   });
 
-  const calculateInView = (amountTry: number) => {
-    return convert(amountTry);
+  // Teklif/proposal tutarları kendi para biriminde saklı.
+  // viewCurrency'ye her tekliften ayrı ayrı çevirip toplanıyor.
+  const calculateInView = (amount: number, fromCurrency: string | null | undefined) => {
+    return convertFull(amount, fromCurrency || "TRY", viewCurrency);
   };
 
-  const totalAmount = filtered.reduce((sum, prop) => sum + calculateInView(prop.total_amount), 0);
-  const vatAmount = filtered.reduce((sum, prop) => sum + calculateInView(prop.tax_total), 0);
+  const totalAmount = filtered.reduce(
+    (sum, prop) => sum + calculateInView(prop.total_amount, prop.currency),
+    0
+  );
+  const vatAmount = filtered.reduce(
+    (sum, prop) => sum + calculateInView(prop.tax_total, prop.currency),
+    0
+  );
 
   const handleDownloadPdf = async (proposal: Invoice) => {
     setDownloadingPdfId(proposal.id);
@@ -370,7 +377,7 @@ export default function ProposalsPage() {
                           </p>
                         </td>
                         <td className="px-6 py-5 align-middle text-right">
-                          <p className="text-sm font-semibold text-on-surface">{format(calculateInView(proposal.total_amount))}</p>
+                          <p className="text-sm font-semibold text-on-surface">{format(calculateInView(proposal.total_amount, proposal.currency))}</p>
                         </td>
                         <td className="px-6 py-5 align-middle">
                           <span

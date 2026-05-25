@@ -3,14 +3,10 @@
 import React, { useState, useEffect } from "react";
 import Image from "next/image";
 import { supabase } from "@/lib/supabaseClient";
-import toast from "react-hot-toast";
+import toast, { Toaster } from "react-hot-toast";
 import { updateRolePermissionAction } from "./actions";
 
-// Modül yetki kuralları:
-//  view   → görüntüleme gösterilsin mi?
-//  create → ekleme gösterilsin mi?
-//  edit   → düzenleme gösterilsin mi?
-//  delete → silme gösterilsin mi?
+
 const MODULES = [
   {
     id: "stock",
@@ -26,8 +22,7 @@ const MODULES = [
     description: "Müşteri ve Tedarikçi Portföyü",
     icon: "groups",
     color: "indigo",
-    // Düzenleme fonksiyonu yok → edit sütunu tamamen gizli
-    actions: { view: true, create: true, edit: false, delete: true },
+    actions: { view: true, create: true, edit: true, delete: true },
   },
   {
     id: "invoices",
@@ -35,8 +30,7 @@ const MODULES = [
     description: "Alış, Satış ve Gider Faturası",
     icon: "receipt_long",
     color: "purple",
-    // Düzenleme fonksiyonu yok → edit sütunu tamamen gizli
-    actions: { view: true, create: true, edit: false, delete: true },
+    actions: { view: true, create: true, edit: true, delete: true },
   },
   {
     id: "reports",
@@ -44,8 +38,7 @@ const MODULES = [
     description: "Finansal Analiz ve Grafik",
     icon: "analytics",
     color: "emerald",
-    // Sadece görüntüleme var; ekleme ve silme tamamen yok
-    actions: { view: true, create: false, edit: false, delete: false },
+    actions: { view: true, create: true, edit: true, delete: true },
   },
 ];
 
@@ -53,7 +46,7 @@ const ROLES = [
   { id: "admin", label: "Yönetici" },
   { id: "accounting", label: "Muhasebe" },
   { id: "warehouse", label: "Depo Personeli" },
-  { id: "sales", label: "Satış Temsilcisi" },
+  { id: "manager", label: "Personel" },
 ];
 
 export default function RolesPermissionsPage() {
@@ -67,24 +60,17 @@ export default function RolesPermissionsPage() {
       const { data: { user: authUser } } = await supabase.auth.getUser();
       if (!authUser) return;
 
-      const { data: myProfile } = await supabase
-        .from("profiles")
-        .select("company_name")
-        .eq("id", authUser.id)
-        .single();
+      const { fetchTeamScopedData } = await import("@/app/(dashboard)/teamActions");
+      const { data } = await fetchTeamScopedData(authUser.id, "profiles", "role", {
+        excludeDeleted: false,
+        teamFilterColumn: "id"
+      });
 
-      const company = myProfile?.company_name;
-      if (!company) return;
-
-      const { data, error } = await supabase
-        .from("profiles")
-        .select("role")
-        .eq("company_name", company);
-
-      if (error) throw error;
       const counts: Record<string, number> = {};
-      data.forEach(p => {
-        const r = p.role?.toLowerCase() || 'staff';
+      (data || []).forEach(p => {
+        // Fallback to warehouse or manager if needed, but usually it matches ROLES exactly
+        let r = p.role?.toLowerCase() || 'warehouse'; 
+        if (r === 'sales' || r === 'staff') r = 'manager';
         counts[r] = (counts[r] || 0) + 1;
       });
       setRoleCounts(counts);
@@ -128,7 +114,7 @@ export default function RolesPermissionsPage() {
           MODULES.forEach(m => {
             let canView = false;
             let canAll = false;
-            
+
             if (r.id === 'admin') {
               canView = true;
               canAll = true;
@@ -137,20 +123,23 @@ export default function RolesPermissionsPage() {
                 canView = true;
                 canAll = true;
               }
-            } else if (r.id === 'staff' || r.id === 'warehouse') {
-              if (m.id === 'stock') canView = true;
-            } else if (r.id === 'sales') {
+            } else if (r.id === 'warehouse') {
+              if (m.id === 'stock') {
+                canView = true;
+                canAll = true;
+              }
+            } else if (r.id === 'manager') {
               if (['stock', 'contacts', 'invoices'].includes(m.id)) {
                 canView = true;
-                // Sales can create/edit but not delete usually
-                if (m.id !== 'reports') canAll = true; 
+                // Manager can create/edit but not delete usually
+                if (m.id !== 'reports') canAll = true;
               }
             }
 
-            initial[r.id][m.id] = { 
-              view: canView, 
-              create: canAll, 
-              edit: canAll, 
+            initial[r.id][m.id] = {
+              view: canView,
+              create: canAll,
+              edit: canAll,
               delete: r.id === 'admin' // Only admin deletes by default
             };
           });
@@ -181,10 +170,10 @@ export default function RolesPermissionsPage() {
       const newMatrix = { ...prev };
       const rolePerms = { ...(newMatrix[activeRoleId] || {}) };
       const modulePerms = { ...(rolePerms[moduleId] || { view: false, create: false, edit: false, delete: false }) };
-      
+
       modulePerms[permKey] = !modulePerms[permKey];
       newPerms = { ...modulePerms }; // Sunucuya göndermek için kopyala
-      
+
       rolePerms[moduleId] = modulePerms;
       newMatrix[activeRoleId] = rolePerms;
       return newMatrix;
@@ -209,7 +198,7 @@ export default function RolesPermissionsPage() {
     const toastId = toast.loading("Yetkiler kaydediliyor...");
     try {
       const upsertData: any[] = [];
-      
+
       Object.entries(matrix).forEach(([role, modules]) => {
         Object.entries(modules as any).forEach(([module, perms]: [string, any]) => {
           upsertData.push({
@@ -228,16 +217,16 @@ export default function RolesPermissionsPage() {
         .upsert(upsertData, { onConflict: 'role,module' });
 
       if (error) throw error;
-      
+
       toast.success("Yetki matrisi veritabanına başarıyla kaydedildi.", { id: toastId });
     } catch (e: any) {
       console.error("Save error full details:", e);
       let errorMsg = e.message || "Bilinmeyen bir hata oluştu.";
-      
+
       if (e.code === 'PGRST116' || e.message?.includes('relation "role_permissions" does not exist')) {
         errorMsg = "Veritabanında 'role_permissions' tablosu bulunamadı. Lütfen SQL kodunu çalıştırın.";
       }
-      
+
       toast.error("Hata: " + errorMsg, { id: toastId, duration: 5000 });
     }
   };
@@ -260,6 +249,7 @@ export default function RolesPermissionsPage() {
 
   return (
     <>
+      <Toaster position="top-right" />
       {/* Header Section with Bento Elements */}
       <div className="grid grid-cols-12 gap-6 mb-8">
         <div className="col-span-12 lg:col-span-8 bg-surface-container-low p-8 rounded-3xl relative overflow-hidden">
@@ -295,14 +285,13 @@ export default function RolesPermissionsPage() {
           </div>
           <div className="flex items-center bg-surface-container-lowest p-1 rounded-xl shadow-sm overflow-x-auto max-w-full">
             {ROLES.map(role => (
-              <button 
+              <button
                 key={role.id}
                 onClick={() => setActiveRoleId(role.id)}
-                className={`px-6 py-2 transition-all font-body rounded-lg text-sm whitespace-nowrap ${
-                  activeRoleId === role.id 
-                    ? "bg-primary text-white font-bold shadow-md" 
-                    : "text-slate-500 font-semibold hover:bg-slate-50"
-                }`}
+                className={`px-6 py-2 transition-all font-body rounded-lg text-sm whitespace-nowrap ${activeRoleId === role.id
+                  ? "bg-primary text-white font-bold shadow-md"
+                  : "text-slate-500 font-semibold hover:bg-slate-50"
+                  }`}
               >
                 {role.label}
               </button>
@@ -335,8 +324,7 @@ export default function RolesPermissionsPage() {
             <tbody className="divide-y divide-slate-50/50">
               {MODULES.map(module => {
                 const perms = activeRolePerms[module.id] || { view: false, create: false, edit: false, delete: false };
-                // "Raporlar" için sadece view aktif ve disabled; diğerleri yoktur
-                const forceViewOnly = module.id === 'reports';
+                const forceViewOnly = false;
                 // Kural gereği "tam erişim" badge'i: sadece müvcut aksiyonlar değerlendirilir
                 const availableActions = (Object.keys(module.actions) as Array<keyof typeof module.actions>)
                   .filter(k => module.actions[k]);
@@ -346,12 +334,11 @@ export default function RolesPermissionsPage() {
                   <tr key={module.id} className="group hover:bg-slate-50/20 transition-all duration-200">
                     <td className="py-5 px-6 rounded-l-2xl">
                       <div className="flex items-center space-x-4">
-                        <div className={`w-10 h-10 rounded-xl flex items-center justify-center transition-transform group-hover:scale-110 ${
-                          module.color === 'blue' ? "bg-blue-50 text-blue-600" :
+                        <div className={`w-10 h-10 rounded-xl flex items-center justify-center transition-transform group-hover:scale-110 ${module.color === 'blue' ? "bg-blue-50 text-blue-600" :
                           module.color === 'indigo' ? "bg-indigo-50 text-indigo-600" :
-                          module.color === 'purple' ? "bg-purple-50 text-purple-600" :
-                          "bg-emerald-50 text-emerald-600"
-                        }`}>
+                            module.color === 'purple' ? "bg-purple-50 text-purple-600" :
+                              "bg-emerald-50 text-emerald-600"
+                          }`}>
                           <span className="material-symbols-outlined text-xl">{module.icon}</span>
                         </div>
                         <div>
@@ -413,11 +400,10 @@ export default function RolesPermissionsPage() {
                     )}
 
                     <td className="py-5 px-6 rounded-r-2xl text-right">
-                      <span className={`text-[9px] font-bold px-3 py-1.5 rounded-full border transition-all ${
-                        isFullAccess 
-                          ? "bg-tertiary-container/10 text-on-tertiary-fixed-variant border-tertiary-container/20 tracking-widest" 
-                          : "bg-slate-100 text-slate-500 border-slate-200 tracking-tighter"
-                      }`}>
+                      <span className={`text-[9px] font-bold px-3 py-1.5 rounded-full border transition-all ${isFullAccess
+                        ? "bg-tertiary-container/10 text-on-tertiary-fixed-variant border-tertiary-container/20 tracking-widest"
+                        : "bg-slate-100 text-slate-500 border-slate-200 tracking-tighter"
+                        }`}>
                         {isFullAccess ? "TAM ERİŞİM" : "KISITLI"}
                       </span>
                     </td>
@@ -430,13 +416,13 @@ export default function RolesPermissionsPage() {
 
         {/* Table Footer */}
         <div className="p-8 border-t border-outline-variant/10 flex justify-end space-x-4 bg-surface-container-low/50">
-          <button 
+          <button
             onClick={handleReset}
             className="px-8 py-3 rounded-xl text-sm font-semibold text-on-surface hover:bg-white transition-all font-body active:scale-95"
           >
             Sıfırla
           </button>
-          <button 
+          <button
             onClick={handleSave}
             className="px-10 py-3 rounded-xl text-sm font-bold text-white bg-gradient-to-br from-primary to-primary-container shadow-lg shadow-indigo-200 active:scale-95 transition-all font-body hover:opacity-95"
           >
@@ -448,15 +434,15 @@ export default function RolesPermissionsPage() {
       {/* Role Summary Cards (Bento Style) */}
       <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mt-12 pb-12">
         {ROLES.map(role => (
-          <SummaryCard 
+          <SummaryCard
             key={role.id}
             icon={
-              role.id === 'admin' ? "manage_accounts" : 
-              role.id === 'accounting' ? "payments" : 
-              role.id === 'staff' ? "person" : "point_of_sale"
+              role.id === 'admin' ? "manage_accounts" :
+                role.id === 'accounting' ? "payments" :
+                  role.id === 'warehouse' ? "inventory_2" : "supervisor_account"
             }
-            label={`${role.label} Kullanıcı`} 
-            count={roleCounts[role.id] || 0} 
+            label={`${role.label} Kullanıcı`}
+            count={roleCounts[role.id] || 0}
           />
         ))}
       </div>
@@ -466,10 +452,9 @@ export default function RolesPermissionsPage() {
 
 function Switch({ checked, onChange, disabled = false }: { checked: boolean; onChange: () => void; disabled?: boolean }) {
   return (
-    <div 
-      className={`inline-flex items-center relative select-none ${
-        disabled ? "cursor-not-allowed opacity-70" : "cursor-pointer"
-      }`}
+    <div
+      className={`inline-flex items-center relative select-none ${disabled ? "cursor-not-allowed opacity-70" : "cursor-pointer"
+        }`}
       onClick={(e) => {
         e.preventDefault();
         e.stopPropagation();
@@ -481,16 +466,14 @@ function Switch({ checked, onChange, disabled = false }: { checked: boolean; onC
       title={disabled ? "Bu ayar şimdilik kilitlidir" : undefined}
     >
       {/* Switch Background */}
-      <div className={`block w-10 h-5 rounded-full transition-all duration-300 ease-in-out ${
-        checked
-          ? disabled ? 'bg-indigo-400 shadow-inner' : 'bg-indigo-600 shadow-inner'
-          : 'bg-slate-200'
-      }`}></div>
-      
+      <div className={`block w-10 h-5 rounded-full transition-all duration-300 ease-in-out ${checked
+        ? disabled ? 'bg-indigo-400 shadow-inner' : 'bg-indigo-600 shadow-inner'
+        : 'bg-slate-200'
+        }`}></div>
+
       {/* Switch Dot */}
-      <div className={`absolute top-0.5 left-0.5 bg-white w-4 h-4 rounded-full transition-all duration-300 ease-in-out shadow-md transform ${
-        checked ? 'translate-x-5 scale-110' : 'translate-x-0 scale-100'
-      }`}></div>
+      <div className={`absolute top-0.5 left-0.5 bg-white w-4 h-4 rounded-full transition-all duration-300 ease-in-out shadow-md transform ${checked ? 'translate-x-5 scale-110' : 'translate-x-0 scale-100'
+        }`}></div>
 
       {/* Kilit ikonu — disabled ise */}
       {disabled && (

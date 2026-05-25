@@ -6,7 +6,6 @@ import { useCurrencyConverter } from "@/hooks/useCurrencyConverter";
 import { softDeleteInvoice } from "@/app/(dashboard)/trash/actions";
 import Link from "next/link";
 import toast from "react-hot-toast";
-import { resolveTeamIds, applyTeamFilter } from "@/lib/teamUtils";
 
 
 interface Invoice {
@@ -19,6 +18,8 @@ interface Invoice {
   status: string;
   contact_id: string;
   currency: string;
+  is_paid?: boolean;
+  due_date?: string;
 }
 
 interface Contact {
@@ -27,7 +28,7 @@ interface Contact {
 }
 
 export default function InvoicesPage() {
-  const { viewCurrency, setViewCurrency, convert, format } = useCurrencyConverter();
+  const { viewCurrency, setViewCurrency, convertFull, format } = useCurrencyConverter();
   const [invoices, setInvoices] = useState<Invoice[]>([]);
   const [contacts, setContacts] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(true);
@@ -44,44 +45,52 @@ export default function InvoicesPage() {
       return;
     }
 
-    // Resolve team context
-    const teamIds = await resolveTeamIds(user.id);
-
-    // Fetch invoices (team-scoped)
-    const { data: invoicesData, error: invoicesError } = await applyTeamFilter(
-      supabase.from("invoices").select("*").is("deleted_at", null),
-      teamIds
-    ).order("issue_date", { ascending: false });
-
-    if (invoicesError) {
-      console.error("Error fetching invoices:", invoicesError);
-      setLoading(false);
-      return;
-    }
-
-    setInvoices((invoicesData || []) as Invoice[]);
-
-    // Fetch contacts for mapping
-    if (invoicesData && invoicesData.length > 0) {
-      const contactIds = [...new Set(invoicesData.map((i: any) => i.contact_id))];
-      const { data: contactsData } = await supabase
-        .from("contacts")
-        .select("id, name")
-        .in("id", contactIds);
-
-      const contactMap: Record<string, string> = {};
-      (contactsData || []).forEach((c: any) => {
-        contactMap[c.id] = c.name;
+    try {
+      const { fetchTeamScopedData } = await import("@/app/(dashboard)/teamActions");
+      
+      // Fetch invoices (team-scoped)
+      const { data: invoicesData } = await fetchTeamScopedData(user.id, "invoices", "*", {
+        excludeDeleted: true,
+        orderBy: "issue_date",
+        orderAscending: false
       });
-      setContacts(contactMap);
-    }
 
-    setLoading(false);
+      setInvoices((invoicesData || []) as Invoice[]);
+
+      // Fetch contacts for mapping (team-scoped)
+      if (invoicesData && invoicesData.length > 0) {
+        const contactIds = [...new Set(invoicesData.map((i: any) => i.contact_id))];
+        const { data: contactsData } = await fetchTeamScopedData(user.id, "contacts", "id, name", {
+          excludeDeleted: false
+        });
+
+        const contactMap: Record<string, string> = {};
+        // Only map contacts that exist
+        (contactsData || []).forEach((c: any) => {
+          contactMap[c.id] = c.name;
+        });
+        setContacts(contactMap);
+      }
+    } catch (error) {
+      console.error("Error fetching invoices:", error);
+    } finally {
+      setLoading(false);
+    }
   };
 
   useEffect(() => {
     fetchInvoices();
   }, []);
+
+  const isOverdue = (invoice: Invoice) => {
+    if (invoice.is_paid === true || invoice.status === "paid") return false;
+    if (!invoice.due_date) return false;
+    const dueDate = new Date(invoice.due_date);
+    const today = new Date();
+    dueDate.setHours(0, 0, 0, 0);
+    today.setHours(0, 0, 0, 0);
+    return dueDate < today;
+  };
 
   const filtered = invoices.filter((invoice) => {
     const typeMatch = filterType === "all" || invoice.type === (filterType === "sales" ? "sale" : filterType === "purchase" ? "purchase" : invoice.type);
@@ -97,12 +106,21 @@ export default function InvoicesPage() {
     return typeMatch && searchMatch;
   });
 
-  const calculateInView = (amountTry: number) => {
-    return convert(amountTry); // Hook'un convert fonksiyonunu kullanıyoruz (TRY -> viewCurrency)
+  // Fatura tutarları faturanın kendi para biriminde saklanır.
+  // Her faturayı kendi currency'sinden viewCurrency'ye çevirip topluyoruz —
+  // böylece TRY + USD + EUR faturalar doğru toplam verir.
+  const calculateInView = (amount: number, fromCurrency: string | null | undefined) => {
+    return convertFull(amount, fromCurrency || "TRY", viewCurrency);
   };
 
-  const totalAmount = filtered.reduce((sum, inv) => sum + calculateInView(inv.total_amount), 0);
-  const vatAmount = filtered.reduce((sum, inv) => sum + calculateInView(inv.tax_total), 0);
+  const totalAmount = filtered.reduce(
+    (sum, inv) => sum + calculateInView(inv.total_amount, inv.currency),
+    0
+  );
+  const vatAmount = filtered.reduce(
+    (sum, inv) => sum + calculateInView(inv.tax_total, inv.currency),
+    0
+  );
 
   const handleDownloadPdf = async (invoice: Invoice) => {
     setDownloadingPdfId(invoice.id);
@@ -195,11 +213,16 @@ export default function InvoicesPage() {
         {/* Page Header */}
         <div className="flex flex-col md:flex-row md:items-end justify-between gap-6 pb-6 border-b border-slate-200">
           <div>
-            <h1 className="text-3xl font-extrabold text-slate-900 tracking-tight mb-2">
+            <nav className="flex items-center gap-2 text-xs font-semibold text-indigo-400 mb-2">
+              <span>Panel</span>
+              <span className="material-symbols-outlined text-[12px]">chevron_right</span>
+              <span className="text-slate-500">Fatura Yönetimi</span>
+            </nav>
+            <h1 className="text-3xl font-extrabold text-slate-900 tracking-tight">
               Faturalar
             </h1>
-            <p className="text-slate-600">
-              Tüm faturalarınızı yönetin ve takip edin
+            <p className="text-slate-600 mt-1">
+              Tüm faturalarınızı yönetin ve takip edin.
             </p>
           </div>
           <div className="flex flex-wrap items-center gap-3">
@@ -227,6 +250,7 @@ export default function InvoicesPage() {
             </Link>
           </div>
         </div>
+
 
         {/* Filter Bar */}
         <div className="flex items-center gap-3 pb-6 border-b border-slate-200">
@@ -322,8 +346,12 @@ export default function InvoicesPage() {
           </div>
         ) : filtered.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-24 bg-white rounded-2xl shadow-sm border border-slate-200">
-            <div className="w-28 h-28 bg-gradient-to-br from-purple-100 to-purple-50 rounded-lg flex items-center justify-center mb-8 shadow-sm">
-              <span className="material-symbols-outlined text-7xl text-purple-400">receipt_long</span>
+            <div className="w-32 h-32 mb-8 relative flex items-center justify-center rounded-2xl overflow-hidden bg-white border border-slate-200 shadow-md hover:scale-105 transition-transform duration-300">
+              <img
+                src="/fatura.png"
+                alt="Fatura"
+                className="w-full h-full object-cover scale-[1.38]"
+              />
             </div>
             <h3 className="text-2xl font-bold text-slate-900 mb-2">Henüz fatura kesilmemiş</h3>
             <p className="text-slate-600 mb-8 max-w-sm text-center">Yeni bir fatura oluşturmak için aşağıdaki butona tıklayın</p>
@@ -382,18 +410,30 @@ export default function InvoicesPage() {
                           </p>
                         </td>
                         <td className="w-[130px] px-6 py-5 align-middle text-right">
-                          <p className="text-sm font-semibold text-on-surface">{format(calculateInView(invoice.total_amount))}</p>
+                          <p className="text-sm font-semibold text-on-surface">{format(calculateInView(invoice.total_amount, invoice.currency))}</p>
                         </td>
                         <td className="w-[120px] px-6 py-5 align-middle">
-                          <span
-                            className={`text-xs font-semibold px-3 py-1.5 rounded-full inline-flex items-center gap-1 ${
-                            invoice.status === "draft" ? "bg-slate-100 text-slate-700" : invoice.status === "pending" ? "bg-amber-50 text-amber-700" : "bg-emerald-50 text-emerald-700"
-                          }`}>
-                            <span className="material-symbols-outlined text-sm">
-                              {invoice.status === "draft" ? "description" : invoice.status === "pending" ? "schedule" : "check_circle"}
+                          {invoice.status === "draft" ? (
+                            <span className="bg-slate-100 text-slate-700 text-xs font-semibold px-3 py-1.5 rounded-full inline-flex items-center gap-1">
+                              <span className="material-symbols-outlined text-sm">description</span>
+                              TASLAK
                             </span>
-                            {invoice.status === "draft" ? "TASLAK" : invoice.status === "pending" ? "BEKLIYOR" : "ÖDENDİ"}
-                          </span>
+                          ) : invoice.is_paid === true || invoice.status === "paid" ? (
+                            <span className="bg-emerald-50 text-emerald-700 text-xs font-semibold px-3 py-1.5 rounded-full inline-flex items-center gap-1">
+                              <span className="material-symbols-outlined text-sm">check_circle</span>
+                              ÖDENDİ
+                            </span>
+                          ) : isOverdue(invoice) ? (
+                            <span className="bg-red-100 text-red-700 text-xs font-extrabold px-3 py-1.5 rounded-full inline-flex items-center gap-1">
+                              <span className="material-symbols-outlined text-sm">warning</span>
+                              VADESİ GEÇTİ
+                            </span>
+                          ) : (
+                            <span className="bg-amber-50 text-amber-700 text-xs font-semibold px-3 py-1.5 rounded-full inline-flex items-center gap-1">
+                              <span className="material-symbols-outlined text-sm">schedule</span>
+                              BEKLİYOR
+                            </span>
+                          )}
                         </td>
                         <td className="w-[100px] px-6 py-5 text-center">
                           <div className="flex items-center justify-center gap-1">

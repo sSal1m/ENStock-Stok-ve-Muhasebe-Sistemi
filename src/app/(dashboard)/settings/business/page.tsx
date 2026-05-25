@@ -4,8 +4,9 @@ import React, { useState, useEffect, useRef } from "react";
 import Image from "next/image";
 import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabaseClient";
-import toast from "react-hot-toast";
+import toast, { Toaster } from "react-hot-toast";
 import * as XLSX from 'xlsx';
+import { uploadBusinessLogoAction } from "../profile/actions";
 
 export default function BusinessSettingsPage() {
   const router = useRouter();
@@ -18,7 +19,7 @@ export default function BusinessSettingsPage() {
     tradeRegistryNumber: "REG-77281-XL",
     address: "88 Canary Wharf, Level 42, London E14 5AA",
     logoUrl: null as string | null,
-    currency: "GBP",
+    currency: "TRY",
     fiscalYearStart: "2024-01-01",
     businessSector: "Doğrulanmış İşletme",
   });
@@ -55,7 +56,7 @@ export default function BusinessSettingsPage() {
         // 2. Then, fetch from Supabase (Source of Truth for specific fields)
         const { data, error } = await supabase
           .from("profiles")
-          .select("company_name, tax_id, business_sector, logo_url")
+          .select("company_name, tax_id, business_sector, logo_url, default_currency")
           .eq("id", user.id)
           .maybeSingle();
 
@@ -71,6 +72,7 @@ export default function BusinessSettingsPage() {
             taxId: data.tax_id || prev.taxId,
             businessSector: data.business_sector || prev.businessSector,
             logoUrl: data.logo_url || prev.logoUrl,
+            currency: data.default_currency || prev.currency,
           }));
         }
       } catch (err) {
@@ -101,20 +103,36 @@ export default function BusinessSettingsPage() {
       // 1. Save all fields to localStorage (Reliable local persistence)
       localStorage.setItem(`business_settings_${user.id}`, JSON.stringify(formData));
 
-      // 2. Save schema-compliant fields to Supabase
+      // 2. Save schema-compliant fields to Supabase.
+      // UPDATE kullanılıyor (upsert değil) çünkü profil satırı zaten var olmalı
+      // (auth.signUp trigger'ı oluşturuyor). Upsert NOT NULL kolon (full_name)
+      // gerektirdiği için yeni satır insert path'inde patlıyordu.
       const { error } = await supabase
         .from("profiles")
-        .upsert({
-          id: user.id,
+        .update({
           company_name: formData.companyName,
           tax_id: formData.taxId,
           business_sector: formData.businessSector,
-        }, { onConflict: "id" });
+          default_currency: formData.currency,
+        })
+        .eq("id", user.id);
+
+      // Also save address to auth user_metadata so it can be retrieved by employees
+      await supabase.auth.updateUser({
+        data: { business_address: formData.address }
+      });
+
 
       if (error) {
         console.warn("Supabase partial save error (likely missing columns, saved to local instead):", error.message);
         // We don't throw error here because we saved to local storage
       }
+
+      // İşletme default'u değiştiğinde mevcut tüm sayfaların hook'larındaki
+      // sayfa-bazlı override'ı temizle ki yeni default hemen etkili olsun.
+      // (Kullanıcı bilinçli olarak değiştirdiği için artık eski override anlamsız.)
+      localStorage.removeItem("preferred_currency_overridden");
+      localStorage.setItem("preferred_currency", formData.currency);
 
       toast.success("Ayarlar başarıyla güncellendi.", { id: toastId });
     } catch (err: any) {
@@ -141,44 +159,46 @@ export default function BusinessSettingsPage() {
     const toastId = toast.loading("Logo yükleniyor...");
     try {
       const { data: { user } } = await supabase.auth.getUser();
-      if (!user) return;
-
-      const fileExt = file.name.split(".").pop();
-      const fileName = `logo-${user.id}-${Math.random()}.${fileExt}`;
-      const filePath = `logos/${fileName}`;
-
-      const { error: uploadError } = await supabase.storage
-        .from("avatars") // Using avatars bucket as mentioned in plan fallback
-        .upload(filePath, file);
-
-      if (uploadError) throw uploadError;
-
-      const { data: { publicUrl } } = supabase.storage
-        .from("avatars")
-        .getPublicUrl(filePath);
-
-      const { error: updateError } = await supabase
-        .from("profiles")
-        .upsert({
-          id: user.id,
-          logo_url: publicUrl
-        }, { onConflict: "id" });
-
-      if (updateError) {
-        console.warn("Logo Supabase save error:", updateError.message);
+      if (!user) {
+        toast.error("Oturum bulunamadı.", { id: toastId });
+        return;
       }
 
-      setFormData(prev => {
-        const newData = { ...prev, logoUrl: publicUrl };
-        // Sync logo update to local storage too
-        localStorage.setItem(`business_settings_${user.id}`, JSON.stringify(newData));
-        return newData;
-      });
-      setLogoTimestamp(Date.now());
-      toast.success("Logo başarıyla yüklendi.", { id: toastId });
+      // Dosyayı Base64 dizesine dönüştür
+      const reader = new FileReader();
+      reader.readAsDataURL(file);
+      reader.onload = async () => {
+        try {
+          const base64Data = (reader.result as string).split(',')[1];
+          const result = await uploadBusinessLogoAction(base64Data, file.name, file.type, user.id);
+
+          if (!result.success) {
+            toast.error(`Logo yükleme hatası: ${result.error}`, { id: toastId });
+            setIsLogoUploading(false);
+            return;
+          }
+
+          setFormData(prev => {
+            const newData = { ...prev, logoUrl: result.publicUrl || null };
+            // Sync logo update to local storage too
+            localStorage.setItem(`business_settings_${user.id}`, JSON.stringify(newData));
+            return newData;
+          });
+          setLogoTimestamp(Date.now());
+          toast.success("Logo başarıyla yüklendi.", { id: toastId });
+          setIsLogoUploading(false);
+        } catch (innerErr: any) {
+          toast.error(`Logo yükleme hatası: ${innerErr.message}`, { id: toastId });
+          setIsLogoUploading(false);
+        }
+      };
+      
+      reader.onerror = () => {
+        toast.error("Dosya okunurken bir hata oluştu.", { id: toastId });
+        setIsLogoUploading(false);
+      };
     } catch (err: any) {
       toast.error(`Logo yükleme hatası: ${err.message}`, { id: toastId });
-    } finally {
       setIsLogoUploading(false);
     }
   };
@@ -244,7 +264,8 @@ export default function BusinessSettingsPage() {
   }
 
   return (
-    <div className="grid grid-cols-12 gap-8">
+    <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
+      <Toaster position="top-right" />
       {/* Left Column: Business Details */}
       <div className="col-span-12 lg:col-span-7 space-y-8">
         {/* Business Information Card */}
@@ -364,10 +385,10 @@ export default function BusinessSettingsPage() {
                 value={formData.currency}
                 onChange={handleInputChange}
               >
-                <option value="GBP">GBP (£) - British Pound</option>
+                <option value="TRY">TRY (₺) - Türk Lirası</option>
                 <option value="USD">USD ($) - US Dollar</option>
                 <option value="EUR">EUR (€) - Euro</option>
-                <option value="TRY">TRY (₺) - Türk Lirası</option>
+                <option value="GBP">GBP (£) - British Pound</option>
               </select>
             </div>
             <div className="space-y-1.5">

@@ -6,7 +6,8 @@ import { useRouter } from 'next/navigation';
 import { supabase } from '@/lib/supabaseClient';
 import toast from 'react-hot-toast';
 import { useCurrencyConverter } from '@/hooks/useCurrencyConverter';
-import { resolveTeamIds, applyTeamFilter } from '@/lib/teamUtils';
+import { getRecentActivityLogs, type ActivityLogRecord } from '@/app/(dashboard)/activity-log/actions';
+import ActivityLogList from '@/components/activity-log/ActivityLogList';
 import * as XLSX from 'xlsx';
 
 interface KPIData {
@@ -54,8 +55,12 @@ export default function DashboardPage() {
   });
   const [activities, setActivities] = useState<ActivityLog[]>([]);
   const [chartData, setChartData] = useState<ChartDataPoint[]>([]);
+  const [rawInvoiceItems, setRawInvoiceItems] = useState<any[]>([]);
+  const [chartPeriod, setChartPeriod] = useState<'daily' | 'weekly' | 'monthly'>('daily');
+  const [hoveredIndex, setHoveredIndex] = useState<number | null>(null);
   const [categories, setCategories] = useState<CategoryData[]>([]);
   const [vendors, setVendors] = useState<VendorData[]>([]);
+  const [activityLogs, setActivityLogs] = useState<ActivityLogRecord[]>([]);
   const [loading, setLoading] = useState(true);
   const { rates, viewCurrency, setViewCurrency, convert, format: fmt } = useCurrencyConverter();
 
@@ -70,8 +75,7 @@ export default function DashboardPage() {
           return;
         }
 
-        // Resolve team context so invited users see company data
-        const teamIds = await resolveTeamIds(authUser.id);
+        const { fetchTeamScopedData } = await import("@/app/(dashboard)/teamActions");
 
         const [
           productsRes,
@@ -80,54 +84,51 @@ export default function DashboardPage() {
           contactsRes,
           invoicesDetailsRes,
         ] = await Promise.all([
-          applyTeamFilter(
-            supabase
-              .from('products')
-              .select('id, name, stock_quantity, critical_limit, sale_price, currency, sale_price_in_currency')
-              .is('deleted_at', null),
-            teamIds
+          fetchTeamScopedData(
+            authUser.id,
+            'products',
+            'id, name, stock_quantity, critical_limit, sale_price, currency, sale_price_in_currency',
+            { excludeDeleted: true }
           ),
 
-          applyTeamFilter(
-            supabase.from('invoices').select('total_amount').is('deleted_at', null),
-            teamIds
+          // ✅ Currency-aware revenue: total_amount fatura para biriminde saklı,
+          //   exchange_rate ile TRY karşılığını hesaplıyoruz
+          fetchTeamScopedData(
+            authUser.id,
+            'invoices',
+            'id, total_amount, currency, exchange_rate, type, issue_date',
+            { excludeDeleted: true }
           ),
 
-          applyTeamFilter(
-            supabase.from('inventory_logs').select(`
-              id,
-              action_type,
-              quantity_change,
-              created_at,
-              products (
-                name
-              )
-            `),
-            teamIds
-          )
-            .order('created_at', { ascending: false })
-            .limit(5),
+          fetchTeamScopedData(
+            authUser.id,
+            'inventory_logs',
+            'id, action_type, quantity_change, created_at, products(name)',
+            { orderBy: 'created_at', orderAscending: false, limit: 5 }
+          ),
 
-          supabase
-            .from('contacts')
-            .select('id, name, type')
-            .eq('user_id', authUser.id)
-            .is('deleted_at', null)
-            .limit(10),
+          fetchTeamScopedData(
+            authUser.id,
+            'contacts',
+            'id, name, type',
+            { excludeDeleted: true, limit: 10 }
+          ),
 
-          // Son 7 gün satış trendleri için
-          supabase
-            .from('invoices')
-            .select('total_amount, issue_date')
-            .eq('user_id', authUser.id)
-            .is('deleted_at', null)
-            .gte('issue_date', new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0]),
+          // Son 7 gün satış trendleri + COGS hesabı için fatura kalemleri + ürün maliyeti
+          fetchTeamScopedData(
+            authUser.id,
+            'invoice_items',
+            'quantity, unit_price, invoice_id, product_id, invoices!inner(issue_date, type, currency, exchange_rate, deleted_at, user_id), products(purchase_price)',
+            {
+              teamFilterColumn: 'invoices.user_id',
+              additionalFilters: [
+                { column: 'invoices.deleted_at', operator: 'is', value: null },
+                { column: 'invoices.type', operator: 'eq', value: 'sale' },
+                { column: 'invoices.issue_date', operator: 'gte', value: new Date(Date.now() - 365 * 24 * 60 * 60 * 1000).toISOString().split('T')[0] }
+              ]
+            }
+          ),
         ]);
-
-        // Hata kontrolü
-        if (productsRes.error) {
-          throw new Error(`Products: ${productsRes.error.message}`);
-        }
 
         const allProducts = productsRes.data || [];
         const totalProducts = allProducts.length;
@@ -136,29 +137,34 @@ export default function DashboardPage() {
           (p: any) => p.stock_quantity <= (p.critical_limit || 10)
         ).length;
 
-        // En çok stoktaki ürünleri hesapla
+        // En çok stoktaki ürünleri hesapla — totalValue her zaman TRY karşılığında
+        // tutulur; display tarafında convert(TRY → viewCurrency) uygulanır.
         const topProducts = allProducts
-          .filter((product: any) => product.stock_quantity > 0) // Sadece stoğu olan ürünler
+          .filter((product: any) => product.stock_quantity > 0)
           .map((product: any) => {
-            const price = product.sale_price_in_currency 
-              ? parseFloat(product.sale_price_in_currency) 
-              : parseFloat(product.sale_price || 0);
+            const priceTry = parseFloat(product.sale_price || 0); // TRY karşılığı
             return {
               id: product.id,
               name: product.name || 'Ürün',
               totalProducts: product.stock_quantity || 0,
-              totalValue: isNaN(price) ? 0 : (price * (product.stock_quantity || 0)),
+              totalValue: isNaN(priceTry) ? 0 : (priceTry * (product.stock_quantity || 0)),
             };
           })
-          .sort((a: any, b: any) => b.totalProducts - a.totalProducts) // En çok stok önce
-          .slice(0, 3); // İlk 3 ürünü al
+          .sort((a: any, b: any) => b.totalProducts - a.totalProducts)
+          .slice(0, 3);
 
-        let totalRevenue = 0;
+        // Faturalar farklı para birimlerinde olabilir; her birini exchange_rate
+        // ile TRY'ye çevirip topluyoruz. Display tarafında convert(TRY → viewCurrency)
+        // ile gösterilecek. Sadece "sale" faturalar ciro sayılır.
+        let totalRevenueTry = 0;
         if (revenueRes.data) {
-          totalRevenue = revenueRes.data.reduce(
-            (sum: number, inv: any) => sum + (inv.total_amount || 0),
-            0
-          );
+          totalRevenueTry = revenueRes.data
+            .filter((inv: any) => inv.type === 'sale')
+            .reduce((sum: number, inv: any) => {
+              const amount = Number(inv.total_amount) || 0;
+              const rate = Number(inv.exchange_rate) || 1; // 1 USD = ? TRY
+              return sum + amount * rate;
+            }, 0);
         }
 
         let processedActivities: ActivityLog[] = [];
@@ -190,19 +196,26 @@ export default function DashboardPage() {
             ? Math.round((nonCriticalProducts / totalProducts) * 100)
             : 0;
 
-        // Gerçek satış trendleri hesapla
-        const chartPoints = generateChartDataFromInvoices(invoicesDetailsRes.data || []);
+        // Gerçek satış trendleri hesapla — invoice_items + product.purchase_price ile
+        // gerçek COGS hesabı yapılır.
+        const allItems = invoicesDetailsRes.data || [];
+        setRawInvoiceItems(allItems);
 
         setKpiData({
           totalProducts,
           criticalStockItems: criticalCount,
-          todayRevenue: totalRevenue,
+          todayRevenue: totalRevenueTry,
           stockHealth,
         });
         setActivities(processedActivities);
         setCategories(topProducts);
         setVendors(vendorData);
-        setChartData(chartPoints);
+
+        // Aktivite logları (CRUD audit trail)
+        const logsRes = await getRecentActivityLogs(authUser.id, 6);
+        if (logsRes.success) {
+          setActivityLogs(logsRes.data);
+        }
       } catch (error) {
         console.error('Dashboard veri yükleme hatası:', error);
         
@@ -236,6 +249,11 @@ export default function DashboardPage() {
     fetchData();
   }, []);
 
+  useEffect(() => {
+    const points = generateChartDataForPeriod(rawInvoiceItems, chartPeriod);
+    setChartData(points);
+  }, [chartPeriod, rawInvoiceItems]);
+
   const getActivityStatus = (type: string) => {
     if (type === 'stock_in') return 'completed' as const;
     if (type === 'sale') return 'completed' as const;
@@ -243,47 +261,139 @@ export default function DashboardPage() {
     return 'delayed' as const;
   };
 
-  const generateChartDataFromInvoices = (invoices: any[]): ChartDataPoint[] => {
-    const days = ['Pzt', 'Sal', 'Çar', 'Per', 'Cum', 'Cmt', 'Paz'];
-    const dayMap = new Map<number, { revenue: number; profit: number }>();
+  const generateChartDataForPeriod = (items: any[], period: 'daily' | 'weekly' | 'monthly'): ChartDataPoint[] => {
+    const getTurkishMonth = (mIndex: number) => {
+      const months = ['Oca', 'Şub', 'Mar', 'Nis', 'May', 'Haz', 'Tem', 'Ağu', 'Eyl', 'Eki', 'Kas', 'Ara'];
+      return months[mIndex] || '';
+    };
 
-    // Son 7 gün için harita oluştur
-    for (let i = 6; i >= 0; i--) {
-      const date = new Date();
-      date.setDate(date.getDate() - i);
-      const dayOfWeek = date.getDay();
-      const adjustedDay = dayOfWeek === 0 ? 6 : dayOfWeek - 1; // Pazardan başla
-      dayMap.set(adjustedDay, { revenue: 0, profit: 0 });
-    }
-
-    // Invoice verileri işle
-    invoices.forEach((inv: any) => {
-      if (inv.issue_date) {
-        const date = new Date(inv.issue_date);
-        const dayOfWeek = date.getDay();
-        const adjustedDay = dayOfWeek === 0 ? 6 : dayOfWeek - 1;
-
-        if (dayMap.has(adjustedDay)) {
-          const existing = dayMap.get(adjustedDay)!;
-          existing.revenue += inv.total_amount || 0;
-          // Kar tahmini: brüt satışın %35'i
-          existing.profit += (inv.total_amount || 0) * 0.35;
-        }
+    if (period === 'daily') {
+      const daysList: { dateStr: string; label: string; revenue: number; profit: number }[] = [];
+      for (let i = 9; i >= 0; i--) {
+        const d = new Date();
+        d.setDate(d.getDate() - i);
+        const dateStr = d.toISOString().split('T')[0];
+        const label = `${d.getDate()} ${getTurkishMonth(d.getMonth())}`;
+        daysList.push({ dateStr, label, revenue: 0, profit: 0 });
       }
-    });
 
-    // Sonuçları diziye dönüştür
-    const data: ChartDataPoint[] = [];
-    for (let i = 0; i < 7; i++) {
-      const dayData = dayMap.get(i);
-      data.push({
-        name: days[i],
-        revenue: dayData ? Math.round(dayData.revenue) : 0,
-        profit: dayData ? Math.round(dayData.profit) : 0,
+      items.forEach((item: any) => {
+        const inv = Array.isArray(item.invoices) ? item.invoices[0] : item.invoices;
+        const product = Array.isArray(item.products) ? item.products[0] : item.products;
+        if (!inv?.issue_date) return;
+
+        const dateStr = inv.issue_date.split('T')[0];
+        const dayObj = daysList.find(d => d.dateStr === dateStr);
+        if (!dayObj) return;
+
+        const qty = Number(item.quantity) || 0;
+        const unitPrice = Number(item.unit_price) || 0;
+        const rate = Number(inv.exchange_rate) || 1;
+        const revenueTry = qty * unitPrice * rate;
+
+        const purchasePriceTry = Number(product?.purchase_price) || 0;
+        const cogsTry = qty * purchasePriceTry;
+
+        dayObj.revenue += revenueTry;
+        dayObj.profit += (revenueTry - cogsTry);
       });
-    }
 
-    return data;
+      return daysList.map(d => ({
+        name: d.label,
+        revenue: Math.round(d.revenue),
+        profit: Math.round(d.profit)
+      }));
+
+    } else if (period === 'weekly') {
+      const weeksList: { start: Date; end: Date; label: string; revenue: number; profit: number }[] = [];
+      
+      const currentMonday = new Date();
+      const currentDay = currentMonday.getDay();
+      const diff = currentMonday.getDate() - (currentDay === 0 ? 6 : currentDay - 1);
+      currentMonday.setDate(diff);
+      currentMonday.setHours(0, 0, 0, 0);
+
+      for (let i = 7; i >= 0; i--) {
+        const monday = new Date(currentMonday);
+        monday.setDate(monday.getDate() - i * 7);
+        
+        const sunday = new Date(monday);
+        sunday.setDate(sunday.getDate() + 6);
+        sunday.setHours(23, 59, 59, 999);
+
+        const label = `${monday.getDate()} ${getTurkishMonth(monday.getMonth())}`;
+        weeksList.push({ start: monday, end: sunday, label, revenue: 0, profit: 0 });
+      }
+
+      items.forEach((item: any) => {
+        const inv = Array.isArray(item.invoices) ? item.invoices[0] : item.invoices;
+        const product = Array.isArray(item.products) ? item.products[0] : item.products;
+        if (!inv?.issue_date) return;
+
+        const issueDate = new Date(inv.issue_date);
+        const weekObj = weeksList.find(w => issueDate >= w.start && issueDate <= w.end);
+        if (!weekObj) return;
+
+        const qty = Number(item.quantity) || 0;
+        const unitPrice = Number(item.unit_price) || 0;
+        const rate = Number(inv.exchange_rate) || 1;
+        const revenueTry = qty * unitPrice * rate;
+
+        const purchasePriceTry = Number(product?.purchase_price) || 0;
+        const cogsTry = qty * purchasePriceTry;
+
+        weekObj.revenue += revenueTry;
+        weekObj.profit += (revenueTry - cogsTry);
+      });
+
+      return weeksList.map(w => ({
+        name: w.label,
+        revenue: Math.round(w.revenue),
+        profit: Math.round(w.profit)
+      }));
+
+    } else {
+      const monthsList: { year: number; month: number; label: string; revenue: number; profit: number }[] = [];
+      const now = new Date();
+      
+      for (let i = 5; i >= 0; i--) {
+        const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+        monthsList.push({
+          year: d.getFullYear(),
+          month: d.getMonth(),
+          label: `${getTurkishMonth(d.getMonth())}`,
+          revenue: 0,
+          profit: 0
+        });
+      }
+
+      items.forEach((item: any) => {
+        const inv = Array.isArray(item.invoices) ? item.invoices[0] : item.invoices;
+        const product = Array.isArray(item.products) ? item.products[0] : item.products;
+        if (!inv?.issue_date) return;
+
+        const issueDate = new Date(inv.issue_date);
+        const monthObj = monthsList.find(m => m.year === issueDate.getFullYear() && m.month === issueDate.getMonth());
+        if (!monthObj) return;
+
+        const qty = Number(item.quantity) || 0;
+        const unitPrice = Number(item.unit_price) || 0;
+        const rate = Number(inv.exchange_rate) || 1;
+        const revenueTry = qty * unitPrice * rate;
+
+        const purchasePriceTry = Number(product?.purchase_price) || 0;
+        const cogsTry = qty * purchasePriceTry;
+
+        monthObj.revenue += revenueTry;
+        monthObj.profit += (revenueTry - cogsTry);
+      });
+
+      return monthsList.map(m => ({
+        name: m.label,
+        revenue: Math.round(m.revenue),
+        profit: Math.round(m.profit)
+      }));
+    }
   };
 
   const getStatusColor = (status: string) => {
@@ -448,20 +558,51 @@ export default function DashboardPage() {
         {/* Main Chart Area */}
         <div className="lg:col-span-2 space-y-6">
           {/* Sales Trends Chart */}
-          <div className="bg-surface-container-lowest rounded-3xl p-8 shadow-sm">
-            <div className="flex items-center justify-between mb-8">
+          <div className="bg-surface-container-lowest rounded-3xl p-8 shadow-sm relative">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-8">
               <div className="flex items-center gap-3">
                 <div className="w-1.5 h-6 bg-primary rounded-full"></div>
                 <h2 className="text-xl font-bold text-on-surface">Satış Trendleri</h2>
               </div>
-              <div className="flex items-center gap-2">
-                <div className="flex items-center gap-1.5 mr-4">
-                  <div className="w-3 h-3 rounded-full bg-primary"></div>
-                  <span className="text-xs font-medium text-slate-500">Brüt Satış</span>
+              
+              <div className="flex flex-wrap items-center gap-4">
+                {/* Legend */}
+                <div className="flex items-center gap-4">
+                  <div className="flex items-center gap-1.5">
+                    <div className="w-3.5 h-0.5 bg-[#4b41e1]"></div>
+                    <div className="w-1.5 h-1.5 rounded-full bg-[#4b41e1] -ml-2.5"></div>
+                    <span className="text-xs font-semibold text-slate-500 ml-1">Net Kâr/Zarar</span>
+                  </div>
+                  <div className="flex items-center gap-1.5">
+                    <div className="w-3 h-3 rounded bg-emerald-500"></div>
+                    <span className="text-xs font-semibold text-slate-500">Net Kâr</span>
+                  </div>
+                  <div className="flex items-center gap-1.5">
+                    <div className="w-3 h-3 rounded bg-rose-500"></div>
+                    <span className="text-xs font-semibold text-slate-500">Net Zarar</span>
+                  </div>
                 </div>
-                <div className="flex items-center gap-1.5">
-                  <div className="w-3 h-3 rounded-full bg-primary-fixed-dim"></div>
-                  <span className="text-xs font-medium text-slate-500">Net Kar</span>
+
+                {/* Period Selector Buttons */}
+                <div className="flex items-center gap-1 bg-slate-100 p-1 rounded-xl">
+                  <button
+                    onClick={() => { setChartPeriod('daily'); setHoveredIndex(null); }}
+                    className={`px-3 py-1.5 text-xs font-bold rounded-lg transition-all cursor-pointer ${chartPeriod === 'daily' ? 'bg-white text-primary shadow-sm' : 'text-slate-500 hover:text-slate-800'}`}
+                  >
+                    Günlük
+                  </button>
+                  <button
+                    onClick={() => { setChartPeriod('weekly'); setHoveredIndex(null); }}
+                    className={`px-3 py-1.5 text-xs font-bold rounded-lg transition-all cursor-pointer ${chartPeriod === 'weekly' ? 'bg-white text-primary shadow-sm' : 'text-slate-500 hover:text-slate-800'}`}
+                  >
+                    Haftalık
+                  </button>
+                  <button
+                    onClick={() => { setChartPeriod('monthly'); setHoveredIndex(null); }}
+                    className={`px-3 py-1.5 text-xs font-bold rounded-lg transition-all cursor-pointer ${chartPeriod === 'monthly' ? 'bg-white text-primary shadow-sm' : 'text-slate-500 hover:text-slate-800'}`}
+                  >
+                    Aylık
+                  </button>
                 </div>
               </div>
             </div>
@@ -469,76 +610,271 @@ export default function DashboardPage() {
             {/* Chart SVG */}
             <div className="h-64 w-full relative group">
               {chartData.length > 0 ? (
-                <svg
-                  className="w-full h-full"
-                  preserveAspectRatio="none"
-                  viewBox="0 0 700 300"
-                >
-                  <defs>
-                    <linearGradient id="chartGradient" x1="0%" x2="0%" y1="0%" y2="100%">
-                      <stop offset="0%" stopColor="#4b41e1" stopOpacity="0.1" />
-                      <stop offset="100%" stopColor="#4b41e1" stopOpacity="0" />
-                    </linearGradient>
-                  </defs>
-                  {(() => {
-                    // Max değerleri bul
-                    const maxRevenue = Math.max(...chartData.map(d => d.revenue || 0));
-                    const minRevenue = Math.min(...chartData.map(d => d.revenue || 0));
-                    const range = maxRevenue - minRevenue || 1;
-                    
-                    // Points'i normalize et (0-300 aralığında)
-                    const points = chartData.map((d, i) => {
-                      const x = (i / (chartData.length - 1 || 1)) * 700;
-                      const y = 250 - ((d.revenue - minRevenue) / range) * 200;
-                      return { x, y };
-                    });
+                (() => {
+                  // Para birimine göre dönüştürülmüş noktalar
+                  const convertedPoints = chartData.map(d => ({
+                    name: d.name,
+                    revenue: convert(d.revenue),
+                    profit: convert(d.profit)
+                  }));
 
-                    // Path oluştur
-                    const pathData = points.map((p, i) => `${i === 0 ? 'M' : 'L'}${p.x},${p.y}`).join(' ');
-                    const fillPath = `${pathData} L${points[points.length - 1].x},300 L0,300 Z`;
+                  // Maksimum ve minimum değerleri bul
+                  const maxVal = Math.max(...convertedPoints.map(d => Math.max(d.revenue, d.profit, 0))) || 100;
+                  const minVal = Math.min(...convertedPoints.map(d => Math.min(d.profit, 0))) || 0;
 
-                    return (
-                      <>
-                        <path
-                          d={pathData}
-                          fill="none"
-                          stroke="#4b41e1"
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                          strokeWidth="4"
-                        />
-                        <path
-                          d={fillPath}
-                          fill="url(#chartGradient)"
-                        />
-                        {points.map((p, i) => (
-                          <circle key={i} cx={p.x} cy={p.y} fill="#4b41e1" r="5" stroke="white" strokeWidth="2" />
-                        ))}
-                      </>
-                    );
-                  })()}
-                </svg>
+                  // Üst ve alt boşluklar ekle (%15 padding)
+                  const padding = (maxVal - minVal) * 0.15 || 10;
+                  const yMax = maxVal + padding;
+                  const yMin = minVal - padding;
+                  const yRange = yMax - yMin;
+
+                  // Koordinat eşleme fonksiyonları (Genişlik: 800, Yükseklik: 300)
+                  const leftPadding = 70;
+                  const rightPadding = 30;
+                  const topPadding = 25;
+                  const bottomPadding = 35;
+                  const drawWidth = 800 - leftPadding - rightPadding;
+                  const drawHeight = 300 - topPadding - bottomPadding;
+
+                  const getY = (v: number) => topPadding + drawHeight * (1 - (v - yMin) / yRange);
+                  const yZero = getY(0);
+
+                  // Kılavuz çizgileri
+                  const getGridLines = () => {
+                    if (minVal < 0) {
+                      return [maxVal, maxVal / 2, 0, minVal / 2, minVal];
+                    } else {
+                      return [maxVal, maxVal * 0.75, maxVal * 0.5, maxVal * 0.25, 0];
+                    }
+                  };
+                  const gridLines = getGridLines();
+
+                  // Sütun genişliği belirle
+                  const colWidth = chartPeriod === 'daily' ? 22 : chartPeriod === 'weekly' ? 30 : 40;
+
+                  // Net Kâr/Zarar çizgisi için path oluştur
+                  const linePath = convertedPoints.map((d, i) => {
+                    const x = leftPadding + (i / (convertedPoints.length - 1 || 1)) * drawWidth;
+                    const y = getY(d.profit);
+                    return `${i === 0 ? 'M' : 'L'} ${x} ${y}`;
+                  }).join(' ');
+
+                  // Tooltip Stili
+                  let tooltipStyle: React.CSSProperties = {
+                    position: 'absolute',
+                    pointerEvents: 'none',
+                    zIndex: 50,
+                    width: '210px',
+                  };
+
+                  if (hoveredIndex !== null && convertedPoints[hoveredIndex]) {
+                    const activeY = getY(convertedPoints[hoveredIndex].profit);
+                    tooltipStyle.top = `${Math.max(10, activeY - 140)}px`;
+                    if (hoveredIndex === 0) {
+                      tooltipStyle.left = `${leftPadding + 10}px`;
+                    } else if (hoveredIndex === convertedPoints.length - 1) {
+                      tooltipStyle.right = `${rightPadding + 10}px`;
+                    } else {
+                      const activeX = leftPadding + (hoveredIndex / (convertedPoints.length - 1 || 1)) * drawWidth;
+                      tooltipStyle.left = `${activeX - 105}px`;
+                    }
+                  }
+
+                  return (
+                    <>
+                      <svg
+                        className="w-full h-full overflow-visible"
+                        viewBox="0 0 800 300"
+                      >
+                        <defs>
+                          <linearGradient id="greenGradient" x1="0%" x2="0%" y1="0%" y2="100%">
+                            <stop offset="0%" stopColor="#10b981" stopOpacity="0.85" />
+                            <stop offset="100%" stopColor="#059669" stopOpacity="0.3" />
+                          </linearGradient>
+                          <linearGradient id="redGradient" x1="0%" x2="0%" y1="0%" y2="100%">
+                            <stop offset="0%" stopColor="#f43f5e" stopOpacity="0.85" />
+                            <stop offset="100%" stopColor="#e11d48" stopOpacity="0.3" />
+                          </linearGradient>
+                          <filter id="shadow" x="-5%" y="-5%" width="110%" height="110%">
+                            <feDropShadow dx="0" dy="3" stdDeviation="3" floodColor="#4b41e1" floodOpacity="0.2" />
+                          </filter>
+                        </defs>
+
+                        {/* Kılavuz Çizgileri ve Sol Y Ekseni Etiketleri */}
+                        {gridLines.map((v, idx) => {
+                          const y = getY(v);
+                          return (
+                            <g key={idx}>
+                              <line
+                                x1={leftPadding}
+                                y1={y}
+                                x2={800 - rightPadding}
+                                y2={y}
+                                stroke={v === 0 ? "#64748b" : "#f1f5f9"}
+                                strokeWidth={v === 0 ? "1.5" : "1"}
+                                strokeDasharray={v === 0 ? undefined : "3 3"}
+                              />
+                              <text
+                                x={leftPadding - 10}
+                                y={y + 4}
+                                textAnchor="end"
+                                className="text-[10px] font-extrabold text-slate-400 select-none fill-current"
+                              >
+                                {v === 0 ? "0" : fmt(Math.round(v), viewCurrency).split(',')[0]}
+                              </text>
+                            </g>
+                          );
+                        })}
+
+                        {/* Net Kâr/Zarar Sütunları */}
+                        {convertedPoints.map((d, i) => {
+                          const x = leftPadding + (i / (convertedPoints.length - 1 || 1)) * drawWidth;
+                          
+                          if (d.profit >= 0) {
+                            const yVal = getY(d.profit);
+                            const height = yZero - yVal;
+                            if (height <= 0) return null;
+                            const r = Math.min(6, height);
+                            // Rounded top corners
+                            const path = `M ${x - colWidth/2} ${yZero} 
+                                          L ${x - colWidth/2} ${yVal + r} 
+                                          A ${r} ${r} 0 0 1 ${x - colWidth/2 + r} ${yVal} 
+                                          L ${x + colWidth/2 - r} ${yVal} 
+                                          A ${r} ${r} 0 0 1 ${x + colWidth/2} ${yVal + r} 
+                                          L ${x + colWidth/2} ${yZero} Z`;
+                            return (
+                              <path
+                                key={i}
+                                d={path}
+                                fill="url(#greenGradient)"
+                                className="transition-all duration-200 hover:opacity-90"
+                              />
+                            );
+                          } else {
+                            const yVal = getY(d.profit);
+                            const height = yVal - yZero;
+                            if (height <= 0) return null;
+                            const r = Math.min(6, height);
+                            // Rounded bottom corners
+                            const path = `M ${x - colWidth/2} ${yZero} 
+                                          L ${x - colWidth/2} ${yVal - r} 
+                                          A ${r} ${r} 0 0 0 ${x - colWidth/2 + r} ${yVal} 
+                                          L ${x + colWidth/2 - r} ${yVal} 
+                                          A ${r} ${r} 0 0 0 ${x + colWidth/2} ${yVal - r} 
+                                          L ${x + colWidth/2} ${yZero} Z`;
+                            return (
+                              <path
+                                key={i}
+                                d={path}
+                                fill="url(#redGradient)"
+                                className="transition-all duration-200 hover:opacity-90"
+                              />
+                            );
+                          }
+                        })}
+
+                        {/* Brüt Satış Trend Çizgisi */}
+                        {convertedPoints.length > 1 && (
+                          <path
+                            d={linePath}
+                            fill="none"
+                            stroke="#4b41e1"
+                            strokeWidth="3.5"
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            filter="url(#shadow)"
+                          />
+                        )}
+
+                         {/* Trend Çizgisi Düğümleri */}
+                        {convertedPoints.map((d, i) => {
+                          const x = leftPadding + (i / (convertedPoints.length - 1 || 1)) * drawWidth;
+                          const y = getY(d.profit);
+                          return (
+                            <g key={i}>
+                              <circle
+                                cx={x}
+                                cy={y}
+                                r="5"
+                                fill="#ffffff"
+                                stroke="#4b41e1"
+                                strokeWidth="3"
+                                className="transition-all duration-200 shadow-sm"
+                              />
+                            </g>
+                          );
+                        })}
+
+                        {/* Hover Tetikleme Alanları (Görünmez Barlar) */}
+                        {convertedPoints.map((d, i) => {
+                          const x = leftPadding + (i / (convertedPoints.length - 1 || 1)) * drawWidth;
+                          const stepWidth = drawWidth / (convertedPoints.length - 1 || 1);
+                          return (
+                            <rect
+                              key={i}
+                              x={x - stepWidth / 2}
+                              y={topPadding - 5}
+                              width={stepWidth}
+                              height={drawHeight + 10}
+                              fill="transparent"
+                              className="cursor-pointer"
+                              onMouseEnter={() => setHoveredIndex(i)}
+                              onMouseLeave={() => setHoveredIndex(null)}
+                            />
+                          );
+                        })}
+                      </svg>
+
+                      {/* İnteraktif Tooltip */}
+                      {hoveredIndex !== null && convertedPoints[hoveredIndex] && (
+                        <div
+                          className="absolute bg-white/95 backdrop-blur-md p-4 rounded-2xl shadow-2xl border border-slate-100/80 pointer-events-none z-30 transition-all duration-100 animate-in fade-in zoom-in-95"
+                          style={tooltipStyle}
+                        >
+                          <div className="text-xs font-black text-slate-800 mb-2 border-b border-slate-100 pb-1">
+                            {convertedPoints[hoveredIndex].name}
+                          </div>
+                          <div className="space-y-2">
+                            <div className="flex justify-between items-center text-xs">
+                              <span className="text-slate-400 font-bold">Brüt Satış:</span>
+                              <span className="text-primary font-black">
+                                {fmt(convertedPoints[hoveredIndex].revenue, viewCurrency)}
+                              </span>
+                            </div>
+                            <div className="flex justify-between items-center text-xs">
+                              <span className="text-slate-400 font-bold">Maliyet (COGS):</span>
+                              <span className="text-slate-600 font-black">
+                                {fmt(convertedPoints[hoveredIndex].revenue - convertedPoints[hoveredIndex].profit, viewCurrency)}
+                              </span>
+                            </div>
+                            <div className="flex justify-between items-center text-xs pt-1 border-t border-slate-50">
+                              <span className="text-slate-500 font-bold">Net Kâr/Zarar:</span>
+                              <span className={`font-black px-2 py-0.5 rounded-md ${convertedPoints[hoveredIndex].profit >= 0 ? 'text-emerald-700 bg-emerald-50' : 'text-rose-700 bg-rose-50'}`}>
+                                {convertedPoints[hoveredIndex].profit >= 0 ? '+' : ''}
+                                {fmt(convertedPoints[hoveredIndex].profit, viewCurrency)}
+                              </span>
+                            </div>
+                          </div>
+                        </div>
+                      )}
+                    </>
+                  );
+                })()
               ) : (
                 <div className="w-full h-full flex items-center justify-center text-slate-400">
-                  <span>Grafik verisi yükleniyor...</span>
+                  <div className="animate-pulse flex items-center gap-2">
+                    <span className="material-symbols-outlined animate-spin text-[18px]">sync</span>
+                    <span>Grafik verileri oluşturuluyor...</span>
+                  </div>
                 </div>
               )}
-              <div className="absolute inset-0 flex flex-col justify-between pointer-events-none opacity-10">
-                <div className="border-b border-slate-900 w-full h-px"></div>
-                <div className="border-b border-slate-900 w-full h-px"></div>
-                <div className="border-b border-slate-900 w-full h-px"></div>
-                <div className="border-b border-slate-900 w-full h-px"></div>
-              </div>
             </div>
 
-            <div className="flex justify-between mt-6 px-2 text-[10px] font-bold text-slate-400 uppercase tracking-widest">
-              <span>Pzt</span>
-              <span>Sal</span>
-              <span>Çar</span>
-              <span>Per</span>
-              <span>Cum</span>
-              <span>Cmt</span>
-              <span>Paz</span>
+            {/* X Ekseni Alt Etiketleri */}
+            <div className="flex justify-between mt-6 px-2 text-[10px] font-extrabold text-slate-400 uppercase tracking-widest pl-[65px] pr-[20px]">
+              {chartData.map((d, i) => (
+                <span key={i} className="text-center w-12 truncate">{d.name}</span>
+              ))}
             </div>
           </div>
 
@@ -642,6 +978,20 @@ export default function DashboardPage() {
             </div>
             <div className="absolute -bottom-10 -right-10 w-40 h-40 bg-white/10 rounded-full blur-3xl"></div>
             <div className="absolute -top-10 -left-10 w-40 h-40 bg-white/5 rounded-full blur-2xl"></div>
+          </div>
+
+          {/* Aktivite Geçmişi (audit log) */}
+          <div className="bg-surface-container-lowest rounded-3xl p-6 shadow-sm">
+            <div className="flex items-center justify-between mb-4">
+              <div className="flex items-center gap-3">
+                <div className="w-1.5 h-6 bg-primary rounded-full"></div>
+                <h2 className="text-lg font-bold text-on-surface">İşlem Geçmişi</h2>
+              </div>
+              <Link href="/activity-log" className="text-primary text-xs font-bold hover:underline">
+                Tümü
+              </Link>
+            </div>
+            <ActivityLogList logs={activityLogs} compact emptyMessage="Henüz işlem yok" />
           </div>
 
           {/* Category Breakdown */}

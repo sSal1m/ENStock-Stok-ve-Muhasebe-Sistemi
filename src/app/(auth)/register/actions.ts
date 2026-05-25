@@ -1,6 +1,10 @@
 'use server';
 
 import { createSupabaseServerClient } from '@/lib/supabaseServer';
+import { createClient } from '@supabase/supabase-js';
+
+const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
+const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
 
 export interface RegisterInvitedUserResult {
   success: boolean;
@@ -16,6 +20,7 @@ export interface RegisterInvitedUserResult {
  *  3. is_accepted = false mu? (daha önce kabul edilmemiş)
  *  4. expires_at henüz geçmemiş mi?
  *  5. Hepsi OK → auth.signUp tetikle + is_accepted = true yap
+ *  6. Yeni kullanıcının profiles kaydına şirket bilgilerini yaz
  */
 export async function registerInvitedUserAction(
   email: string,
@@ -55,41 +60,83 @@ export async function registerInvitedUserAction(
       return { success: false, error: 'Davet kodunuzun süresi dolmuş. Yöneticinizden yeni davet talep edin.' };
     }
 
-    // ── 5. Supabase Auth kaydı ───────────────────────────────────────────────
-    const { data: signUpData, error: signUpError } = await supabase.auth.signUp({
+    // ── 5. Supabase Auth kaydı (Admin client ile e-posta onaylı) ────────────
+    // Service role client kullanarak e-posta doğrulamasını atlıyoruz
+    // çünkü davet kodu zaten doğrulanmış durumda
+    const supabaseAdmin = createClient(supabaseUrl, supabaseServiceKey, {
+      auth: { autoRefreshToken: false, persistSession: false },
+    });
+
+    const { data: createUserData, error: createUserError } = await supabaseAdmin.auth.admin.createUser({
       email: email.toLowerCase().trim(),
       password,
-      options: {
-        data: {
-          full_name: full_name.trim(),
-          business_id: invitation.business_id ?? null,
-          role: invitation.role ?? 'employee',
-        },
-        // E-posta doğrulaması istemiyorsak emailRedirectTo'yu kaldırın
-        // emailRedirectTo: `${process.env.NEXT_PUBLIC_APP_URL}/login`,
+      email_confirm: true,
+      user_metadata: {
+        full_name: full_name.trim(),
+        business_id: invitation.business_id ?? null,
+        role: invitation.role ?? 'employee',
       },
     });
 
-    if (signUpError) {
-      // Rate-limit mesajını Türkçeleştir
-      if (signUpError.message.toLowerCase().includes('rate limit')) {
+    if (createUserError) {
+      if (createUserError.message.toLowerCase().includes('rate limit')) {
         return { success: false, error: 'Çok fazla deneme yapıldı. Lütfen 1 saat bekleyin.' };
       }
-      if (signUpError.message.toLowerCase().includes('already registered')) {
+      if (createUserError.message.toLowerCase().includes('already registered') || createUserError.message.toLowerCase().includes('already been registered')) {
         return { success: false, error: 'Bu e-posta adresi zaten kayıtlı. Giriş yapmayı deneyin.' };
       }
-      return { success: false, error: `Kayıt hatası: ${signUpError.message}` };
+      return { success: false, error: `Kayıt hatası: ${createUserError.message}` };
     }
+
+    const signUpData = { user: createUserData.user };
 
     if (!signUpData.user) {
       return { success: false, error: 'Kullanıcı oluşturulamadı. Lütfen tekrar deneyin.' };
     }
+
 
     // ── 6. Daveti kabul edildi olarak işaretle ───────────────────────────────
     await supabase
       .from('invitations')
       .update({ is_accepted: true })
       .eq('id', invitation.id);
+
+    // ── 7. Şirket bilgilerini yeni kullanıcının profiline yaz ───────────────
+    // Service role client kullanarak RLS kısıtlamalarını atla
+    if (supabaseServiceKey && invitation.business_id) {
+      const supabaseAdmin = createClient(supabaseUrl, supabaseServiceKey, {
+        auth: { autoRefreshToken: false, persistSession: false },
+      });
+
+      // Davet eden şirketin company_name bilgisini bul
+      const { data: companyProfile } = await supabaseAdmin
+        .from('profiles')
+        .select('company_name')
+        .eq('business_id', invitation.business_id)
+        .not('company_name', 'is', null)
+        .limit(1)
+        .single();
+
+      const companyName = companyProfile?.company_name || null;
+
+      // Yeni kullanıcının profilini güncelle
+      const { error: profileUpdateError } = await supabaseAdmin
+        .from('profiles')
+        .update({
+          business_id: invitation.business_id,
+          company_name: companyName,
+          role: invitation.role ?? 'staff',
+          full_name: full_name.trim(),
+        })
+        .eq('id', signUpData.user.id);
+
+      if (profileUpdateError) {
+        console.error('[registerInvitedUserAction] Profil güncelleme hatası:', profileUpdateError);
+        // Profil güncellemesi başarısız olsa bile kayıt başarılı sayılır
+      } else {
+        console.log(`[registerInvitedUserAction] Profil güncellendi: user=${signUpData.user.id}, business_id=${invitation.business_id}, company=${companyName}`);
+      }
+    }
 
     return { success: true };
   } catch (err) {

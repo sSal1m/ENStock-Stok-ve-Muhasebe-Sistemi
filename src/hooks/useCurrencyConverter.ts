@@ -1,25 +1,60 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
+import { fetchMyDefaultCurrency } from "@/lib/defaultCurrency";
+
+const PREFERRED_KEY = "preferred_currency";
+const OVERRIDE_FLAG_KEY = "preferred_currency_overridden";
 
 /**
  * useCurrencyConverter Hook
- * TCMB kurlarını çeker ve para birimi dönüştürme/formatlama işlemlerini merkezileştirir.
+ *
+ * Initial currency önceliği:
+ *   1) localStorage (kullanıcı sayfa bazlı override yapmışsa F5 sonrası bile korunur)
+ *   2) profiles.default_currency (İşletme → Finansal Yapılandırma'daki seçim)
+ *   3) "TRY" fallback
+ *
+ * Kullanıcı `setViewCurrency` ile bir değer seçerse "override yapıldı" işareti
+ * konur; bu sayede DB'deki işletme default'u sonradan değişse bile o sayfadaki
+ * override silinmez.
  */
 export function useCurrencyConverter(initialCurrency = "TRY") {
   const [rates, setRates] = useState<any>(null);
   const [loading, setLoading] = useState(true);
-  const [viewCurrency, setViewCurrency] = useState(() => {
+  const [viewCurrency, setViewCurrencyState] = useState(() => {
     if (typeof window !== "undefined") {
-      return localStorage.getItem("preferred_currency") || initialCurrency;
+      const stored = localStorage.getItem(PREFERRED_KEY);
+      if (stored) return stored;
     }
     return initialCurrency;
   });
+  const userOverrodeRef = useRef<boolean>(
+    typeof window !== "undefined" && localStorage.getItem(OVERRIDE_FLAG_KEY) === "1"
+  );
 
+  // İşletmenin DB'deki varsayılan para birimini bir kez çek; kullanıcı henüz
+  // sayfa bazlı bir override yapmadıysa initial değeri buna eşitle.
   useEffect(() => {
-    if (typeof window !== "undefined") {
-      localStorage.setItem("preferred_currency", viewCurrency);
-    }
-  }, [viewCurrency]);
+    let cancelled = false;
+    (async () => {
+      const dbDefault = await fetchMyDefaultCurrency();
+      if (cancelled) return;
+      if (!userOverrodeRef.current) {
+        setViewCurrencyState(dbDefault);
+        if (typeof window !== "undefined") {
+          localStorage.setItem(PREFERRED_KEY, dbDefault);
+        }
+      }
+    })();
+    return () => { cancelled = true; };
+  }, []);
 
+  const setViewCurrency = useCallback((value: string) => {
+    userOverrodeRef.current = true;
+    if (typeof window !== "undefined") {
+      localStorage.setItem(PREFERRED_KEY, value);
+      localStorage.setItem(OVERRIDE_FLAG_KEY, "1");
+    }
+    setViewCurrencyState(value);
+  }, []);
 
   useEffect(() => {
     async function fetchRates() {
@@ -60,7 +95,7 @@ export function useCurrencyConverter(initialCurrency = "TRY") {
     (amount: number | null | undefined, from: string, to: string) => {
       const parsedAmount = Number(amount) || 0;
       if (!rates) return parsedAmount;
-      
+
       // Önce her şeyi TRY'ye çevir
       let amountInTry = parsedAmount;
       if (from !== "TRY") {
@@ -86,7 +121,7 @@ export function useCurrencyConverter(initialCurrency = "TRY") {
         GBP: "£",
       };
       const symbol = symbols[currency] || (currency === "TRY" ? "₺" : currency);
-      
+
       const parsedAmount = Number(amount) || 0;
 
       return (

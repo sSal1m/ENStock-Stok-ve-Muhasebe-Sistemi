@@ -7,7 +7,6 @@ import { softDeleteContact } from "@/app/(dashboard)/trash/actions";
 import toast from "react-hot-toast";
 import Link from "next/link";
 import * as XLSX from "xlsx";
-import { resolveTeamIds, applyTeamFilter } from "@/lib/teamUtils";
 
 /* ═══════════════════════════════════════════
    DATA
@@ -79,20 +78,20 @@ export default function ContactsPage() {
       return;
     }
 
-    // Resolve team context
-    const teamIds = await resolveTeamIds(user.id);
-    
-    const { data, error } = await applyTeamFilter(
-      supabase.from("contacts").select("*").is("deleted_at", null),
-      teamIds
-    ).order("created_at", { ascending: false });
-    
-    if (error) {
-      console.error("Veri çekme hatası:", error);
-    } else {
+    try {
+      const { fetchTeamScopedData } = await import("@/app/(dashboard)/teamActions");
+      const { data } = await fetchTeamScopedData(user.id, "contacts", "*", {
+        excludeDeleted: true,
+        orderBy: "created_at",
+        orderAscending: false
+      });
+      
       setContacts((data as Contact[]) || []);
+    } catch (error) {
+      console.error("Veri çekme hatası:", error);
+    } finally {
+      setLoading(false);
     }
-    setLoading(false);
   };
 
   useEffect(() => {
@@ -246,6 +245,7 @@ export default function ContactsPage() {
           </button>
         </div>
       </div>
+
 
       {/* ── STATS ── */}
       <section className="grid grid-cols-1 gap-6 sm:grid-cols-3">
@@ -417,8 +417,8 @@ export default function ContactsPage() {
       {/* ── BENTO FORM ── */}
       <section id="form-hizli-cari" className="bg-white rounded-3xl border border-indigo-50/50 p-8 shadow-sm">
         <div className="mb-8 flex items-center gap-4">
-          <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-primary/10">
-            <span className="material-symbols-outlined text-primary text-2xl">person_add</span>
+          <div className="flex h-12 w-12 items-center justify-center rounded-2xl overflow-hidden bg-slate-50 border border-indigo-50/50 p-1 shadow-sm">
+            <img src="/cari.png" alt="Cari Hesap" className="h-full w-full object-contain" />
           </div>
           <div>
             <h2 className="text-xl font-black text-on-surface">Hızlı Yeni Cari Ekle</h2>

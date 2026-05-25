@@ -1,20 +1,30 @@
 "use client";
 
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
+import Link from "next/link";
 import { supabase } from "@/lib/supabaseClient";
+import { useCurrencyConverter } from "@/hooks/useCurrencyConverter";
+import { fetchDefaultCurrency } from "@/lib/defaultCurrency";
+import { toast, Toaster } from "react-hot-toast";
 
 interface Contact {
   id: string;
   name: string;
   company_name?: string | null;
+  tax_number?: string | null;
+  tax_office?: string | null;
+  type?: string | null;
 }
 
 interface Product {
   id: string;
   name: string;
-  sale_price?: number | null;
+  sale_price?: number | null;                  // TRY karşılığı
+  sale_price_in_currency?: number | null;      // orijinal currency'de
+  currency?: string | null;                    // ürünün orijinal currency'si
   tax_rate?: number | null;
+  stock_quantity?: number | null;
 }
 
 type QuoteItem = {
@@ -27,12 +37,12 @@ type QuoteItem = {
   vatRate: number;
 };
 
-interface ToastMessage {
-  id: string;
-  type: "success" | "error" | "warning" | "info";
-  message: string;
-  title: string;
-}
+const CURRENCY_SYMBOLS: Record<string, string> = {
+  TRY: "₺",
+  USD: "$",
+  EUR: "€",
+  GBP: "£",
+};
 
 const ProductSelect = ({
   item,
@@ -42,6 +52,8 @@ const ProductSelect = ({
   showProductSuggestions,
   setShowProductSuggestions,
   onSearch,
+  formCurrency,
+  convertProductPrice,
 }: {
   item: QuoteItem;
   updateItem: any;
@@ -50,6 +62,8 @@ const ProductSelect = ({
   showProductSuggestions: Record<string, boolean>;
   setShowProductSuggestions: React.Dispatch<React.SetStateAction<Record<string, boolean>>>;
   onSearch: (id: string, term: string) => void;
+  formCurrency: string;
+  convertProductPrice: (product: Product) => number;
 }) => {
   const [isOpen, setIsOpen] = useState(false);
   const [searchTerm, setSearchTerm] = useState(item.name || "");
@@ -68,11 +82,11 @@ const ProductSelect = ({
 
   return (
     <div className="relative">
-      <div className="flex items-center w-full border border-slate-300 rounded px-3 py-2 bg-slate-50 focus-within:border-indigo-600 focus-within:ring-1 focus-within:ring-indigo-600 transition-all">
+      <div className="flex items-center w-full border-2 border-slate-300 rounded-lg px-4 py-3 bg-slate-50 focus-within:border-purple-400 transition-all">
         <span className="material-symbols-outlined text-slate-400 mr-2 text-sm">inventory_2</span>
         <input
-          className="w-full border-none p-0 focus:ring-0 text-sm bg-transparent placeholder:text-slate-400"
-          placeholder="Ürün adı giriniz..."
+          className="w-full border-none p-0 focus:ring-0 text-sm bg-transparent placeholder:text-slate-400 font-semibold text-slate-900 outline-none"
+          placeholder="Ürün adı ara..."
           value={searchTerm}
           onChange={(e) => {
             const value = e.target.value;
@@ -97,7 +111,7 @@ const ProductSelect = ({
           }}
         />
         <span
-          className="material-symbols-outlined text-slate-400 cursor-pointer hover:text-indigo-600 transition-colors ml-2 text-sm"
+          className="material-symbols-outlined text-slate-400 cursor-pointer hover:text-purple-600 transition-colors ml-2 text-sm"
           onClick={() => setIsOpen(!isOpen)}
         >
           {isOpen ? "expand_less" : "expand_more"}
@@ -105,7 +119,7 @@ const ProductSelect = ({
       </div>
 
       {(isOpen || showProductSuggestions[item.id]) && (filteredProducts.length > 0 || remoteSuggestions.length > 0) && (
-        <div className="absolute z-50 w-full mt-1 bg-white border border-slate-200 rounded shadow-xl max-h-60 overflow-y-auto">
+        <div className="absolute z-50 w-full mt-1 bg-white border border-slate-200 rounded-lg shadow-lg max-h-60 overflow-y-auto">
           {filteredProducts.map((p) => (
             <div
               key={p.id}
@@ -114,7 +128,7 @@ const ProductSelect = ({
                 e.preventDefault();
                 updateItem(item.id, "product_id", p.id);
                 updateItem(item.id, "name", p.name);
-                updateItem(item.id, "price", p.sale_price || 0);
+                updateItem(item.id, "price", convertProductPrice(p));
                 updateItem(item.id, "vatRate", p.tax_rate || 20);
                 setSearchTerm(p.name);
                 setIsOpen(false);
@@ -123,7 +137,7 @@ const ProductSelect = ({
             >
               <div className="text-sm font-medium text-slate-900">{p.name}</div>
               <div className="text-xs text-slate-400 mt-0.5">
-                Fiyat: ₺{p.sale_price} | KDV: %{p.tax_rate}
+                Stok: {p.stock_quantity || 0} • Fiyat: {CURRENCY_SYMBOLS[formCurrency] ?? formCurrency}{convertProductPrice(p).toLocaleString("tr-TR", { maximumFractionDigits: 2 })} | KDV: %{p.tax_rate}
               </div>
             </div>
           ))}
@@ -135,7 +149,7 @@ const ProductSelect = ({
                 e.preventDefault();
                 updateItem(item.id, "product_id", p.id);
                 updateItem(item.id, "name", p.name);
-                updateItem(item.id, "price", p.sale_price || 0);
+                updateItem(item.id, "price", convertProductPrice(p));
                 updateItem(item.id, "vatRate", p.tax_rate || 20);
                 setSearchTerm(p.name);
                 setIsOpen(false);
@@ -144,7 +158,7 @@ const ProductSelect = ({
             >
               <div className="text-sm font-medium text-slate-900">{p.name}</div>
               <div className="text-xs text-slate-400 mt-0.5">
-                Fiyat: ₺{p.sale_price} | KDV: %{p.tax_rate}
+                Stok: {p.stock_quantity || 0} • Fiyat: {CURRENCY_SYMBOLS[formCurrency] ?? formCurrency}{convertProductPrice(p).toLocaleString("tr-TR", { maximumFractionDigits: 2 })} | KDV: %{p.tax_rate}
               </div>
             </div>
           ))}
@@ -159,6 +173,8 @@ export default function NewQuotePage() {
   const searchParams = useSearchParams();
   const editQuoteId = searchParams.get("id");
 
+  const { rates, convertFull } = useCurrencyConverter();
+
   const [items, setItems] = useState<QuoteItem[]>([
     { id: "1", product_id: undefined, name: "", quantity: 1, unit: "Adet", price: 0, vatRate: 20 },
   ]);
@@ -167,20 +183,64 @@ export default function NewQuotePage() {
   const [products, setProducts] = useState<Product[]>([]);
 
   const [contactId, setContactId] = useState("");
+  const [contactSearch, setContactSearch] = useState("");
+  const [showContactSuggestions, setShowContactSuggestions] = useState(false);
+  const [selectedContact, setSelectedContact] = useState<Contact | null>(null);
+  const contactSearchRef = useRef<HTMLDivElement>(null);
+
+  // Click outside to close contact suggestions dropdown
+  useEffect(() => {
+    function handleClickOutside(event: MouseEvent) {
+      if (contactSearchRef.current && !contactSearchRef.current.contains(event.target as Node)) {
+        setShowContactSuggestions(false);
+      }
+    }
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
+
   const [quoteNumber, setQuoteNumber] = useState("");
   const [issueDate, setIssueDate] = useState(() => new Date().toISOString().split("T")[0]);
   const [validityDays, setValidityDays] = useState("15 Gun");
   const [notes, setNotes] = useState("");
+  
+  // Teklif kesim para birimi
+  const [currency, setCurrency] = useState<string>("TRY");
+  const prevCurrencyRef = useRef<string>("TRY");
 
   const [isLoading, setIsLoading] = useState(false);
   const [isEditMode] = useState(!!editQuoteId);
   const [successMsg, setSuccessMsg] = useState("");
   const [errorMsg, setErrorMsg] = useState("");
-  const [toasts, setToasts] = useState<ToastMessage[]>([]);
   const [userId, setUserId] = useState<string | null>(null);
 
   const [productSuggestions, setProductSuggestions] = useState<Record<string, Product[]>>({});
   const [showProductSuggestions, setShowProductSuggestions] = useState<Record<string, boolean>>({});
+
+  const symbol = CURRENCY_SYMBOLS[currency] ?? currency;
+
+  const convertProductPrice = (p: Product): number => {
+    if (!p) return 0;
+    if (p.currency && p.currency === currency && p.sale_price_in_currency != null) {
+      return Number(p.sale_price_in_currency) || 0;
+    }
+    const tryPrice = Number(p.sale_price) || 0;
+    if (currency === "TRY") return tryPrice;
+    return convertFull(tryPrice, "TRY", currency);
+  };
+
+  // Convert prices when currency is changed
+  useEffect(() => {
+    if (!rates) return;
+    if (prevCurrencyRef.current === currency) return;
+    setItems((prev) =>
+      prev.map((it) => ({
+        ...it,
+        price: convertFull(Number(it.price) || 0, prevCurrencyRef.current, currency),
+      }))
+    );
+    prevCurrencyRef.current = currency;
+  }, [currency, rates, convertFull]);
 
   useEffect(() => {
     const init = async () => {
@@ -199,10 +259,20 @@ export default function NewQuotePage() {
       }
       setUserId(user.id);
 
+      // İşletme default currency — yeni teklif için başlangıç değeri
+      if (!editQuoteId) {
+        const defaultCur = await fetchDefaultCurrency(user.id);
+        setCurrency(defaultCur);
+        prevCurrencyRef.current = defaultCur;
+      }
+
       const { data: contactsData } = await supabase.from("contacts").select("*").order("name");
       if (contactsData) setContacts(contactsData as Contact[]);
 
-      const { data: productsData } = await supabase.from("products").select("*").order("name");
+      const { data: productsData } = await supabase
+        .from("products")
+        .select("id, name, sale_price, sale_price_in_currency, currency, tax_rate, stock_quantity")
+        .order("name");
       if (productsData) setProducts(productsData as Product[]);
 
       if (editQuoteId) {
@@ -214,11 +284,22 @@ export default function NewQuotePage() {
 
         if (quoteData) {
           setContactId(quoteData.contact_id);
+          if (contactsData) {
+            const selected = (contactsData as Contact[]).find((c) => c.id === quoteData.contact_id);
+            if (selected) {
+              setSelectedContact(selected);
+              setContactSearch(selected.name || "");
+            }
+          }
           setQuoteNumber(quoteData.quote_number);
           setIssueDate(quoteData.issue_date || new Date().toISOString().split("T")[0]);
           setNotes(quoteData.notes || "");
+          if (quoteData.currency) {
+            setCurrency(quoteData.currency);
+            prevCurrencyRef.current = quoteData.currency;
+          }
           const dayNum = quoteData.validity_days;
-          const validityStr = dayNum === 7 ? "7 Gun" : dayNum === 15 ? "15 Gun" : dayNum === 30 ? "30 Gun" : "Ozel";
+          const validityStr = dayNum === 7 ? "7 Gun" : dayNum === 15 ? "15 Gun" : dayNum === 30 ? "30 Gun" : `${dayNum} Gun`;
           setValidityDays(validityStr);
 
           const { data: itemsData } = await supabase
@@ -252,14 +333,6 @@ export default function NewQuotePage() {
     return match ? parseInt(match[0], 10) : 15;
   };
 
-  const addToast = (type: ToastMessage["type"], title: string, message: string) => {
-    const id = Math.random().toString(36).slice(2, 10);
-    setToasts((prev) => [...prev, { id, type, title, message }]);
-    setTimeout(() => {
-      setToasts((prev) => prev.filter((t) => t.id !== id));
-    }, 3000);
-  };
-
   const addItem = () => {
     setItems([
       ...items,
@@ -286,7 +359,7 @@ export default function NewQuotePage() {
 
     const { data } = await supabase
       .from("products")
-      .select("id, name, sale_price, tax_rate")
+      .select("id, name, sale_price, sale_price_in_currency, currency, tax_rate, stock_quantity")
       .ilike("name", `%${term}%`)
       .limit(10);
 
@@ -296,23 +369,32 @@ export default function NewQuotePage() {
     }
   };
 
+  const formatCurrency = (value: number, currencyCode: string) => {
+    return new Intl.NumberFormat("tr-TR", {
+      style: "currency",
+      currency: currencyCode,
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
+    }).format(value);
+  };
+
   const handleSave = async () => {
     if (!contactId) {
       setErrorMsg("Lütfen bir müşteri seçiniz.");
-      addToast("error", "Hata", "Lütfen bir müşteri seçiniz.");
+      toast.error("Lütfen bir müşteri seçiniz.");
       return;
     }
 
     if (!quoteNumber.trim()) {
       setErrorMsg("Lütfen teklif numarası giriniz.");
-      addToast("error", "Hata", "Lütfen teklif numarası giriniz.");
+      toast.error("Lütfen teklif numarası giriniz.");
       return;
     }
 
     const validItems = items.filter((item) => item.product_id || (item.name || "").trim());
     if (validItems.length === 0) {
       setErrorMsg("Lütfen en az bir geçerli ürün seçin.");
-      addToast("error", "Hata", "Lütfen en az bir geçerli ürün seçin.");
+      toast.error("Lütfen en az bir geçerli ürün seçin.");
       return;
     }
 
@@ -320,15 +402,16 @@ export default function NewQuotePage() {
     setErrorMsg("");
     setSuccessMsg("");
 
+    const toastId = toast.loading("Teklif kaydediliyor...");
+
     try {
       const { data: { user }, error: userError } = await supabase.auth.getUser();
       if (userError) throw userError;
       if (!user) throw new Error("Oturum açmış kullanıcı bulunamadı. Lütfen giriş yapın.");
-      setUserId(user.id);
 
-      const subtotal = validItems.reduce((sum, item) => sum + item.quantity * item.price, 0);
+      const subtotal = validItems.reduce((sum, item) => sum + (Number(item.quantity) || 0) * (Number(item.price) || 0), 0);
       const tax_total = validItems.reduce(
-        (sum, item) => sum + item.quantity * item.price * (item.vatRate / 100),
+        (sum, item) => sum + (Number(item.quantity) || 0) * (Number(item.price) || 0) * (item.vatRate / 100),
         0
       );
       const total_amount = subtotal + tax_total;
@@ -340,6 +423,9 @@ export default function NewQuotePage() {
 
       let quoteData;
 
+      // Teklif currency'sine göre exchange_rate (TCMB selling) — TRY için 1
+      const exchangeRate = currency === "TRY" ? 1 : (rates?.[currency]?.selling || 1);
+
       if (editQuoteId) {
         const { data: updated, error: updateError } = await supabase
           .from("quotes")
@@ -350,6 +436,8 @@ export default function NewQuotePage() {
             subtotal,
             tax_total,
             total_amount,
+            currency,
+            exchange_rate: exchangeRate,
             notes,
             validity_days: parseValidityDays(validityDays),
           })
@@ -372,6 +460,8 @@ export default function NewQuotePage() {
             subtotal,
             tax_total,
             total_amount,
+            currency,
+            exchange_rate: exchangeRate,
             notes,
             status: "Pending",
             validity_days: parseValidityDays(validityDays),
@@ -386,10 +476,10 @@ export default function NewQuotePage() {
       const itemsToInsert = validItems.map((item) => ({
         quote_id: quoteData.id,
         product_id: item.product_id || null,
-        quantity: item.quantity,
-        unit_price: item.price,
+        quantity: Number(item.quantity) || 0,
+        unit_price: Number(item.price) || 0,
         vat_rate: item.vatRate,
-        line_total: item.quantity * item.price * (1 + item.vatRate / 100),
+        line_total: (Number(item.quantity) || 0) * (Number(item.price) || 0) * (1 + item.vatRate / 100),
       }));
 
       const { error: itemsError } = await supabase.from("quote_items").insert(itemsToInsert);
@@ -397,300 +487,414 @@ export default function NewQuotePage() {
 
       const message = editQuoteId ? "Teklif başarıyla güncellendi!" : "Teklif başarıyla oluşturuldu!";
       setSuccessMsg(message + " Yönlendiriliyorsunuz...");
-      addToast("success", "Başarılı", message);
+      toast.success(message, { id: toastId });
       setTimeout(() => {
         router.push("/quotes");
       }, 1200);
     } catch (err: any) {
       console.error("Save error:", err);
       setErrorMsg(err.message || "Teklif kaydedilirken beklenmeyen bir hata oluştu.");
-      addToast("error", "Hata", err.message || "Teklif kaydedilirken bir hata oluştu.");
+      toast.error(err.message || "Teklif kaydedilirken bir hata oluştu.", { id: toastId });
     } finally {
       setIsLoading(false);
     }
   };
 
   return (
-    <div className="min-h-screen bg-slate-100 p-6">
-      {/* Toast Container */}
-      <div className="fixed top-6 right-6 z-50 flex flex-col gap-3 max-w-md pointer-events-none">
-        {toasts.map((toast) => (
-          <div
-            key={toast.id}
-            className={`p-4 rounded-lg shadow-lg border pointer-events-auto transition-all ${
-              toast.type === "success" ? "bg-green-50 border-green-200 text-green-800" : ""
-            } ${toast.type === "error" ? "bg-red-50 border-red-200 text-red-800" : ""}`}
-          >
-            <p className="font-semibold text-sm">{toast.title}</p>
-            <p className="text-sm opacity-90">{toast.message}</p>
-          </div>
-        ))}
-      </div>
-
-      <div className="max-w-7xl mx-auto space-y-6">
-        {/* Header */}
-        <div className="flex items-center justify-between">
-          <div>
-            <h1 className="text-3xl font-bold text-slate-900">
-              {isEditMode ? "Teklifi Düzenle" : "Yeni Teklif"}
-            </h1>
-            <p className="text-slate-500 mt-1 text-sm">
-              {isEditMode ? "Mevcut teklif bilgilerini güncelleyin" : "Yeni bir teklif oluşturun"}
-            </p>
-          </div>
-        </div>
-
+    <div className="w-full bg-slate-50 min-h-screen">
+      <Toaster position="top-right" />
+      
+      {/* Main Form */}
+      <div className="p-8 max-w-[1600px] mx-auto space-y-8 pb-20">
         {/* Messages */}
         {successMsg && (
-          <div className="bg-emerald-50 text-emerald-700 p-4 rounded-lg border border-emerald-200 flex items-center gap-3">
+          <div className="bg-emerald-50 text-emerald-700 p-4 rounded-2xl border border-emerald-200 flex items-center gap-3">
             <span className="material-symbols-outlined">check_circle</span>
             <span className="font-medium">{successMsg}</span>
           </div>
         )}
         {errorMsg && (
-          <div className="bg-red-50 text-red-700 p-4 rounded-lg border border-red-200 flex items-center gap-3">
+          <div className="bg-red-50 text-red-700 p-4 rounded-2xl border border-red-200 flex items-center gap-3">
             <span className="material-symbols-outlined">error</span>
             <span className="font-medium">{errorMsg}</span>
           </div>
         )}
 
-        {/* TOP ROW: 2 Column Grid - Müşteri & Teklif Detayları */}
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          {/* Left Card: Müşteri Seçimi */}
-          <div className="lg:col-span-2 bg-white rounded-lg shadow-sm border border-slate-200 p-6 space-y-6">
-            <div className="space-y-4">
-              <h3 className="font-semibold text-slate-900">MÜŞTERİ / CARİ SEÇIMI</h3>
-              
-              <div className="relative">
-                <span className="absolute left-3 top-1/2 -translate-y-1/2 material-symbols-outlined text-slate-400 text-lg">search</span>
-                <input
-                  type="text"
-                  placeholder="Ünvan veya Vergi No yazın..."
-                  className="w-full pl-10 px-4 py-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent text-sm"
-                />
+        {/* TOP ROW: Müşteri Seçimi & Detayları */}
+        <div className="grid grid-cols-12 gap-6 items-start">
+          {/* Left: Cari Seçimi */}
+          <section className="col-span-12 lg:col-span-8 bg-white rounded-2xl p-8 shadow-sm border border-slate-200 space-y-6">
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-semibold text-slate-600 uppercase tracking-wide">
+                Müşteri / Cari Seçimi
+              </span>
+              <div className="flex items-center gap-4 text-slate-600">
+                <span className="text-xs font-semibold uppercase tracking-wide">Durum:</span>
+                <span className="flex items-center gap-2 px-3 py-1 bg-blue-100 text-blue-700 text-xs font-bold rounded-full">
+                  <span className="w-1.5 h-1.5 bg-blue-500 rounded-full animate-pulse"></span> TASLAK
+                </span>
               </div>
-
-              <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 text-sm text-blue-800 flex items-start gap-2">
-                <span className="material-symbols-outlined text-lg flex-shrink-0 mt-0.5">info</span>
-                <span>Lütfen teklif kesilebilecek cariyi aşağıdan seçiniz</span>
-              </div>
-
-              <select
-                value={contactId}
-                onChange={(e) => setContactId(e.target.value)}
-                className="w-full px-4 py-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent bg-white text-sm"
-              >
-                <option value="">Müşteri Seçiniz...</option>
-                {contacts.map((c) => (
-                  <option key={c.id} value={c.id}>
-                    {c.name || c.company_name || "Bilinmeyen"}
-                  </option>
-                ))}
-              </select>
             </div>
-          </div>
 
-          {/* Right Card: Teklif Detayları */}
-          <div className="bg-white rounded-lg shadow-sm border border-slate-200 p-6 space-y-4">
-            <h3 className="font-semibold text-slate-900">TEKLİF DETAYLARI</h3>
-            
-            <div className="space-y-3">
-              <div className="space-y-1.5">
-                <label className="text-xs font-semibold text-slate-600 uppercase tracking-wider">TEKLİF NO</label>
+            {/* Contact Search */}
+            <div className="space-y-6">
+              <div className="relative" ref={contactSearchRef}>
+                <label className="block text-xs font-semibold text-slate-600 uppercase tracking-wide mb-2">
+                  Müşteri / Cari Ara
+                </label>
+                <div className="flex items-center bg-slate-50 border-2 border-slate-300 rounded-lg px-4 focus-within:border-purple-400 transition-all">
+                  <span className="material-symbols-outlined text-slate-400">search</span>
+                  <input
+                    className="w-full bg-transparent border-none focus:ring-0 py-3 text-base placeholder:text-slate-400 font-medium"
+                    placeholder="Ünvan veya Vergi No yazın..."
+                    type="text"
+                    value={contactSearch}
+                    onChange={(e) => {
+                      setContactSearch(e.target.value);
+                      setShowContactSuggestions(true);
+                    }}
+                    onFocus={() => setShowContactSuggestions(true)}
+                  />
+                </div>
+
+                {/* Contact Suggestions */}
+                {showContactSuggestions && contactSearch.trim().length > 0 && (
+                  <div className="absolute top-full left-0 right-0 mt-1 bg-white border border-slate-200 rounded-lg shadow-md z-50 max-h-60 overflow-y-auto">
+                    {contacts
+                      .filter((c) =>
+                        (c.name || "").toLowerCase().includes(contactSearch.toLowerCase()) ||
+                        (c.tax_number || "").includes(contactSearch)
+                      )
+                      .map((contact) => (
+                        <button
+                          key={contact.id}
+                          type="button"
+                          onClick={() => {
+                            setContactId(contact.id);
+                            setSelectedContact(contact);
+                            setContactSearch(contact.name || "");
+                            setShowContactSuggestions(false);
+                          }}
+                          className="w-full text-left px-4 py-3 hover:bg-slate-100 transition-colors border-b border-slate-200 last:border-b-0"
+                        >
+                          <p className="text-sm font-semibold text-slate-900">{contact.name}</p>
+                          <p className="text-xs text-slate-600">{contact.tax_number || ""}</p>
+                        </button>
+                      ))}
+                  </div>
+                )}
+              </div>
+
+              {/* Selected Contact Info */}
+              {selectedContact ? (
+                <div className="flex gap-4 bg-slate-100 border border-slate-300 rounded-lg p-4">
+                  <div className="w-12 h-12 bg-purple-100 text-purple-600 rounded-lg flex items-center justify-center shrink-0">
+                    <span className="material-symbols-outlined text-2xl">business</span>
+                  </div>
+                  <div className="flex-1 grid grid-cols-2 gap-4">
+                    <div>
+                      <h3 className="font-semibold text-slate-900">{selectedContact.name}</h3>
+                      <p className="text-xs text-slate-600 leading-relaxed mt-1">
+                        {selectedContact.type === "customer" ? "Müşteri" : "Tedarikçi"}
+                      </p>
+                    </div>
+                    <div className="text-right">
+                      {selectedContact.tax_number && (
+                        <p className="text-xs text-slate-600">
+                          <span className="font-semibold">Vergi No:</span> {selectedContact.tax_number}
+                        </p>
+                      )}
+                      {selectedContact.tax_office && (
+                        <p className="text-xs text-slate-600 mt-1">
+                          <span className="font-semibold">Vergi Dairesi:</span> {selectedContact.tax_office}
+                        </p>
+                      )}
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setContactId("");
+                      setSelectedContact(null);
+                      setContactSearch("");
+                    }}
+                    className="text-slate-500 hover:text-red-600 transition-colors self-center"
+                  >
+                    <span className="material-symbols-outlined">close</span>
+                  </button>
+                </div>
+              ) : (
+                <div className="p-3 bg-blue-50 rounded-lg border border-blue-200">
+                  <p className="text-sm text-slate-600">
+                    <span className="material-symbols-outlined text-lg align-middle mr-2">info</span>
+                    Lütfen teklif kesilecek cariyi yukarıdan aratarak seçiniz.
+                  </p>
+                </div>
+              )}
+            </div>
+          </section>
+
+          {/* Right: Teklif Metadata */}
+          <section className="col-span-12 lg:col-span-4 bg-white rounded-2xl p-8 shadow-sm border border-slate-200 space-y-6">
+            <div className="space-y-6">
+              <div>
+                <label className="block text-xs font-semibold text-slate-600 uppercase tracking-wide mb-2">
+                  Teklif No
+                </label>
                 <input
+                  className="w-full bg-white border border-slate-300 rounded-lg py-3 px-4 text-base font-bold text-slate-700 focus:ring-2 focus:ring-purple-500 focus:border-purple-500 transition-all"
                   type="text"
-                  value={quoteNumber}
+                  value={quoteNumber || ""}
                   onChange={(e) => setQuoteNumber(e.target.value)}
-                  className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent text-sm bg-slate-50"
+                  placeholder="Teklif numarası girin"
                 />
               </div>
-
-              <div className="space-y-1.5">
-                <label className="text-xs font-semibold text-slate-600 uppercase tracking-wider">TEKLİF TARİHİ</label>
-                <input
-                  type="date"
-                  value={issueDate}
-                  onChange={(e) => setIssueDate(e.target.value)}
-                  className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent text-sm"
-                />
-              </div>
-
-              <div className="space-y-1.5">
-                <label className="text-xs font-semibold text-slate-600 uppercase tracking-wider">GEÇERLİLİK SÜRESİ</label>
+              <div>
+                <label className="block text-xs font-semibold text-slate-600 uppercase tracking-wide mb-2">
+                  Döviz Birimi
+                </label>
                 <select
-                  value={validityDays}
-                  onChange={(e) => setValidityDays(e.target.value)}
-                  className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent bg-white text-sm"
+                  className="w-full bg-slate-50 border border-slate-300 rounded-lg py-3 px-4 text-base font-bold text-primary focus:ring-purple-500 focus:border-purple-500"
+                  value={currency}
+                  onChange={(e) => setCurrency(e.target.value)}
+                >
+                  <option value="TRY">TRY (₺)</option>
+                  <option value="USD">USD ($)</option>
+                  <option value="EUR">EUR (€)</option>
+                  <option value="GBP">GBP (£)</option>
+                </select>
+              </div>
+              <div>
+                <label className="block text-xs font-semibold text-slate-600 uppercase tracking-wide mb-2">
+                  Düzenleme Tarihi
+                </label>
+                <div className="relative">
+                  <input
+                    className="w-full bg-slate-50 border border-slate-300 rounded-lg py-3 px-4 text-base text-slate-700"
+                    type="date"
+                    value={issueDate}
+                    onChange={(e) => setIssueDate(e.target.value)}
+                  />
+                </div>
+              </div>
+            </div>
+          </section>
+        </div>
+
+        {/* Dynamic Product Table */}
+        <section className="bg-white rounded-2xl overflow-hidden shadow-sm border border-slate-200">
+          <table className="w-full text-left border-collapse">
+            <thead>
+              <tr className="bg-slate-100 border-b border-slate-200">
+                <th className="px-6 py-5 text-xs font-semibold uppercase text-slate-700 tracking-wide">Hizmet / Ürün</th>
+                <th className="px-6 py-5 text-xs font-semibold uppercase text-slate-700 tracking-wide w-28">Miktar</th>
+                <th className="px-6 py-5 text-xs font-semibold uppercase text-slate-700 tracking-wide w-32">
+                  Birim Fiyat ({currency === "TRY" ? "₺" : currency})
+                </th>
+                <th className="px-6 py-5 text-xs font-semibold uppercase text-slate-700 tracking-wide w-24">KDV %</th>
+                <th className="px-6 py-5 text-xs font-semibold uppercase text-slate-700 tracking-wide w-32 text-right">
+                  Satır Toplamı
+                </th>
+                <th className="px-6 py-5 w-12"></th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-200">
+              {items.map((item, idx) => {
+                const qty = Number(item.quantity) || 0;
+                const prc = Number(item.price) || 0;
+                const total = qty * prc * (1 + item.vatRate / 100);
+                return (
+                  <tr key={item.id} className="group hover:bg-slate-50 transition-colors">
+                    <td className="px-6 py-6">
+                      <ProductSelect
+                        item={item}
+                        updateItem={updateItem}
+                        products={products}
+                        productSuggestions={productSuggestions}
+                        showProductSuggestions={showProductSuggestions}
+                        setShowProductSuggestions={setShowProductSuggestions}
+                        onSearch={handleProductSearch}
+                        formCurrency={currency}
+                        convertProductPrice={convertProductPrice}
+                      />
+                    </td>
+                    <td className="px-6 py-6">
+                      <div className="flex items-center border-2 border-slate-300 rounded-lg overflow-hidden bg-slate-50">
+                        <input
+                          type="number"
+                          min="0"
+                          value={item.quantity === 0 ? "" : item.quantity}
+                          placeholder="0"
+                          onChange={(e) => updateItem(item.id, "quantity", e.target.value === "" ? 0 : Number(e.target.value))}
+                          className="w-full bg-transparent border-none focus:ring-0 text-center py-2 text-base font-semibold text-slate-900"
+                        />
+                      </div>
+                    </td>
+                    <td className="px-6 py-6">
+                      <input
+                        type="number"
+                        min="0"
+                        step="0.01"
+                        value={item.price === 0 ? "" : item.price}
+                        placeholder="0.00"
+                        onChange={(e) => updateItem(item.id, "price", e.target.value === "" ? 0 : parseFloat(e.target.value))}
+                        className="w-full bg-slate-50 border-2 border-slate-300 rounded-lg px-3 py-2 text-base font-semibold focus:ring-purple-500 focus:border-purple-500"
+                      />
+                    </td>
+                    <td className="px-6 py-6">
+                      <select
+                        value={item.vatRate}
+                        onChange={(e) => updateItem(item.id, "vatRate", Number(e.target.value))}
+                        className="w-40 bg-slate-50 border-2 border-slate-300 rounded-lg px-4 py-3 text-base font-semibold focus:ring-2 focus:ring-purple-500 focus:border-purple-500 hover:border-slate-400 transition-all bg-white"
+                      >
+                        <option value="0">%0</option>
+                        <option value="1">%1</option>
+                        <option value="10">%10</option>
+                        <option value="20">%20</option>
+                      </select>
+                    </td>
+                    <td className="px-6 py-6 text-right">
+                      <span className="text-base font-bold text-slate-900">
+                        {symbol}{total.toLocaleString("tr-TR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                      </span>
+                    </td>
+                    <td className="px-6 py-6 text-center">
+                      <button
+                        type="button"
+                        onClick={() => removeItem(item.id)}
+                        disabled={items.length === 1}
+                        className="text-slate-400 hover:text-red-600 disabled:text-slate-200 disabled:cursor-not-allowed transition-colors"
+                      >
+                        <span className="material-symbols-outlined text-lg">delete</span>
+                      </button>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+          <div className="px-6 py-5 border-t border-slate-200 bg-slate-50 flex justify-between">
+            <button
+              type="button"
+              onClick={addItem}
+              className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-purple-600 text-white font-semibold text-sm hover:bg-purple-700 active:scale-95 transition-all shadow-sm"
+            >
+              <span className="material-symbols-outlined text-base">add_circle</span>
+              Yeni Satır Ekle
+            </button>
+          </div>
+        </section>
+
+        {/* BOTTOM ROW: Flex Layout - Notlar + Toplam + Butonlar */}
+        <div className="grid grid-cols-12 gap-6 items-end">
+          {/* Left Column: Validity & Notes */}
+          <div className="col-span-12 lg:col-span-7 space-y-6">
+            {/* Validity Days selector */}
+            <div>
+              <label className="block text-xs font-semibold text-slate-600 uppercase tracking-wide mb-3">
+                Geçerlilik Süresi
+              </label>
+              <div className="flex flex-col sm:flex-row gap-4 items-start sm:items-center">
+                <select
+                  value={["7 Gun", "15 Gun", "30 Gun"].includes(validityDays) ? validityDays : "Ozel"}
+                  onChange={(e) => {
+                    const val = e.target.value;
+                    if (val === "Ozel") {
+                      setValidityDays("Ozel");
+                    } else {
+                      setValidityDays(val);
+                    }
+                  }}
+                  className="w-full sm:w-64 bg-slate-50 border-2 border-slate-300 rounded-lg px-4 py-3 text-base font-semibold focus:ring-2 focus:ring-purple-500 focus:border-purple-500 hover:border-slate-400 transition-all bg-white"
                 >
                   <option value="7 Gun">7 Gün</option>
                   <option value="15 Gun">15 Gün</option>
                   <option value="30 Gun">30 Gün</option>
-                  <option value="Ozel">Özel</option>
+                  <option value="Ozel">Özel Süre</option>
                 </select>
+                
+                {!["7 Gun", "15 Gun", "30 Gun"].includes(validityDays) && (
+                  <div className="flex items-center gap-2 w-full sm:w-auto">
+                    <input
+                      type="number"
+                      placeholder="Gün sayısı giriniz..."
+                      value={validityDays === "Ozel" ? "" : validityDays.replace(" Gun", "")}
+                      onChange={(e) => setValidityDays(e.target.value ? e.target.value + " Gun" : "Ozel")}
+                      className="w-full sm:w-48 bg-slate-50 border-2 border-slate-300 rounded-lg px-4 py-3 text-base font-semibold focus:ring-2 focus:ring-purple-500 focus:border-purple-500 transition-all bg-white"
+                    />
+                    <span className="text-slate-600 font-bold text-sm whitespace-nowrap">Gün</span>
+                  </div>
+                )}
               </div>
             </div>
-          </div>
-        </div>
 
-        {/* MIDDLE ROW: Full-Width Table Card */}
-        <div className="bg-white rounded-lg shadow-sm border border-slate-200 p-6 space-y-4">
-          <div className="flex justify-between items-center">
-            <h3 className="text-lg font-semibold text-slate-900">TEKLİF KALEMLERİ</h3>
-            <button
-              onClick={addItem}
-              className="flex items-center gap-2 text-indigo-600 hover:text-indigo-700 font-medium text-sm"
-            >
-              <span className="material-symbols-outlined text-lg">add_circle</span>
-              + Yeni Satır Ekle
-            </button>
-          </div>
-
-          <div className="overflow-x-auto border border-slate-200 rounded-lg">
-            <table className="w-full">
-              <thead className="bg-slate-50 border-b border-slate-200">
-                <tr>
-                  <th className="px-4 py-3 text-left text-xs font-semibold text-slate-600 uppercase tracking-wider">#</th>
-                  <th className="px-4 py-3 text-left text-xs font-semibold text-slate-600 uppercase tracking-wider">HİZMET / ÜRÜN</th>
-                  <th className="px-4 py-3 text-left text-xs font-semibold text-slate-600 uppercase tracking-wider w-20">MİKTAR</th>
-                  <th className="px-4 py-3 text-right text-xs font-semibold text-slate-600 uppercase tracking-wider w-28">BİRİM FİYAT (₺)</th>
-                  <th className="px-4 py-3 text-center text-xs font-semibold text-slate-600 uppercase tracking-wider w-16">KDV %</th>
-                  <th className="px-4 py-3 text-right text-xs font-semibold text-slate-600 uppercase tracking-wider w-28">SATIR TOPLAMI</th>
-                  <th className="px-4 py-3 w-8"></th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-100">
-                {items.map((item, idx) => {
-                  const total = item.quantity * item.price * (1 + item.vatRate / 100);
-                  return (
-                    <tr key={item.id} className="hover:bg-slate-50">
-                      <td className="px-4 py-3 text-sm text-slate-500">{idx + 1}</td>
-                      <td className="px-4 py-3">
-                        <ProductSelect
-                          item={item}
-                          updateItem={updateItem}
-                          products={products}
-                          productSuggestions={productSuggestions}
-                          showProductSuggestions={showProductSuggestions}
-                          setShowProductSuggestions={setShowProductSuggestions}
-                          onSearch={handleProductSearch}
-                        />
-                      </td>
-                      <td className="px-4 py-3">
-                        <input
-                          type="number"
-                          min="1"
-                          value={item.quantity || ""}
-                          onChange={(e) => updateItem(item.id, "quantity", e.target.value ? Number(e.target.value) : 0)}
-                          className="w-full px-2 py-2 border border-slate-300 rounded text-sm focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
-                        />
-                      </td>
-                      <td className="px-4 py-3">
-                        <input
-                          type="number"
-                          min="0"
-                          step="0.01"
-                          value={item.price === 0 && !item.name ? "" : item.price}
-                          onChange={(e) => updateItem(item.id, "price", e.target.value ? Number(e.target.value) : 0)}
-                          className="w-full px-2 py-2 border border-slate-300 rounded text-sm text-right focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
-                        />
-                      </td>
-                      <td className="px-4 py-3">
-                        <select
-                          value={item.vatRate}
-                          onChange={(e) => updateItem(item.id, "vatRate", Number(e.target.value))}
-                          className="w-full px-2 py-2 border border-slate-300 rounded text-sm text-center focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
-                        >
-                          <option value="0">0</option>
-                          <option value="1">1</option>
-                          <option value="10">10</option>
-                          <option value="20">20</option>
-                        </select>
-                      </td>
-                      <td className="px-4 py-3 text-right font-semibold text-slate-900 text-sm">
-                        ₺{total.toLocaleString("tr-TR", { maximumFractionDigits: 2 })}
-                      </td>
-                      <td className="px-4 py-3 text-center">
-                        <button
-                          onClick={() => removeItem(item.id)}
-                          disabled={items.length === 1}
-                          className="text-slate-400 hover:text-red-500 disabled:text-slate-200 disabled:cursor-not-allowed transition-colors"
-                        >
-                          <span className="material-symbols-outlined text-lg">delete</span>
-                        </button>
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
-        </div>
-
-        {/* BOTTOM ROW: Flex Layout - Notlar + Toplam + Butonlar */}
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          {/* Left: Notlar */}
-          <div className="lg:col-span-2 bg-white rounded-lg shadow-sm border border-slate-200 p-6 space-y-4">
-            <h3 className="font-semibold text-slate-900">TEKLİF NOTLARI</h3>
-            <textarea
-              value={notes}
-              onChange={(e) => setNotes(e.target.value)}
-              placeholder="Müşteriye iletilmesini istediğiniz özel notları buraya gileyein..."
-              className="w-full px-4 py-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent h-32 resize-none text-sm"
-            />
+            {/* Notes */}
+            <div>
+              <label className="block text-xs font-semibold text-slate-600 uppercase tracking-wide mb-3">
+                Teklif Notları
+              </label>
+              <textarea
+                value={notes}
+                onChange={(e) => setNotes(e.target.value)}
+                placeholder="Müşteriye iletilmesini istediğiniz özel notları buraya ekleyin..."
+                className="w-full bg-slate-50 border border-slate-300 rounded-lg p-4 text-sm focus:ring-2 focus:ring-purple-500 focus:border-transparent transition-all placeholder:text-slate-400 h-32 resize-none"
+              />
+            </div>
           </div>
 
-          {/* Right: Totals Summary + Buttons */}
-          <div className="space-y-4">
-            {/* Totals Card */}
-            <div className="bg-white rounded-lg shadow-sm border border-slate-200 p-6 space-y-3">
+          {/* Right Column: Summary & Actions */}
+          <div className="col-span-12 lg:col-span-5 space-y-6">
+            {/* Totals Summary */}
+            <div className="bg-white rounded-2xl p-8 space-y-4 shadow-sm border border-slate-200">
               {(() => {
-                const sub = items.reduce((sum, item) => sum + item.quantity * item.price, 0);
-                const tax = items.reduce((sum, item) => sum + item.quantity * item.price * (item.vatRate / 100), 0);
+                const sub = items.reduce((sum, item) => sum + (Number(item.quantity) || 0) * (Number(item.price) || 0), 0);
+                const tax = items.reduce((sum, item) => sum + (Number(item.quantity) || 0) * (Number(item.price) || 0) * (item.vatRate / 100), 0);
                 const total = sub + tax;
                 return (
                   <>
-                    <div className="flex justify-between text-sm">
-                      <span className="text-slate-600">Ara Toplam</span>
-                      <span className="font-semibold text-slate-900">₺{sub.toLocaleString("tr-TR", { maximumFractionDigits: 2 })}</span>
+                    <div className="flex justify-between items-center text-sm">
+                      <span className="text-slate-600 font-semibold">Ara Toplam</span>
+                      <span className="font-bold text-slate-900 text-base">
+                        {symbol}{sub.toLocaleString("tr-TR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                      </span>
                     </div>
-                    <div className="flex justify-between text-sm">
-                      <span className="text-slate-600">KDV Toplamı</span>
-                      <span className="font-semibold text-slate-900">₺{tax.toLocaleString("tr-TR", { maximumFractionDigits: 2 })}</span>
+                    <div className="flex justify-between items-center text-sm">
+                      <span className="text-slate-600 font-semibold">KDV Toplamı</span>
+                      <span className="font-bold text-slate-900 text-base">
+                        {symbol}{tax.toLocaleString("tr-TR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                      </span>
                     </div>
-                    <div className="border-t border-slate-200 pt-3 flex justify-between">
-                      <span className="font-semibold text-slate-900">Genel Toplam</span>
-                      <span className="text-xl font-bold text-indigo-600">₺{total.toLocaleString("tr-TR", { maximumFractionDigits: 2 })}</span>
+                    <div className="pt-4 border-t border-slate-200 flex justify-between items-center">
+                      <span className="font-bold text-slate-900">Genel Toplam</span>
+                      <span className="font-extrabold text-3xl bg-gradient-to-r from-purple-600 to-purple-500 bg-clip-text text-transparent">
+                        {symbol}{total.toLocaleString("tr-TR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                      </span>
                     </div>
                   </>
                 );
               })()}
             </div>
 
-            {/* Action Buttons */}
-            <div className="bg-white rounded-lg shadow-sm border border-slate-200 p-6 space-y-3">
+            {/* Form Action Buttons */}
+            <div className="flex gap-4">
               <button
-                className="w-full flex items-center justify-center gap-2 px-4 py-2.5 border border-slate-300 text-slate-700 hover:bg-slate-50 font-medium text-sm rounded-lg transition-colors"
+                type="button"
+                onClick={() => router.push("/quotes")}
+                className="flex-1 px-8 py-4 rounded-lg font-semibold text-slate-700 bg-slate-100 border border-slate-300 hover:bg-slate-200 active:scale-95 transition-all flex items-center justify-center gap-2"
               >
-                <span className="material-symbols-outlined text-lg">visibility</span>
-                Teklif Önizle
+                <span className="material-symbols-outlined text-lg">cancel</span>
+                İptal Et
               </button>
-              
               <button
+                type="button"
                 onClick={handleSave}
-                disabled={isLoading}
-                className="w-full flex items-center justify-center gap-2 px-4 py-2.5 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white font-medium text-sm rounded-lg transition-colors"
+                disabled={isLoading || !contactId || items.length === 0}
+                className="flex-[1.5] px-8 py-4 rounded-lg font-semibold text-white bg-gradient-to-r from-purple-600 to-purple-700 shadow-lg shadow-purple-200 hover:shadow-xl hover:shadow-purple-300 active:scale-95 transition-all flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed disabled:shadow-none"
               >
                 <span className="material-symbols-outlined text-lg">
-                  {isLoading ? "progress_activity" : "check_circle"}
+                  {isLoading ? "sync" : "check_circle"}
                 </span>
                 {isLoading ? "Kaydediliyor..." : (isEditMode ? "Teklifi Güncelle" : "Teklifi Kaydet")}
-              </button>
-
-              <button
-                className="w-full flex items-center justify-center gap-2 px-4 py-2.5 border border-slate-300 text-slate-700 hover:bg-slate-50 font-medium text-sm rounded-lg transition-colors"
-              >
-                <span className="material-symbols-outlined text-lg">draft</span>
-                Taslak
               </button>
             </div>
           </div>

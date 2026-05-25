@@ -8,8 +8,8 @@ import CategoryModal from "@/components/inventory/CategoryModal";
 import DeleteConfirmationModal from "@/components/inventory/DeleteConfirmationModal";
 import Link from "next/link";
 import { useCurrencyConverter } from "@/hooks/useCurrencyConverter";
-import { resolveTeamIds, applyTeamFilter } from "@/lib/teamUtils";
 import * as XLSX from "xlsx";
+import { parseDescription } from "@/lib/productImageHelper";
 
 // ─── Tipler ────────────────────────────────────────────────────────────────
 
@@ -17,6 +17,7 @@ interface Product {
   id: string;
   sku: string;
   name: string;
+  description: string | null;
   purchase_price: number;
   sale_price: number;
   currency: string;
@@ -103,7 +104,7 @@ export default function InventoryPage() {
   const [userId, setUserId] = useState<string | null>(null);
   
   // Dashboard Döviz Durumu
-  const { rates, viewCurrency, setViewCurrency, convert, format: formatPrice } = useCurrencyConverter();
+  const { rates, viewCurrency, setViewCurrency, convert, convertFull, format: formatPrice } = useCurrencyConverter();
   const router = useRouter();
 
   // ── Kullanıcı ID'sini Al ────────────────────────────────────────────────
@@ -126,29 +127,17 @@ export default function InventoryPage() {
     setError(null);
     setIsAnimating(false);
     try {
-      // Resolve team context
-      const teamIds = await resolveTeamIds(userId);
+      // Fetch all inventory data via server action (bypasses RLS)
+      const { fetchInventoryData } = await import("@/app/(dashboard)/teamActions");
+      const { products: prods, categories: cats, invoiceCount } = await fetchInventoryData(userId);
 
-      // 1. Kategorileri çek (ekip bazında)
-      const { data: categoryData, error: categoryError } = await applyTeamFilter(
-        supabase.from("categories").select("id, name"),
-        teamIds
-      ).order("name");
-
-      if (categoryError) throw categoryError;
-      setCategories((categoryData ?? []) as Category[]);
-
-      // 2. Ürünler + kategori join (ekip bazında) — çöp kutusundakiler hariç
-      const { data: productData, error: productError } = await applyTeamFilter(
-        supabase.from("products").select("id, sku, name, purchase_price, sale_price, currency, purchase_price_in_currency, sale_price_in_currency, stock_quantity, critical_limit, categories(name)").is("deleted_at", null),
-        teamIds
-      ).order("name");
-
-      if (productError) throw productError;
-      const prods = (productData ?? []) as Product[];
+      setCategories(cats);
+      setProducts(prods);
+      setFiltered(prods);
       
       // 3. İnsights: kritik limit altındaki ürünler
       const criticals = prods.filter((p) => p.stock_quantity <= p.critical_limit);
+      setCriticalItems(criticals);
 
       // 4. İstatistikler
       const totalStockValue = prods.reduce(
@@ -156,15 +145,6 @@ export default function InventoryPage() {
         0
       );
 
-      // 5. Fatura sayısı (ekip bazında) — çöp kutusundakiler hariç
-      const { count: invoiceCount } = await applyTeamFilter(
-        supabase.from("invoices").select("id", { count: "exact", head: true }).is("deleted_at", null),
-        teamIds
-      );
-
-      setProducts(prods);
-      setFiltered(prods);
-      setCriticalItems(criticals);
       setStats({
         totalProducts: prods.length,
         lowStockCount: criticals.length,
@@ -258,7 +238,7 @@ export default function InventoryPage() {
         "Satış Fiyatı (TRY)": p.sale_price,
         "Orjinal Döviz": p.currency,
         "Orjinal Satış Fiyatı": p.sale_price_in_currency,
-        "Görünen Satış Fiyatı": formatPrice(convert(p.sale_price_in_currency), viewCurrency)
+        "Görünen Satış Fiyatı": formatPrice(convertFull(p.sale_price_in_currency, p.currency || "TRY", viewCurrency), viewCurrency)
       };
     });
 
@@ -350,6 +330,7 @@ export default function InventoryPage() {
           </button>
         </div>
       </div>
+
 
       {/* ── Bento İstatistik Kartları ── */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
@@ -539,6 +520,7 @@ export default function InventoryPage() {
                 filtered.map((item) => {
                   const level = getStockLevel(item.stock_quantity, item.critical_limit);
                   const percent = getStockPercent(item.stock_quantity, item.critical_limit);
+                  const parsed = parseDescription(item.description);
                   
                   // 🔧 Kategori adını al - hem array hem object formatını destekle
                   let categoryName = "Kategorisiz";
@@ -555,12 +537,22 @@ export default function InventoryPage() {
                       {/* Ürün Adı & SKU */}
                       <td className="px-6 py-4">
                         <div className="flex items-center gap-3">
-                          {/* Ürün görseli yoksa harf avatar */}
-                          <div className="w-10 h-10 rounded-lg bg-indigo-50 flex-shrink-0 flex items-center justify-center">
-                            <span className="text-indigo-600 font-black text-base">
-                              {item.name.charAt(0).toUpperCase()}
-                            </span>
-                          </div>
+                          {/* Ürün görseli varsa göster, yoksa harf avatar */}
+                          {parsed.imageUrl ? (
+                            <div className="w-10 h-10 rounded-lg overflow-hidden flex-shrink-0 border border-indigo-100/50">
+                              <img
+                                src={parsed.imageUrl}
+                                alt={item.name}
+                                className="w-full h-full object-cover"
+                              />
+                            </div>
+                          ) : (
+                            <div className="w-10 h-10 rounded-lg bg-indigo-50 flex-shrink-0 flex items-center justify-center">
+                              <span className="text-indigo-600 font-black text-base">
+                                {item.name.charAt(0).toUpperCase()}
+                              </span>
+                            </div>
+                          )}
                           <div>
                             <Link href={`/inventory/${item.id}`} className="font-bold text-on-surface hover:text-primary transition-colors">{item.name}</Link>
                             <p className="text-xs text-slate-400 font-mono">{item.sku}</p>

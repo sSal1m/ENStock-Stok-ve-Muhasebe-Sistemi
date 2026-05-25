@@ -5,7 +5,7 @@ import React, { useState } from "react";
 import Image from "next/image";
 import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabaseClient";
-import toast from "react-hot-toast";
+import toast, { Toaster } from "react-hot-toast";
 import { inviteUserAction } from "./actions";
 
 export default function InviteUserPage() {
@@ -16,6 +16,7 @@ export default function InviteUserPage() {
   });
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [inviteUrl, setInviteUrl] = useState<string | null>(null);
+  const [inviteCode, setInviteCode] = useState<string | null>(null);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -45,6 +46,7 @@ export default function InviteUserPage() {
       
       if (result.inviteUrl) {
         setInviteUrl(result.inviteUrl);
+        setInviteCode(result.code || null);
       } // else {
       //   router.push("/settings/users");
       // }
@@ -57,6 +59,7 @@ export default function InviteUserPage() {
 
   return (
     <div className="max-w-5xl mx-auto w-full">
+      <Toaster position="top-right" />
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-10 items-start">
         {/* Form Section */}
         <div className="lg:col-span-7 space-y-8">
@@ -93,10 +96,10 @@ export default function InviteUserPage() {
                     value={formData.role}
                     onChange={(e) => setFormData({ ...formData, role: e.target.value })}
                   >
-                    <option value="accounting">Muhasebe</option>
                     <option value="admin">Yönetici</option>
+                    <option value="accounting">Muhasebe</option>
                     <option value="warehouse">Depo Personeli</option>
-                    <option value="sales">Satış Temsilcisi</option>
+                    <option value="manager">Personel</option>
                   </select>
                   <span className="absolute right-4 top-1/2 -translate-y-1/2 material-symbols-outlined text-outline pointer-events-none">expand_more</span>
                 </div>
@@ -136,25 +139,51 @@ export default function InviteUserPage() {
                     </div>
                   </div>
 
-                  <div className="flex flex-col sm:flex-row items-center gap-3 mt-6 relative z-10">
-                    <input
-                      type="text"
-                      readOnly
-                      value={inviteUrl ?? ""}
-                      className="bg-white border border-slate-200 rounded-xl px-4 py-3 flex-1 text-slate-600 text-sm w-full outline-none"
-                    />
-                    <button
-                      onClick={() => {
-                        if (inviteUrl) {
-                          navigator.clipboard.writeText(inviteUrl);
-                          toast.success("Bağlantı kopyalandı!");
-                        }
-                      }}
-                      className="bg-indigo-600 hover:bg-indigo-700 text-white font-medium px-5 py-3 rounded-xl flex items-center justify-center gap-2 transition-colors w-full sm:w-auto flex-shrink-0"
-                    >
-                      <span className="material-symbols-outlined text-xl">content_copy</span>
-                      Linki Kopyala
-                    </button>
+                  <div className="flex flex-col gap-4 mt-6 relative z-10">
+                    {inviteCode && (
+                      <div className="bg-white border border-slate-200 rounded-xl p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3 animate-in fade-in duration-300">
+                        <div>
+                          <div className="text-[10px] text-slate-400 font-bold uppercase font-label">Davet Kodu (6 Haneli)</div>
+                          <div className="text-2xl font-black tracking-widest text-indigo-600 font-headline mt-1">{inviteCode}</div>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            navigator.clipboard.writeText(inviteCode);
+                            toast.success("Davet kodu kopyalandı!");
+                          }}
+                          className="bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold px-4 py-2.5 rounded-lg flex items-center justify-center gap-1.5 transition-all text-xs"
+                        >
+                          <span className="material-symbols-outlined text-base">content_copy</span>
+                          Kodu Kopyala
+                        </button>
+                      </div>
+                    )}
+
+                    <div className="flex flex-col sm:flex-row items-center gap-3 w-full">
+                      <div className="flex-1 w-full">
+                        <div className="text-[10px] text-slate-400 font-bold uppercase font-label mb-1">Davet Bağlantısı</div>
+                        <input
+                          type="text"
+                          readOnly
+                          value={inviteUrl ?? ""}
+                          className="bg-white border border-slate-200 rounded-xl px-4 py-3 text-slate-600 text-sm w-full outline-none"
+                        />
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          if (inviteUrl) {
+                            navigator.clipboard.writeText(inviteUrl);
+                            toast.success("Bağlantı kopyalandı!");
+                          }
+                        }}
+                        className="bg-indigo-600 hover:bg-indigo-700 text-white font-medium px-5 py-3 rounded-xl flex items-center justify-center gap-2 transition-colors w-full sm:w-auto flex-shrink-0 self-end h-[46px]"
+                      >
+                        <span className="material-symbols-outlined text-xl">content_copy</span>
+                        Linki Kopyala
+                      </button>
+                    </div>
                   </div>
 
                   <div className="flex items-center justify-between mt-6 pt-4 border-t border-slate-100 relative z-10">
@@ -185,36 +214,137 @@ export default function InviteUserPage() {
             </div>
             {/* Current Selected Role Info */}
             <div className="space-y-6">
-              <div className="p-4 bg-surface-container-lowest rounded-lg border border-primary/5">
-                <div className="flex items-center gap-2 text-primary mb-2">
-                  <span className="material-symbols-outlined text-sm">verified_user</span>
-                  <span className="text-sm font-bold uppercase tracking-tight font-label">Muhasebe Rolü</span>
+              {formData.role === "admin" && (
+                <div className="p-4 bg-surface-container-lowest rounded-lg border border-primary/5 animate-in fade-in">
+                  <div className="flex items-center gap-2 text-indigo-600 mb-2">
+                    <span className="material-symbols-outlined text-sm">shield_person</span>
+                    <span className="text-sm font-bold uppercase tracking-tight font-label">Yönetici Rolü</span>
+                  </div>
+                  <p className="text-sm text-on-surface-variant mb-4 font-body leading-relaxed">Sistemdeki tüm verilere ve ayarlara tam erişim yetkisi sağlayan ana kullanıcı rolü.</p>
+                  <div className="space-y-3">
+                    <div className="flex items-start gap-3">
+                      <span className="material-symbols-outlined text-green-600 text-lg">check_circle</span>
+                      <div className="text-sm font-body">
+                        <span className="font-bold text-on-surface">Erişim:</span>{" "}
+                        <span className="text-on-surface-variant">Sistemdeki tüm modüller</span>
+                      </div>
+                    </div>
+                    <div className="flex items-start gap-3">
+                      <span className="material-symbols-outlined text-green-600 text-lg">check_circle</span>
+                      <div className="text-sm font-body">
+                        <span className="font-bold text-on-surface">Yetki:</span>{" "}
+                        <span className="text-on-surface-variant">Veri Ekleme, Düzenleme, Silme ve Kullanıcı Yönetimi</span>
+                      </div>
+                    </div>
+                    <div className="flex items-start gap-3">
+                      <span className="material-symbols-outlined text-slate-400 text-lg">horizontal_rule</span>
+                      <div className="text-sm font-body">
+                        <span className="font-bold text-on-surface">Kısıtlama:</span>{" "}
+                        <span className="text-on-surface-variant">Kısıtlama bulunmuyor</span>
+                      </div>
+                    </div>
+                  </div>
                 </div>
-                <p className="text-sm text-on-surface-variant mb-4 font-body leading-relaxed">Bu rol, finansal verilerin yönetimi ve raporlama süreçleri için optimize edilmiştir.</p>
-                <div className="space-y-3">
-                  <div className="flex items-start gap-3">
-                    <span className="material-symbols-outlined text-green-600 text-lg">check_circle</span>
-                    <div className="text-sm font-body">
-                      <span className="font-bold text-on-surface">Erişim:</span>{" "}
-                      <span className="text-on-surface-variant">Faturalar, Raporlar, Cari Hesaplar</span>
-                    </div>
+              )}
+
+              {formData.role === "accounting" && (
+                <div className="p-4 bg-surface-container-lowest rounded-lg border border-primary/5 animate-in fade-in">
+                  <div className="flex items-center gap-2 text-emerald-600 mb-2">
+                    <span className="material-symbols-outlined text-sm">account_balance</span>
+                    <span className="text-sm font-bold uppercase tracking-tight font-label">Muhasebe Rolü</span>
                   </div>
-                  <div className="flex items-start gap-3">
-                    <span className="material-symbols-outlined text-green-600 text-lg">check_circle</span>
-                    <div className="text-sm font-body">
-                      <span className="font-bold text-on-surface">Yetki:</span>{" "}
-                      <span className="text-on-surface-variant">Gider Onayı, Banka Entegrasyonu</span>
+                  <p className="text-sm text-on-surface-variant mb-4 font-body leading-relaxed">Finansal verilerin yönetimi ve raporlama süreçleri için optimize edilmiş rol.</p>
+                  <div className="space-y-3">
+                    <div className="flex items-start gap-3">
+                      <span className="material-symbols-outlined text-green-600 text-lg">check_circle</span>
+                      <div className="text-sm font-body">
+                        <span className="font-bold text-on-surface">Erişim:</span>{" "}
+                        <span className="text-on-surface-variant">Faturalar, Raporlar, Cari Hesaplar</span>
+                      </div>
                     </div>
-                  </div>
-                  <div className="flex items-start gap-3">
-                    <span className="material-symbols-outlined text-error text-lg">cancel</span>
-                    <div className="text-sm font-body">
-                      <span className="font-bold text-on-surface">Kısıtlama:</span>{" "}
-                      <span className="text-on-surface-variant">Sistem Ayarları, Kullanıcı Yönetimi</span>
+                    <div className="flex items-start gap-3">
+                      <span className="material-symbols-outlined text-green-600 text-lg">check_circle</span>
+                      <div className="text-sm font-body">
+                        <span className="font-bold text-on-surface">Yetki:</span>{" "}
+                        <span className="text-on-surface-variant">Gider Onayı, Fatura Oluşturma ve Finansal İşlemler</span>
+                      </div>
+                    </div>
+                    <div className="flex items-start gap-3">
+                      <span className="material-symbols-outlined text-error text-lg">cancel</span>
+                      <div className="text-sm font-body">
+                        <span className="font-bold text-on-surface">Kısıtlama:</span>{" "}
+                        <span className="text-on-surface-variant">Sistem Ayarları, Kullanıcı Yönetimi</span>
+                      </div>
                     </div>
                   </div>
                 </div>
-              </div>
+              )}
+
+              {formData.role === "warehouse" && (
+                <div className="p-4 bg-surface-container-lowest rounded-lg border border-primary/5 animate-in fade-in">
+                  <div className="flex items-center gap-2 text-orange-600 mb-2">
+                    <span className="material-symbols-outlined text-sm">inventory_2</span>
+                    <span className="text-sm font-bold uppercase tracking-tight font-label">Depo Personeli Rolü</span>
+                  </div>
+                  <p className="text-sm text-on-surface-variant mb-4 font-body leading-relaxed">Stok takibi, envanter sayımı ve ürün hareketleri için özel yetkilendirilmiş rol.</p>
+                  <div className="space-y-3">
+                    <div className="flex items-start gap-3">
+                      <span className="material-symbols-outlined text-green-600 text-lg">check_circle</span>
+                      <div className="text-sm font-body">
+                        <span className="font-bold text-on-surface">Erişim:</span>{" "}
+                        <span className="text-on-surface-variant">Stok Yönetimi, Ürün Listesi</span>
+                      </div>
+                    </div>
+                    <div className="flex items-start gap-3">
+                      <span className="material-symbols-outlined text-green-600 text-lg">check_circle</span>
+                      <div className="text-sm font-body">
+                        <span className="font-bold text-on-surface">Yetki:</span>{" "}
+                        <span className="text-on-surface-variant">Stok Ekleme, Depo Hareketi Girişi</span>
+                      </div>
+                    </div>
+                    <div className="flex items-start gap-3">
+                      <span className="material-symbols-outlined text-error text-lg">cancel</span>
+                      <div className="text-sm font-body">
+                        <span className="font-bold text-on-surface">Kısıtlama:</span>{" "}
+                        <span className="text-on-surface-variant">Finansal Veriler, Fatura ve Raporlar</span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {formData.role === "manager" && (
+                <div className="p-4 bg-surface-container-lowest rounded-lg border border-primary/5 animate-in fade-in">
+                  <div className="flex items-center gap-2 text-blue-600 mb-2">
+                    <span className="material-symbols-outlined text-sm">manage_accounts</span>
+                    <span className="text-sm font-bold uppercase tracking-tight font-label">Personel Rolü</span>
+                  </div>
+                  <p className="text-sm text-on-surface-variant mb-4 font-body leading-relaxed">Günlük operasyonlar, müşteri iletişimi ve genel kayıt işlemleri için standart rol.</p>
+                  <div className="space-y-3">
+                    <div className="flex items-start gap-3">
+                      <span className="material-symbols-outlined text-green-600 text-lg">check_circle</span>
+                      <div className="text-sm font-body">
+                        <span className="font-bold text-on-surface">Erişim:</span>{" "}
+                        <span className="text-on-surface-variant">Cari Hesaplar, Faturalar, Stok (Sadece Görüntüleme)</span>
+                      </div>
+                    </div>
+                    <div className="flex items-start gap-3">
+                      <span className="material-symbols-outlined text-green-600 text-lg">check_circle</span>
+                      <div className="text-sm font-body">
+                        <span className="font-bold text-on-surface">Yetki:</span>{" "}
+                        <span className="text-on-surface-variant">Bilgi Görüntüleme, Basit Kayıt İşlemleri</span>
+                      </div>
+                    </div>
+                    <div className="flex items-start gap-3">
+                      <span className="material-symbols-outlined text-error text-lg">cancel</span>
+                      <div className="text-sm font-body">
+                        <span className="font-bold text-on-surface">Kısıtlama:</span>{" "}
+                        <span className="text-on-surface-variant">Kritik Finansal Raporlar, Ayarlar</span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
               {/* Pro Tip */}
               <div className="flex gap-4 p-4 rounded-lg bg-indigo-50/50 border border-indigo-100/30">
                 <span className="material-symbols-outlined text-indigo-600">lightbulb</span>

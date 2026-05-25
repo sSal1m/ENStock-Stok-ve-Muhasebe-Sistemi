@@ -3,11 +3,17 @@
 import React, { useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
+<<<<<<< HEAD
 import { loginAction } from './serverActions';
+=======
+import { supabase } from '@/lib/supabaseClient';
+>>>>>>> 071e32fa12508a0b37cad08b48a39e0dcbaffd0d
 import { Toaster } from 'react-hot-toast';
 
 export default function LoginPage() {
   const router = useRouter();
+  
+  // Login states
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState<string | null>(null);
@@ -67,8 +73,14 @@ export default function LoginPage() {
         <div className="w-full max-w-md">
           <header className="mb-10">
             <h2 className="font-headline font-bold text-3xl text-on-surface tracking-tight">Tekrar Hoş Geldiniz</h2>
-            <p className="text-on-surface-variant mt-2 font-medium">Kurumsal panelinize ve finansal raporlarınıza erişin.</p>
+            <p className="text-on-surface-variant mt-2 font-medium">Sisteme giriş yapın.</p>
           </header>
+
+          <div className="flex border-b border-outline-variant/10 mb-8 font-body">
+            <div className="flex-1 py-3 text-center border-b-2 border-indigo-600 text-indigo-600 font-extrabold text-sm transition-all">
+              Giriş
+            </div>
+          </div>
 
           {error && (
             <div className="mb-6 p-4 bg-error/10 border border-error rounded-lg">

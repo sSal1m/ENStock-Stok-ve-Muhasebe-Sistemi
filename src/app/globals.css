@@ -108,3 +108,243 @@ body {
   font-size: 0.6875rem;
   letter-spacing: 0.05em;
 }
+
+/* ─── Premium Dark Mode Overrides ─── */
+html.dark, .dark {
+  --color-background: #0b0d16 !important;
+  --color-surface: #0f111a !important;
+  --color-surface-dim: #05060a !important;
+  --color-surface-bright: #1c1f30 !important;
+  --color-surface-variant: #242942 !important;
+  --color-surface-container-lowest: #0b0d16 !important;
+  --color-surface-container-low: #141724 !important;
+  --color-surface-container: #1c2033 !important;
+  --color-surface-container-high: #242942 !important;
+  --color-surface-container-highest: #2c3251 !important;
+  --color-on-surface: #eef0ff !important;
+  --color-on-surface-variant: #bfc4d9 !important;
+  --color-outline: #6e738c !important;
+  --color-outline-variant: #3a3f58 !important;
+  --color-on-background: #eef0ff !important;
+}
+
+/* Force dark mode background and text colors */
+html.dark body, .dark body,
+html.dark main, .dark main {
+  background-color: #0b0d16 !important;
+  color: #eef0ff !important;
+}
+
+/* Sidebar (Left Panel) Dark Mode Styling */
+html.dark aside, .dark aside {
+  background-color: #0f111a !important;
+  border-color: #242942 !important;
+  color: #bfc4d9 !important;
+}
+
+html.dark aside h1, .dark aside h1 {
+  color: #645efb !important; /* Premium Indigo Primary */
+}
+
+html.dark aside p, .dark aside p {
+  color: #8f95b2 !important;
+}
+
+html.dark aside nav a, .dark aside nav a {
+  color: #bfc4d9 !important;
+}
+
+html.dark aside nav a:hover, .dark aside nav a:hover {
+  background-color: #1c2033 !important;
+  color: #eef0ff !important;
+}
+
+html.dark aside nav a.bg-primary, .dark aside nav a.bg-primary {
+  background-color: #4b41e1 !important;
+  color: #ffffff !important;
+}
+
+html.dark aside div, .dark aside div {
+  border-color: #242942 !important;
+}
+
+/* Header (Top Navbar) Dark Mode Styling */
+html.dark header, .dark header {
+  background-color: #0f111a !important;
+  border-color: #242942 !important;
+  color: #eef0ff !important;
+}
+
+html.dark header h1, .dark header h1 {
+  color: #ffffff !important;
+}
+
+html.dark header p, .dark header p {
+  color: #8f95b2 !important;
+}
+
+html.dark header button, .dark header button {
+  color: #bfc4d9 !important;
+}
+
+html.dark header button:hover, .dark header button:hover {
+  background-color: #1c2033 !important;
+  color: #ffffff !important;
+}
+
+/* ─── Dropdowns, Cards, Tables & Components (Comprehensive Overrides) ─── */
+html.dark .bg-white, .dark .bg-white,
+html.dark .bg-surface-container-lowest, .dark .bg-surface-container-lowest,
+html.dark .bg-surface-container-low, .dark .bg-surface-container-low,
+html.dark header .bg-white, .dark header .bg-white {
+  background-color: #141724 !important;
+  border-color: #242942 !important;
+}
+
+html.dark .bg-slate-50, .dark .bg-slate-50,
+html.dark .bg-gray-50, .dark .bg-gray-50,
+html.dark .bg-slate-50\/50, .dark .bg-slate-50\/50,
+html.dark .bg-gray-50\/50, .dark .bg-gray-50\/50,
+html.dark header .bg-slate-50, .dark header .bg-slate-50 {
+  background-color: #1c2033 !important;
+  border-color: #242942 !important;
+}
+
+html.dark .bg-slate-100, .dark .bg-slate-100,
+html.dark .bg-gray-100, .dark .bg-gray-100 {
+  background-color: #242942 !important;
+  border-color: #2c3251 !important;
+}
+
+/* Custom Soft Colors to Dark Mode Safe Alternatives */
+html.dark .bg-indigo-50, .dark .bg-indigo-50 { background-color: #1b1e36 !important; color: #8c82ff !important; }
+html.dark .bg-emerald-50, .dark .bg-emerald-50 { background-color: #0d2e20 !important; color: #52d9a3 !important; }
+html.dark .bg-blue-50, .dark .bg-blue-50 { background-color: #122542 !important; color: #82aeff !important; }
+html.dark .bg-amber-50, .dark .bg-amber-50 { background-color: #2c2214 !important; color: #ffbe6b !important; }
+html.dark .bg-red-50, .dark .bg-red-50 { background-color: #321419 !important; color: #ff7373 !important; }
+html.dark .bg-teal-50, .dark .bg-teal-50 { background-color: #0c2b29 !important; color: #62ebd9 !important; }
+html.dark .bg-purple-50, .dark .bg-purple-50 { background-color: #251433 !important; color: #ca82ff !important; }
+html.dark .bg-error-container\/20, .dark .bg-error-container\/20,
+html.dark .bg-error-container\/30, .dark .bg-error-container\/30 { background-color: #321419 !important; }
+
+/* Interactive Hover States in Dark Mode */
+html.dark .hover\:bg-slate-50\/50:hover, .dark .hover\:bg-slate-50\/50:hover,
+html.dark .hover\:bg-slate-50\/60:hover, .dark .hover\:bg-slate-50\/60:hover,
+html.dark .hover\:bg-slate-50\/80:hover, .dark .hover\:bg-slate-50\/80:hover,
+html.dark .hover\:bg-indigo-50\/20:hover, .dark .hover\:bg-indigo-50\/20:hover,
+html.dark .hover\:bg-slate-50:hover, .dark .hover\:bg-slate-50:hover,
+html.dark .hover\:bg-slate-100:hover, .dark .hover\:bg-slate-100:hover,
+html.dark .hover\:bg-indigo-50\/50:hover, .dark .hover\:bg-indigo-50\/50:hover,
+html.dark header .hover\:bg-slate-100:hover, .dark header .hover\:bg-slate-100:hover {
+  background-color: #242942 !important;
+  color: #ffffff !important;
+}
+
+/* Perfect High Contrast Text Colors */
+html.dark .text-slate-900, .dark .text-slate-900,
+html.dark .text-gray-900, .dark .text-gray-900,
+html.dark .text-slate-800, .dark .text-slate-800,
+html.dark .text-gray-800, .dark .text-gray-800,
+html.dark .text-slate-700, .dark .text-slate-700,
+html.dark .text-gray-700, .dark .text-gray-700,
+html.dark .text-slate-600, .dark .text-slate-600,
+html.dark .text-gray-600, .dark .text-gray-600,
+html.dark .text-slate-500, .dark .text-slate-500,
+html.dark .text-gray-500, .dark .text-gray-500,
+html.dark .text-slate-400, .dark .text-slate-400,
+html.dark .text-gray-400, .dark .text-gray-400,
+html.dark .text-indigo-900, .dark .text-indigo-900,
+html.dark .text-on-surface, .dark .text-on-surface,
+html.dark .text-on-surface-variant, .dark .text-on-surface-variant,
+html.dark header .text-slate-900, .dark header .text-slate-900,
+html.dark header .text-slate-800, .dark header .text-slate-800,
+html.dark header .text-slate-700, .dark header .text-slate-700,
+html.dark header .text-slate-500, .dark header .text-slate-500,
+html.dark header .text-slate-400, .dark header .text-slate-400 {
+  color: #ffffff !important;
+}
+
+html.dark .text-on-surface\/50, .dark .text-on-surface\/50 {
+  color: rgba(255, 255, 255, 0.5) !important;
+}
+
+/* Color Semantics Overrides for Light Mode Leftovers */
+html.dark .text-indigo-700, .dark .text-indigo-700,
+html.dark .text-indigo-600, .dark .text-indigo-600 { color: #8c82ff !important; }
+html.dark .text-emerald-700, .dark .text-emerald-700,
+html.dark .text-emerald-600, .dark .text-emerald-600 { color: #52d9a3 !important; }
+
+/* Amber Color Semantics */
+html.dark .text-amber-800, .dark .text-amber-800,
+html.dark .text-amber-700, .dark .text-amber-700,
+html.dark .text-amber-600, .dark .text-amber-600 { color: #ffbe6b !important; }
+html.dark .bg-amber-50\/60, .dark .bg-amber-50\/60 { background-color: rgba(44, 34, 20, 0.6) !important; }
+html.dark .border-amber-200\/50, .dark .border-amber-200\/50 { border-color: rgba(255, 190, 107, 0.2) !important; }
+
+/* Error & Red Color Semantics */
+html.dark .text-error, .dark .text-error,
+html.dark .text-red-600, .dark .text-red-600 { color: #ff7373 !important; }
+
+html.dark .text-teal-700, .dark .text-teal-700 { color: #62ebd9 !important; }
+html.dark .text-purple-700, .dark .text-purple-700 { color: #ca82ff !important; }
+
+/* Table Elements (thead tr background and divide borders) */
+html.dark thead tr, .dark thead tr,
+html.dark tr.bg-slate-50\/50, .dark tr.bg-slate-50\/50,
+html.dark tr.bg-surface-container-low\/50, .dark tr.bg-surface-container-low\/50 {
+  background-color: #1c2033 !important;
+}
+
+/* Borders and Dividers */
+html.dark .border, .dark .border,
+html.dark .border-t, .dark .border-t,
+html.dark .border-b, .dark .border-b,
+html.dark .border-r, .dark .border-r,
+html.dark .border-l, .dark .border-l,
+html.dark .border-slate-50, .dark .border-slate-50,
+html.dark .border-slate-100, .dark .border-slate-100,
+html.dark .border-slate-200, .dark .border-slate-200,
+html.dark .border-indigo-50, .dark .border-indigo-50,
+html.dark .border-indigo-100, .dark .border-indigo-100,
+html.dark .border-indigo-50\/50, .dark .border-indigo-50\/50,
+html.dark .border-slate-700\/50, .dark .border-slate-700\/50,
+html.dark .border-slate-600\/30, .dark .border-slate-600\/30,
+html.dark header .border-slate-200, .dark header .border-slate-200,
+html.dark header .border-slate-100, .dark header .border-slate-100 {
+  border-color: #242942 !important;
+}
+
+html.dark .divide-y > *, .dark .divide-y > *,
+html.dark .divide-slate-50 > *, .dark .divide-slate-50 > *,
+html.dark .divide-indigo-50\/50 > *, .dark .divide-indigo-50\/50 > *,
+html.dark .divide-slate-100 > *, .dark .divide-slate-100 > * {
+  border-color: #242942 !important;
+}
+
+/* Form Inputs, Select Box and Textarea in Dark Mode */
+html.dark input[type="text"], .dark input[type="text"],
+html.dark input[type="search"], .dark input[type="search"],
+html.dark input[type="tel"], .dark input[type="tel"],
+html.dark input[type="email"], .dark input[type="email"],
+html.dark input[type="number"], .dark input[type="number"],
+html.dark select, .dark select,
+html.dark textarea, .dark textarea {
+  background-color: #141724 !important;
+  border-color: #242942 !important;
+  color: #ffffff !important;
+}
+
+html.dark input::placeholder, .dark input::placeholder,
+html.dark textarea::placeholder, .dark textarea::placeholder {
+  color: #6e738c !important;
+}
+
+html.dark select option, .dark select option {
+  background-color: #141724 !important;
+  color: #ffffff !important;
+}
+
+/* Global Transition Rules for Smooth Toggling */
+body, aside, header, section, div, button, input, select, textarea, a {
+  transition: background-color 0.3s cubic-bezier(0.4, 0, 0.2, 1), border-color 0.3s cubic-bezier(0.4, 0, 0.2, 1), color 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}

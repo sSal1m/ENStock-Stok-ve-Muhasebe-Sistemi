@@ -201,49 +201,124 @@ export default function InvoicesPage() {
   };
 
   // Pagination
+  const totalPages = Math.max(1, Math.ceil(filtered.length / ITEMS_PER_PAGE));
   const paginatedInvoices = filtered.slice(
     currentPage * ITEMS_PER_PAGE,
     (currentPage + 1) * ITEMS_PER_PAGE
   );
 
+  // Stat kartları hesaplamaları
+  const salesInvoices = invoices.filter((inv) => inv.type === "sale").length;
+  const purchaseInvoices = invoices.filter((inv) => inv.type === "purchase").length;
+  const paidInvoices = invoices.filter((inv) => inv.is_paid === true || inv.status === "paid").length;
+
   return (
     <div className="w-full p-8 max-w-[1600px] mx-auto bg-slate-50 min-h-screen">
       {/* Content Area */}
       <div className="w-full space-y-8">
-        {/* Page Header */}
-        <div className="flex flex-col md:flex-row md:items-end justify-between gap-6 pb-6 border-b border-slate-200">
-          <div>
-            <nav className="flex items-center gap-2 text-xs font-semibold text-indigo-400 mb-2">
-              <span>Panel</span>
-              <span className="material-symbols-outlined text-[12px]">chevron_right</span>
-              <span className="text-slate-500">Fatura Yönetimi</span>
-            </nav>
-            <h1 className="text-3xl font-extrabold text-slate-900 tracking-tight">
-              Faturalar
-            </h1>
-            <p className="text-slate-600 mt-1">
-              Tüm faturalarınızı yönetin ve takip edin.
-            </p>
+        {/* ── İstatistik Kartları ── */}
+        <section className="grid grid-cols-1 gap-6 md:grid-cols-2 lg:grid-cols-4">
+          {/* Toplam Fatura */}
+          <div className="bg-white p-6 rounded-2xl shadow-sm border border-indigo-50/50">
+            <p className="text-xs font-bold uppercase tracking-widest text-slate-400">Toplam Fatura</p>
+            <div className="mt-2 flex items-end gap-3">
+              <p className="text-2xl font-extrabold text-purple-600 tabular-nums leading-none">{invoices.length}</p>
+              <span className="mb-0.5 text-[11px] font-bold text-purple-500">
+                fatura
+              </span>
+            </div>
           </div>
-          <div className="flex flex-wrap items-center gap-3">
-             {/* Döviz Görünüm Seçici */}
-             <div className="flex items-center gap-2 bg-white border-2 border-purple-100 rounded-xl px-4 py-2.5 shadow-sm">
-                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-tighter">Görünüm:</span>
-                <select
-                  value={viewCurrency}
-                  onChange={(e) => setViewCurrency(e.target.value)}
-                  className="bg-transparent border-none text-sm font-black text-purple-600 outline-none focus:ring-0 cursor-pointer"
-                >
-                  <option value="TRY">TRY (₺)</option>
-                  <option value="USD">USD ($)</option>
-                  <option value="EUR">EUR (€)</option>
-                  <option value="GBP">GBP (£)</option>
-                </select>
-              </div>
 
+          {/* Satış */}
+          <div className="bg-white p-6 rounded-2xl shadow-sm border border-indigo-50/50">
+            <p className="text-xs font-bold uppercase tracking-widest text-slate-400">Satış Faturaları</p>
+            <div className="mt-2 flex items-end gap-3">
+              <p className="text-2xl font-extrabold text-green-600 tabular-nums leading-none">{salesInvoices}</p>
+              <span className="mb-0.5 text-[11px] font-bold text-green-500">
+                satış
+              </span>
+            </div>
+          </div>
+
+          {/* Alış */}
+          <div className="bg-white p-6 rounded-2xl shadow-sm border border-indigo-50/50">
+            <p className="text-xs font-bold uppercase tracking-widest text-slate-400">Alış Faturaları</p>
+            <div className="mt-2 flex items-end gap-3">
+              <p className="text-2xl font-extrabold text-blue-600 tabular-nums leading-none">{purchaseInvoices}</p>
+              <span className="mb-0.5 text-[11px] font-bold text-blue-500">
+                alış
+              </span>
+            </div>
+          </div>
+
+          {/* Ödenen */}
+          <div className="bg-white p-6 rounded-2xl shadow-sm border border-indigo-50/50">
+            <p className="text-xs font-bold uppercase tracking-widest text-slate-400">Ödenen Faturalar</p>
+            <div className="mt-2 flex items-end gap-3">
+              <p className="text-2xl font-extrabold text-emerald-600 tabular-nums leading-none">{paidInvoices}</p>
+              <span className="mb-0.5 text-[11px] font-bold text-emerald-500">
+                ödeme
+              </span>
+            </div>
+          </div>
+        </section>
+        {/* Tab Filtresi */}
+        <div className="flex justify-between items-center w-full border-b border-slate-200 pb-2 mb-6">
+          {/* Sol Taraf: Sekmeler */}
+          <div className="flex items-center gap-6">
+            <button
+              onClick={() => { setFilterType("all"); setCurrentPage(0); }}
+              className={`px-4 py-2 text-sm font-semibold transition-colors whitespace-nowrap border-b-2 ${
+                filterType === "all"
+                  ? "border-purple-600 text-purple-600"
+                  : "border-transparent text-slate-500 hover:text-slate-700"
+              }`}
+            >
+              Hepsi
+            </button>
+            <button
+              onClick={() => { setFilterType("sales"); setCurrentPage(0); }}
+              className={`px-4 py-2 text-sm font-semibold transition-colors whitespace-nowrap border-b-2 ${
+                filterType === "sales"
+                  ? "border-green-500 text-green-500"
+                  : "border-transparent text-slate-500 hover:text-slate-700"
+              }`}
+            >
+              Satış
+            </button>
+            <button
+              onClick={() => { setFilterType("purchase"); setCurrentPage(0); }}
+              className={`px-4 py-2 text-sm font-semibold transition-colors whitespace-nowrap border-b-2 ${
+                filterType === "purchase"
+                  ? "border-blue-500 text-blue-500"
+                  : "border-transparent text-slate-500 hover:text-slate-700"
+              }`}
+            >
+              Alış
+            </button>
+          </div>
+
+          {/* Sağ Taraf: Döviz + Yeni Fatura */}
+          <div className="flex items-center gap-3">
+            {/* Döviz Seçici */}
+            <div className="flex items-center gap-2 bg-white border-2 border-purple-100 rounded-xl px-4 py-2 shadow-sm">
+              <span className="text-[10px] font-bold text-slate-400 uppercase tracking-tighter">Görünüm:</span>
+              <select
+                value={viewCurrency}
+                onChange={(e) => setViewCurrency(e.target.value)}
+                className="bg-transparent border-none text-sm font-black text-purple-600 outline-none focus:ring-0 cursor-pointer"
+              >
+                <option value="TRY">TRY (₺)</option>
+                <option value="USD">USD ($)</option>
+                <option value="EUR">EUR (€)</option>
+                <option value="GBP">GBP (£)</option>
+              </select>
+            </div>
+
+            {/* Yeni Fatura Butonu */}
             <Link
               href="/invoices/new"
-              className="flex items-center gap-2 px-8 py-3.5 rounded-lg font-semibold text-sm text-white bg-gradient-to-r from-purple-600 to-purple-700 shadow-lg shadow-purple-200 hover:shadow-xl hover:shadow-purple-300 active:scale-[0.98] transition-all"
+              className="flex items-center gap-2 px-6 py-2 rounded-lg font-semibold text-sm text-white bg-gradient-to-r from-purple-600 to-purple-700 shadow-lg shadow-purple-200 hover:shadow-xl hover:shadow-purple-300 active:scale-[0.98] transition-all whitespace-nowrap"
             >
               <span className="material-symbols-outlined">add_circle</span>
               Yeni Fatura
@@ -251,88 +326,17 @@ export default function InvoicesPage() {
           </div>
         </div>
 
-
-        {/* Filter Bar */}
-        <div className="flex items-center gap-3 pb-6 border-b border-slate-200">
-          <button
-            onClick={() => setFilterType("all")}
-            className={`px-5 py-2.5 rounded-lg font-semibold text-sm transition-all ${
-              filterType === "all"
-                ? "bg-purple-600 text-white shadow-md shadow-purple-200"
-                : "bg-white text-slate-700 hover:bg-slate-100 border border-slate-300"
-            }`}
-          >
-            <span className="material-symbols-outlined align-middle mr-2 text-lg">list</span>
-            Hepsi
-          </button>
-          <button
-            onClick={() => setFilterType("sales")}
-            className={`px-5 py-2.5 rounded-lg font-semibold text-sm transition-all ${
-              filterType === "sales"
-                ? "bg-green-500 text-white shadow-md shadow-green-500/30"
-                : "bg-white text-slate-700 hover:bg-slate-100 border border-slate-300"
-            }`}
-          >
-            <span className="material-symbols-outlined align-middle mr-2 text-lg">trending_up</span>
-            Satış
-          </button>
-          <button
-            onClick={() => setFilterType("purchase")}
-            className={`px-5 py-2.5 rounded-lg font-semibold text-sm transition-all ${
-              filterType === "purchase"
-                ? "bg-blue-500 text-white shadow-md shadow-blue-500/30"
-                : "bg-white text-slate-700 hover:bg-slate-100 border border-slate-300"
-            }`}
-          >
-            <span className="material-symbols-outlined align-middle mr-2 text-lg">trending_down</span>
-            Alış
-          </button>
-        </div>
-
-        {/* Search and Stats */}
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
-          <div className="md:col-span-2 relative">
-            <label className="block text-xs font-semibold text-slate-600 uppercase tracking-wide mb-3">
-              Ara
-            </label>
-            <div className="flex items-center bg-white border-2 border-slate-300 rounded-lg px-4 py-3 focus-within:border-purple-400 transition-all">
-              <span className="material-symbols-outlined text-slate-400">search</span>
-              <input
-                className="w-full bg-transparent border-none focus:ring-0 py-2 text-sm placeholder:text-slate-400"
-                placeholder="Fatura no veya cari adı yazın..."
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-              />
-            </div>
-          </div>
-
-          {/* Stat Cards */}
-          <div className="bg-gradient-to-br from-orange-50 to-orange-100 rounded-lg p-6 border border-orange-200 shadow-sm">
-            <div className="flex items-start justify-between">
-              <div>
-                <p className="text-xs font-semibold text-orange-600 uppercase tracking-wide mb-2">
-                  Toplam KDV
-                </p>
-                <p className="font-bold text-2xl text-orange-700">{format(vatAmount)}</p>
-              </div>
-              <div className="w-12 h-12 bg-orange-200/50 rounded-lg flex items-center justify-center">
-                <span className="material-symbols-outlined text-xl text-orange-600">receipt_long</span>
-              </div>
-            </div>
-          </div>
-
-          <div className="bg-gradient-to-br from-green-50 to-green-100 rounded-lg p-6 border border-green-200 shadow-sm">
-            <div className="flex items-start justify-between">
-              <div>
-                <p className="text-xs font-semibold text-green-600 uppercase tracking-wide mb-2">
-                  Toplam Tutar
-                </p>
-                <p className="font-bold text-2xl text-green-700">{format(totalAmount)}</p>
-              </div>
-              <div className="w-12 h-12 bg-green-200/50 rounded-lg flex items-center justify-center">
-                <span className="material-symbols-outlined text-xl text-green-600">payments</span>
-              </div>
-            </div>
+        {/* Search and Filters */}
+        <div className="flex flex-col md:flex-row gap-4 items-start md:items-center">
+          <div className="relative flex-1">
+            <span className="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 text-[18px]">search</span>
+            <input
+              className="w-full pl-10 pr-4 py-2.5 rounded-xl border border-purple-100 focus:ring-2 focus:ring-purple-600 focus:border-transparent text-sm outline-none bg-white"
+              placeholder="Fatura no veya cari adı yazın..."
+              type="text"
+              value={searchTerm}
+              onChange={(e) => { setSearchTerm(e.target.value); setCurrentPage(0); }}
+            />
           </div>
         </div>
 
@@ -480,28 +484,43 @@ export default function InvoicesPage() {
               </div>
 
               {/* Pagination */}
-              <div className="px-6 py-5 bg-surface-container-low/30 border-t border-indigo-50 flex justify-between items-center">
-                <p className="text-xs text-slate-500">
-                  {filtered.length === 0
-                    ? "Kayıt bulunamadı"
-                    : `${paginatedInvoices.length} / ${filtered.length} fatura gösteriliyor (Sayfa ${currentPage + 1})`}
+              <div className="p-6 bg-surface-container-low/30 border-t border-indigo-50 flex items-center justify-between rounded-b-2xl">
+                <p className="text-sm text-slate-500 font-medium">
+                  Toplam{" "}
+                  <span className="text-indigo-900 font-bold">
+                    {filtered.length.toLocaleString("tr-TR")}
+                  </span>{" "}
+                  faturadan{" "}
+                  <span className="text-indigo-900 font-bold">{paginatedInvoices.length}</span>{" "}
+                  tanesi gösteriliyor
                 </p>
-                <div className="flex gap-2">
+                <div className="flex items-center gap-1">
                   <button
-                    onClick={() => setCurrentPage(currentPage - 1)}
+                    onClick={() => setCurrentPage(Math.max(0, currentPage - 1))}
                     disabled={currentPage === 0}
-                    className="px-4 py-2 text-xs font-bold rounded-lg border border-indigo-50 transition-all bg-white flex items-center gap-2 disabled:text-slate-300 disabled:cursor-not-allowed disabled:opacity-50 enabled:text-primary enabled:hover:bg-indigo-50"
+                    className="p-2 text-slate-400 hover:text-indigo-600 hover:bg-white rounded-lg transition-colors border border-transparent hover:border-indigo-100 disabled:opacity-50 disabled:cursor-not-allowed"
                   >
-                    <span className="material-symbols-outlined text-sm">arrow_back</span>
-                    Önceki
+                    <span className="material-symbols-outlined">chevron_left</span>
                   </button>
+                  {Array.from({ length: totalPages }, (_, i) => (
+                    <button
+                      key={i}
+                      onClick={() => setCurrentPage(i)}
+                      className={`w-8 h-8 flex items-center justify-center rounded-lg font-bold text-sm transition-colors ${
+                        currentPage === i
+                          ? "bg-indigo-600 text-white shadow-sm"
+                          : "text-slate-500 hover:text-indigo-600 hover:bg-white border border-transparent hover:border-indigo-100"
+                      }`}
+                    >
+                      {i + 1}
+                    </button>
+                  ))}
                   <button
-                    onClick={() => setCurrentPage(currentPage + 1)}
-                    disabled={(currentPage + 1) * ITEMS_PER_PAGE >= filtered.length}
-                    className="px-4 py-2 text-xs font-bold rounded-lg border border-indigo-50 transition-all bg-white flex items-center gap-2 disabled:text-slate-300 disabled:cursor-not-allowed disabled:opacity-50 enabled:text-primary enabled:hover:bg-indigo-50"
+                    onClick={() => setCurrentPage(Math.min(totalPages - 1, currentPage + 1))}
+                    disabled={currentPage === totalPages - 1}
+                    className="p-2 text-slate-400 hover:text-indigo-600 hover:bg-white rounded-lg transition-colors border border-transparent hover:border-indigo-100 disabled:opacity-50 disabled:cursor-not-allowed"
                   >
-                    <span className="material-symbols-outlined text-sm">arrow_forward</span>
-                    Sonraki
+                    <span className="material-symbols-outlined">chevron_right</span>
                   </button>
                 </div>
               </div>

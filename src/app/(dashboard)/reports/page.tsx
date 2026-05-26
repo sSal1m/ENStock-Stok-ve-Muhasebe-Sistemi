@@ -144,23 +144,8 @@ export default function RaporlarSayfasi() {
      ═══════════════════════════════════════════ */
   return (
     <div className="p-6 lg:p-10 space-y-8 w-full">
-      {/* ── Sayfa Başlığı ── */}
+      {/* ── Filtre & Görünüm Araçları ── */}
       <div className="flex flex-col md:flex-row md:items-end justify-between gap-6">
-        <div>
-          <nav className="flex items-center gap-2 text-xs font-semibold text-indigo-400 mb-2">
-            <span>Panel</span>
-            <span className="material-symbols-outlined text-[12px]">chevron_right</span>
-            <span className="text-slate-500">Finansal Raporlar</span>
-          </nav>
-          <h1 className="text-3xl font-extrabold text-on-surface tracking-tight">
-            Gelir / Gider Analizi
-          </h1>
-          <p className="text-slate-500 mt-1">
-            Mali durumunuzu canlı grafikler ile inceleyin ve yönetin.
-          </p>
-        </div>
-
-        {/* ── Filtre Araç Çubuğu ── */}
         <div className="flex items-center gap-3 flex-wrap">
           <button className="flex items-center gap-2 rounded-xl bg-white border border-indigo-100 px-4 py-2.5 text-sm font-semibold text-slate-600 shadow-sm hover:border-primary/20 transition-all">
             <span className="material-symbols-outlined text-[18px] text-primary">calendar_month</span>

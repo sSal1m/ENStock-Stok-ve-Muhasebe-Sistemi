@@ -297,22 +297,8 @@ export default function InventoryPage() {
   // ── Sayfa İçeriği ─────────────────────────────────────────────────────────
   return (
     <div className="p-6 lg:p-10 space-y-8">
-
-      {/* ── Sayfa Başlığı ── */}
+      {/* ── Kategori & Ürün Yönetim Aksiyonları ── */}
       <div className="flex flex-col md:flex-row md:items-end justify-between gap-6">
-        <div>
-          <nav className="flex items-center gap-2 text-xs font-semibold text-indigo-400 mb-2">
-            <span>Panel</span>
-            <span className="material-symbols-outlined text-[12px]">chevron_right</span>
-            <span className="text-slate-500">Stok Yönetimi</span>
-          </nav>
-          <h1 className="text-3xl font-extrabold text-on-surface tracking-tight">
-            Stok Kontrol Paneli
-          </h1>
-          <p className="text-slate-500 mt-1">
-            Envanter durumunu izleyin, stok seviyelerini yönetin ve ürünlerinizi organize edin.
-          </p>
-        </div>
         <div className="flex items-center gap-3">
           <button
             onClick={() => setIsCategoryModalOpen(true)}

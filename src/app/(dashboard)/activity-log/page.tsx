@@ -89,16 +89,8 @@ export default function ActivityLogPage() {
 
   return (
     <div className="p-6 lg:p-10 space-y-6">
-      {/* Header */}
+      {/* Özet İstatistikler */}
       <div className="flex flex-col md:flex-row md:items-end justify-between gap-4">
-        <div>
-          <h1 className="text-3xl font-extrabold tracking-tight text-on-surface">
-            İşlem Geçmişi (Audit Log)
-          </h1>
-          <p className="text-on-surface-variant mt-1">
-            Stok, fatura ve cari modüllerinde yapılan tüm CRUD işlemleri (kim, ne zaman, hangi kayıt).
-          </p>
-        </div>
         <div className="text-sm text-slate-500">
           Toplam <strong className="text-slate-900">{total}</strong> kayıt
         </div>

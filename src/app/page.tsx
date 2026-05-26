@@ -1,7 +1,40 @@
-import React from 'react';
+"use client";
+
+import React, { useState, useEffect, useRef } from 'react';
 import Link from 'next/link';
 
 export default function HomePage() {
+  const [darkMode, setDarkMode] = useState(false);
+  const [showDropdown, setShowDropdown] = useState(false);
+  const dropdownRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const isDark = document.documentElement.classList.contains('dark');
+    setDarkMode(isDark);
+  }, []);
+
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
+        setShowDropdown(false);
+      }
+    };
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => {
+      document.removeEventListener("mousedown", handleClickOutside);
+    };
+  }, []);
+
+  const saveThemePreference = (isDark: boolean) => {
+    try {
+      const prefs = localStorage.getItem('user_preferences');
+      let parsed = prefs ? JSON.parse(prefs) : {};
+      parsed.darkMode = isDark;
+      localStorage.setItem('user_preferences', JSON.stringify(parsed));
+    } catch (e) {
+      console.error("Failed to save preferences", e);
+    }
+  };
   return (
     <div className="bg-background font-body text-on-surface antialiased overflow-x-hidden min-h-screen selection:bg-primary-fixed-dim flex flex-col">
 
@@ -26,6 +59,71 @@ export default function HomePage() {
           <Link href="#security" className="text-sm font-semibold text-on-surface-variant hover:text-primary transition-colors">Güvenlik</Link>
         </nav>
         <div className="flex gap-4 items-center">
+          {/* Tema Seçim Butonu ve Açılır Menü */}
+          <div className="relative" ref={dropdownRef}>
+            <button
+              onClick={() => setShowDropdown(!showDropdown)}
+              className="w-10 h-10 rounded-full flex items-center justify-center bg-surface-container-high hover:bg-surface-container-highest border border-outline-variant/30 text-on-surface transition-all active:scale-95 shadow-sm cursor-pointer"
+              title="Temayı Değiştir"
+              aria-label="Temayı Değiştir"
+            >
+              <span className="material-symbols-outlined text-[20px]">
+                {darkMode ? "dark_mode" : "light_mode"}
+              </span>
+            </button>
+
+            {showDropdown && (
+              <div className="absolute left-0 lg:left-auto lg:right-0 mt-3 w-56 rounded-2xl bg-white dark:bg-surface-container border border-indigo-50/50 dark:border-slate-800/80 p-2 shadow-2xl z-50 animate-in fade-in slide-in-from-top-2 duration-200">
+                <p className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest px-3 py-2 select-none">
+                  Görünüm Seçin
+                </p>
+                <div className="flex flex-col gap-1">
+                  {/* Aydınlık Mod Seçeneği */}
+                  <button
+                    onClick={() => {
+                      setDarkMode(false);
+                      document.documentElement.classList.remove('dark');
+                      saveThemePreference(false);
+                      setShowDropdown(false);
+                    }}
+                    className={`flex items-center gap-3 w-full px-3 py-2.5 rounded-xl text-sm font-bold text-left transition-all cursor-pointer ${
+                      !darkMode
+                        ? "bg-primary/10 text-primary"
+                        : "text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800/80"
+                    }`}
+                  >
+                    <span className="material-symbols-outlined text-lg">light_mode</span>
+                    <span className="flex-grow">Aydınlık</span>
+                    {!darkMode && (
+                      <span className="material-symbols-outlined text-sm font-black">check</span>
+                    )}
+                  </button>
+
+                  {/* Karanlık Mod Seçeneği */}
+                  <button
+                    onClick={() => {
+                      setDarkMode(true);
+                      document.documentElement.classList.add('dark');
+                      saveThemePreference(true);
+                      setShowDropdown(false);
+                    }}
+                    className={`flex items-center gap-3 w-full px-3 py-2.5 rounded-xl text-sm font-bold text-left transition-all cursor-pointer ${
+                      darkMode
+                        ? "bg-primary/15 text-primary-fixed dark:text-white"
+                        : "text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800/80"
+                    }`}
+                  >
+                    <span className="material-symbols-outlined text-lg">dark_mode</span>
+                    <span className="flex-grow">Karanlık</span>
+                    {darkMode && (
+                      <span className="material-symbols-outlined text-sm font-black">check</span>
+                    )}
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+
           <Link href="/login" className="hidden sm:block text-sm font-semibold text-primary hover:text-on-primary-fixed-variant transition-colors">
             Giriş Yap
           </Link>
@@ -46,11 +144,11 @@ export default function HomePage() {
 
           {/* Left Text Content */}
           <div className="space-y-8 text-center lg:text-left">
-            <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-surface-container-high border border-outline-variant/20 shadow-sm transition-transform hover:scale-105">
+            <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 shadow-sm transition-transform hover:scale-105">
               <span className="flex h-2 w-2 rounded-full bg-primary relative">
                 <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-primary opacity-75"></span>
               </span>
-              <span className="text-xs font-bold uppercase tracking-widest text-on-surface font-label">KOBİ'ler İçin Üretildi</span>
+              <span className="text-xs font-extrabold uppercase tracking-widest text-slate-800 dark:text-slate-100 font-label">KOBİ'ler İçin Üretildi</span>
             </div>
 
             <h1 className="text-5xl lg:text-7xl font-extrabold font-headline tracking-tight text-on-surface leading-[1.1]">

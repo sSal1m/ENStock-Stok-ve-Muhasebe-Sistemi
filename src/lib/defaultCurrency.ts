@@ -25,14 +25,24 @@ export async function fetchDefaultCurrency(userId: string): Promise<string> {
   }
 }
 
+const DEFAULT_CURRENCY_CACHE_KEY = "cached_default_currency";
+
 /**
  * Mevcut oturum sahibinin varsayılan para birimi.
  */
 export async function fetchMyDefaultCurrency(): Promise<string> {
   try {
+    if (typeof window !== "undefined") {
+      const cached = sessionStorage.getItem(DEFAULT_CURRENCY_CACHE_KEY);
+      if (cached) return cached;
+    }
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return FALLBACK_CURRENCY;
-    return fetchDefaultCurrency(user.id);
+    const currency = await fetchDefaultCurrency(user.id);
+    if (typeof window !== "undefined") {
+      sessionStorage.setItem(DEFAULT_CURRENCY_CACHE_KEY, currency);
+    }
+    return currency;
   } catch {
     return FALLBACK_CURRENCY;
   }

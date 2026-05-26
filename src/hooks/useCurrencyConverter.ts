@@ -57,6 +57,23 @@ export function useCurrencyConverter(initialCurrency = "TRY") {
   }, []);
 
   useEffect(() => {
+    // 1. Try to load from session storage
+    if (typeof window !== "undefined") {
+      const cached = sessionStorage.getItem("cached_currency_rates");
+      if (cached) {
+        try {
+          const parsed = JSON.parse(cached);
+          if (parsed && parsed.rates) {
+            setRates(parsed.rates);
+            setLoading(false);
+            return; // Skip fetch since rates are already cached for this session!
+          }
+        } catch (e) {
+          console.error("Failed to parse cached rates", e);
+        }
+      }
+    }
+
     async function fetchRates() {
       try {
         setLoading(true);
@@ -64,6 +81,9 @@ export function useCurrencyConverter(initialCurrency = "TRY") {
         const data = await res.json();
         if (data.rates) {
           setRates(data.rates);
+          if (typeof window !== "undefined") {
+            sessionStorage.setItem("cached_currency_rates", JSON.stringify(data));
+          }
         }
       } catch (err) {
         console.error("Kur çekme hatası:", err);

@@ -562,7 +562,7 @@ export default function DashboardPage() {
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-8">
               <div className="flex items-center gap-3">
                 <div className="w-1.5 h-6 bg-primary rounded-full"></div>
-                <h2 className="text-xl font-bold text-on-surface">Satış Trendleri</h2>
+                <h2 className="text-xl font-bold text-on-surface">Finansal Performans</h2>
               </div>
               
               <div className="flex flex-wrap items-center gap-4">
@@ -608,7 +608,7 @@ export default function DashboardPage() {
             </div>
 
             {/* Chart SVG */}
-            <div className="h-64 w-full relative group">
+            <div className="h-80 md:h-[350px] w-full relative group">
               {chartData.length > 0 ? (
                 (() => {
                   // Para birimine göre dönüştürülmüş noktalar
@@ -628,13 +628,13 @@ export default function DashboardPage() {
                   const yMin = minVal - padding;
                   const yRange = yMax - yMin;
 
-                  // Koordinat eşleme fonksiyonları (Genişlik: 800, Yükseklik: 300)
+                  // Koordinat eşleme fonksiyonları (Genişlik: 800, Yükseklik: 350)
                   const leftPadding = 70;
                   const rightPadding = 30;
                   const topPadding = 25;
                   const bottomPadding = 35;
                   const drawWidth = 800 - leftPadding - rightPadding;
-                  const drawHeight = 300 - topPadding - bottomPadding;
+                  const drawHeight = 350 - topPadding - bottomPadding;
 
                   const getY = (v: number) => topPadding + drawHeight * (1 - (v - yMin) / yRange);
                   const yZero = getY(0);
@@ -684,7 +684,7 @@ export default function DashboardPage() {
                     <>
                       <svg
                         className="w-full h-full overflow-visible"
-                        viewBox="0 0 800 300"
+                        viewBox="0 0 800 350"
                       >
                         <defs>
                           <linearGradient id="greenGradient" x1="0%" x2="0%" y1="0%" y2="100%">
@@ -981,7 +981,7 @@ export default function DashboardPage() {
           </div>
 
           {/* Aktivite Geçmişi (audit log) */}
-          <div className="bg-surface-container-lowest rounded-3xl p-6 shadow-sm">
+          <div className="bg-surface-container-lowest rounded-3xl p-6 shadow-sm lg:!mt-16">
             <div className="flex items-center justify-between mb-4">
               <div className="flex items-center gap-3">
                 <div className="w-1.5 h-6 bg-primary rounded-full"></div>

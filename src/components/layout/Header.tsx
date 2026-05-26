@@ -84,11 +84,40 @@ export default function Header() {
   const [showSettingsDropdown, setShowSettingsDropdown] = useState(false);
   const [showNotificationsDropdown, setShowNotificationsDropdown] = useState(false);
   const [overdueInvoices, setOverdueInvoices] = useState<any[]>([]);
+  const [darkMode, setDarkMode] = useState(false);
   
   const userMenuRef = useRef<HTMLDivElement>(null);
   const settingsMenuRef = useRef<HTMLDivElement>(null);
   const notificationsMenuRef = useRef<HTMLDivElement>(null);
   const router = useRouter();
+
+  useEffect(() => {
+    const isDark = document.documentElement.classList.contains('dark');
+    setDarkMode(isDark);
+  }, []);
+
+  const toggleTheme = () => {
+    const newDarkMode = !darkMode;
+    setDarkMode(newDarkMode);
+    if (newDarkMode) {
+      document.documentElement.classList.add('dark');
+      saveThemePreference(true);
+    } else {
+      document.documentElement.classList.remove('dark');
+      saveThemePreference(false);
+    }
+  };
+
+  const saveThemePreference = (isDark: boolean) => {
+    try {
+      const prefs = localStorage.getItem('user_preferences');
+      let parsed = prefs ? JSON.parse(prefs) : {};
+      parsed.darkMode = isDark;
+      localStorage.setItem('user_preferences', JSON.stringify(parsed));
+    } catch (e) {
+      console.error("Failed to save preferences", e);
+    }
+  };
 
   // Close dropdowns when clicking outside
   useEffect(() => {
@@ -247,6 +276,18 @@ export default function Header() {
 
       {/* Right side - Trash, Notifications, Settings & User Menu */}
       <div className="flex items-center gap-2">
+        {/* Tema Seçim Butonu */}
+        <button
+          onClick={toggleTheme}
+          className="w-10 h-10 rounded-full flex items-center justify-center border border-slate-200 dark:border-slate-700 bg-slate-50 hover:bg-slate-100 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300 transition-all active:scale-95 shadow-sm cursor-pointer mr-1"
+          title="Temayı Değiştir"
+          aria-label="Temayı Değiştir"
+        >
+          <span className="material-symbols-outlined text-[20px]">
+            {darkMode ? "dark_mode" : "light_mode"}
+          </span>
+        </button>
+
         {/* Çöp Kutusu (Trash) Button */}
         <button
           className="p-2.5 text-slate-500 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors group relative flex items-center justify-center"

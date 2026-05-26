@@ -85,6 +85,15 @@ body {
   font-family: "Manrope", sans-serif;
 }
 
+/* Hide scrollbar for sidebar while keeping scroll functionality */
+aside {
+  -ms-overflow-style: none;  /* IE and Edge */
+  scrollbar-width: none;  /* Firefox */
+}
+aside::-webkit-scrollbar {
+  display: none;  /* Chrome, Safari and Opera */
+}
+
 .material-symbols-outlined {
   font-variation-settings: "FILL" 0, "wght" 400, "GRAD" 0, "opsz" 24;
 }
@@ -166,6 +175,7 @@ html.dark aside nav a.bg-primary, .dark aside nav a.bg-primary {
 
 html.dark aside div, .dark aside div {
   border-color: #242942 !important;
+  background-color: #0f111a !important;
 }
 
 /* Header (Top Navbar) Dark Mode Styling */
@@ -195,10 +205,17 @@ html.dark header button:hover, .dark header button:hover {
 /* ─── Dropdowns, Cards, Tables & Components (Comprehensive Overrides) ─── */
 html.dark .bg-white, .dark .bg-white,
 html.dark .bg-surface-container-lowest, .dark .bg-surface-container-lowest,
-html.dark .bg-surface-container-low, .dark .bg-surface-container-low,
 html.dark header .bg-white, .dark header .bg-white {
   background-color: #141724 !important;
   border-color: #242942 !important;
+}
+
+html.dark .bg-surface, .dark .bg-surface {
+  background-color: #0f111a !important;
+}
+
+html.dark .bg-surface-container-low, .dark .bg-surface-container-low {
+  background-color: #141724 !important;
 }
 
 html.dark .bg-slate-50, .dark .bg-slate-50,

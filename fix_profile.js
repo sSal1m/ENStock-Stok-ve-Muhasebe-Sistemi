@@ -20,7 +20,7 @@ async function fixKarssProfile() {
   console.log('Updating profile for karss...');
   const { data, error } = await supabase
     .from('profiles')
-    .update({ company_name: 'Sovereign Holdings Ltd.' })
+    .update({ company_name: 'ENStock Ltd. Şti.' })
     .eq('id', 'cc889df6-57f6-47bf-a636-8a9443c404c7');
   
   if (error) {

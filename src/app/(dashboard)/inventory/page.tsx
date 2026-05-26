@@ -739,7 +739,7 @@ export default function InventoryPage() {
       {/* ── Footer ── */}
       <footer className="p-6 text-center border-t border-indigo-50/50">
         <p className="text-slate-400 text-xs font-medium">
-          © 2024 KOBİ Muhasebe &amp; Ekosistem. Tüm hakları saklıdır. Version 2.4.0
+          © ENStock
         </p>
       </footer>
 

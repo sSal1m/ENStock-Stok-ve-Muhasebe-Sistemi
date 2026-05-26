@@ -498,7 +498,7 @@ export default function ContactsPage() {
 
       <footer className="pt-8 text-center border-t border-indigo-50/50">
         <p className="text-slate-400 text-xs font-bold">
-          © 2026 KOBİ Hesap Sistemi · Version 2.4.0
+          © ENStock
         </p>
       </footer>
     </div>

@@ -160,8 +160,11 @@ export default function InviteRegisterForm({ emailFromUrl }: { emailFromUrl: str
 
       {/* ── Sol dekoratif panel ── */}
       <section className="hidden md:flex md:w-[40%] signature-gradient relative overflow-hidden flex-col justify-between p-12 text-on-primary-container">
-        <div className="relative z-10 text-2xl font-headline font-extrabold tracking-tight">
-          The Sovereign Ledger
+        <div className="relative z-10 text-2xl font-headline font-extrabold tracking-tight flex items-center gap-2">
+          <div className="w-6 h-6 rounded-md overflow-hidden flex items-center justify-center bg-white shadow-sm">
+            <img src="/favicon.png" alt="ENStock" className="w-full h-full object-cover" />
+          </div>
+          ENStock
         </div>
 
         <div className="relative z-10 space-y-6">
@@ -191,7 +194,7 @@ export default function InviteRegisterForm({ emailFromUrl }: { emailFromUrl: str
         </div>
 
         <p className="relative z-10 text-sm font-label tracking-wider opacity-70">
-          © 2024 THE SOVEREIGN LEDGER
+          © ENStock
         </p>
       </section>
 

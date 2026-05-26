@@ -15,10 +15,10 @@ export default function HomePage() {
       <header className="sticky top-0 w-full z-40 flex justify-between items-center px-6 lg:px-12 py-4 bg-background/80 backdrop-blur-xl border-b border-outline-variant/10 shadow-sm">
         <div className="text-2xl font-extrabold tracking-tighter text-primary font-headline flex items-center gap-2">
           {/* Logo icon */}
-          <div className="w-8 h-8 rounded-lg signature-gradient flex items-center justify-center text-on-primary shadow-sm bg-primary text-white">
-            <span className="material-symbols-outlined text-lg" style={{ fontVariationSettings: "'FILL' 1" }}>account_balance</span>
+          <div className="w-8 h-8 rounded-lg overflow-hidden flex items-center justify-center shadow-sm relative bg-white">
+            <img src="/favicon.png" alt="ENStock" className="w-full h-full object-cover" />
           </div>
-          The Sovereign Ledger
+          ENStock
         </div>
         <nav className="hidden md:flex gap-8 items-center">
           <Link href="#features" className="text-sm font-semibold text-on-surface-variant hover:text-primary transition-colors">Özellikler</Link>
@@ -214,7 +214,7 @@ export default function HomePage() {
             Finansal devriminizi bugün başlatın.
           </h2>
           <p className="text-lg text-on-surface-variant mb-10 max-w-2xl mx-auto font-medium leading-relaxed">
-            Karmaşık tabloları rafa kaldırın. Sovereign Ledger hesabı açmak yalnızca 2 dakika sürer ve 14 gün boyunca tamamen ücretsizdir.
+            Karmaşık tabloları rafa kaldırın. ENStock hesabı açmak yalnızca 2 dakika sürer ve 14 gün boyunca tamamen ücretsizdir.
           </p>
           <Link href="/register" className="inline-flex signature-gradient text-on-primary px-10 py-5 rounded-2xl font-headline font-extrabold text-xl shadow-2xl shadow-primary/30 hover:-translate-y-1 active:scale-[0.98] transition-all items-center gap-3 group">
             Hemen Ücretsiz Başlayın
@@ -230,9 +230,9 @@ export default function HomePage() {
       <footer className="bg-inverse-surface text-inverse-on-surface py-16 px-6 lg:px-12">
         <div className="max-w-7xl mx-auto grid grid-cols-1 md:grid-cols-4 gap-12">
           <div className="md:col-span-2">
-            <div className="text-2xl font-extrabold tracking-tighter text-white font-headline mb-4 flex items-center gap-2 opacity-90">
-              <span className="material-symbols-outlined text-primary-fixed" style={{ fontVariationSettings: "'FILL' 1" }}>account_balance</span>
-              The Sovereign Ledger
+            <div className="mb-4 flex items-center gap-3 opacity-90">
+              <img src="/logo_wide.png" alt="ENStock Logo" className="h-10 object-contain rounded" />
+              <span className="text-2xl font-extrabold tracking-tighter text-white font-headline">ENStock</span>
             </div>
             <p className="text-sm font-medium text-outline-variant max-w-sm leading-relaxed">
               Modern işletmeler için tasarlanmış kurumsal mimarili finansal yönetim platformu. Güven, şeffaflık ve güç.
@@ -260,7 +260,7 @@ export default function HomePage() {
 
         <div className="max-w-7xl mx-auto mt-16 pt-8 border-t border-white/10 flex flex-col md:flex-row justify-between items-center gap-4">
           <p className="text-xs font-label uppercase tracking-widest text-outline-variant opacity-70">
-            © 2024 THE SOVEREIGN LEDGER. ARCHITECTURAL CLARITY FOR SMES.
+            © ENStock
           </p>
           {/* Social mock links */}
           <div className="flex gap-4">

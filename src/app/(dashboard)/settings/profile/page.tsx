@@ -68,7 +68,7 @@ export default function ProfilePage() {
           email: user.email || "",
           fullName: user.user_metadata?.full_name || "",
           avatarUrl: user.user_metadata?.avatar_url || null,
-          companyName: "Sovereign Holdings Ltd.",
+          companyName: "ENStock Ltd. Şti.",
           taxId: "GB 938 4210 02",
           businessSector: "Doğrulanmış İşletme",
           address: user.user_metadata?.business_address || "88 Canary Wharf, Level 42, London E14 5AA",

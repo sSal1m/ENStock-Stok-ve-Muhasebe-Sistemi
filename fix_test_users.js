@@ -20,7 +20,7 @@ async function fixTestUsers() {
   console.log('Fixing company_name for test users...');
   const { data, error } = await supabase
     .from('profiles')
-    .update({ company_name: 'Sovereign Holdings Ltd.' })
+    .update({ company_name: 'ENStock Ltd. Şti.' })
     .is('company_name', null);
   
   if (error) {

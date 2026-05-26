@@ -353,8 +353,11 @@ export default function RegisterPage() {
           ></div>
 
           <div className="relative z-10">
-            <div className="text-2xl font-headline font-extrabold tracking-tight">
-              The Sovereign Ledger
+            <div className="text-2xl font-headline font-extrabold tracking-tight flex items-center gap-2">
+              <div className="w-6 h-6 rounded-md overflow-hidden flex items-center justify-center bg-white shadow-sm">
+                <img src="/favicon.png" alt="ENStock" className="w-full h-full object-cover" />
+              </div>
+              ENStock
             </div>
           </div>
 
@@ -382,7 +385,7 @@ export default function RegisterPage() {
 
           <div className="relative z-10">
             <p className="text-sm font-label tracking-wider opacity-70">
-              © 2024 THE SOVEREIGN LEDGER. ARCHITECTURAL CLARITY FOR SMES.
+              © ENStock
             </p>
           </div>
         </section>
@@ -553,7 +556,7 @@ export default function RegisterPage() {
                     <input
                       type="text"
                       id="companyName"
-                      placeholder="e.g. Sovereign Architecture Ltd."
+                      placeholder="Örn. ENStock Yazılım A.Ş."
                       value={formData.companyName}
                       onChange={handleInputChange}
                       className={`w-full pl-12 pr-4 py-4 bg-surface-container-low border-none rounded-xl text-on-surface font-medium placeholder:text-outline outline-none focus:ring-2 focus:ring-primary/20 transition-all focus:bg-surface-container-lowest ${

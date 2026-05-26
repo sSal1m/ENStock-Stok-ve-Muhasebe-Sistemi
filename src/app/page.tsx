@@ -5,25 +5,23 @@ import Link from 'next/link';
 
 export default function HomePage() {
   const [darkMode, setDarkMode] = useState(false);
-  const [showDropdown, setShowDropdown] = useState(false);
-  const dropdownRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     const isDark = document.documentElement.classList.contains('dark');
     setDarkMode(isDark);
   }, []);
 
-  useEffect(() => {
-    const handleClickOutside = (event: MouseEvent) => {
-      if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
-        setShowDropdown(false);
-      }
-    };
-    document.addEventListener("mousedown", handleClickOutside);
-    return () => {
-      document.removeEventListener("mousedown", handleClickOutside);
-    };
-  }, []);
+  const toggleTheme = () => {
+    const newDarkMode = !darkMode;
+    setDarkMode(newDarkMode);
+    if (newDarkMode) {
+      document.documentElement.classList.add('dark');
+      saveThemePreference(true);
+    } else {
+      document.documentElement.classList.remove('dark');
+      saveThemePreference(false);
+    }
+  };
 
   const saveThemePreference = (isDark: boolean) => {
     try {
@@ -59,70 +57,17 @@ export default function HomePage() {
           <Link href="#security" className="text-sm font-semibold text-on-surface-variant hover:text-primary transition-colors">Güvenlik</Link>
         </nav>
         <div className="flex gap-4 items-center">
-          {/* Tema Seçim Butonu ve Açılır Menü */}
-          <div className="relative" ref={dropdownRef}>
-            <button
-              onClick={() => setShowDropdown(!showDropdown)}
-              className="w-10 h-10 rounded-full flex items-center justify-center bg-surface-container-high hover:bg-surface-container-highest border border-outline-variant/30 text-on-surface transition-all active:scale-95 shadow-sm cursor-pointer"
-              title="Temayı Değiştir"
-              aria-label="Temayı Değiştir"
-            >
-              <span className="material-symbols-outlined text-[20px]">
-                {darkMode ? "dark_mode" : "light_mode"}
-              </span>
-            </button>
-
-            {showDropdown && (
-              <div className="absolute left-0 lg:left-auto lg:right-0 mt-3 w-56 rounded-2xl bg-white dark:bg-surface-container border border-indigo-50/50 dark:border-slate-800/80 p-2 shadow-2xl z-50 animate-in fade-in slide-in-from-top-2 duration-200">
-                <p className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest px-3 py-2 select-none">
-                  Görünüm Seçin
-                </p>
-                <div className="flex flex-col gap-1">
-                  {/* Aydınlık Mod Seçeneği */}
-                  <button
-                    onClick={() => {
-                      setDarkMode(false);
-                      document.documentElement.classList.remove('dark');
-                      saveThemePreference(false);
-                      setShowDropdown(false);
-                    }}
-                    className={`flex items-center gap-3 w-full px-3 py-2.5 rounded-xl text-sm font-bold text-left transition-all cursor-pointer ${
-                      !darkMode
-                        ? "bg-primary/10 text-primary"
-                        : "text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800/80"
-                    }`}
-                  >
-                    <span className="material-symbols-outlined text-lg">light_mode</span>
-                    <span className="flex-grow">Aydınlık</span>
-                    {!darkMode && (
-                      <span className="material-symbols-outlined text-sm font-black">check</span>
-                    )}
-                  </button>
-
-                  {/* Karanlık Mod Seçeneği */}
-                  <button
-                    onClick={() => {
-                      setDarkMode(true);
-                      document.documentElement.classList.add('dark');
-                      saveThemePreference(true);
-                      setShowDropdown(false);
-                    }}
-                    className={`flex items-center gap-3 w-full px-3 py-2.5 rounded-xl text-sm font-bold text-left transition-all cursor-pointer ${
-                      darkMode
-                        ? "bg-primary/15 text-primary-fixed dark:text-white"
-                        : "text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800/80"
-                    }`}
-                  >
-                    <span className="material-symbols-outlined text-lg">dark_mode</span>
-                    <span className="flex-grow">Karanlık</span>
-                    {darkMode && (
-                      <span className="material-symbols-outlined text-sm font-black">check</span>
-                    )}
-                  </button>
-                </div>
-              </div>
-            )}
-          </div>
+          {/* Tema Seçim Butonu */}
+          <button
+            onClick={toggleTheme}
+            className="w-10 h-10 rounded-full flex items-center justify-center bg-surface-container-high hover:bg-surface-container-highest border border-outline-variant/30 text-on-surface transition-all active:scale-95 shadow-sm cursor-pointer"
+            title="Temayı Değiştir"
+            aria-label="Temayı Değiştir"
+          >
+            <span className="material-symbols-outlined text-[20px]">
+              {darkMode ? "dark_mode" : "light_mode"}
+            </span>
+          </button>
 
           <Link href="/login" className="hidden sm:block text-sm font-semibold text-primary hover:text-on-primary-fixed-variant transition-colors">
             Giriş Yap
@@ -234,7 +179,7 @@ export default function HomePage() {
       </section>
 
       {/* Trust Border/Divider */}
-      <div className="border-y border-outline-variant/10 bg-surface-container-lowest/50 backdrop-blur-sm py-8">
+      <div className="border-y border-outline-variant/10 bg-surface-container-lowest/50 dark:bg-slate-900/50 backdrop-blur-sm py-8">
         <div className="max-w-7xl mx-auto px-6 lg:px-12 flex flex-wrap justify-center items-center gap-12 lg:gap-24 opacity-50 grayscale">
           {/* Fake company logos to add standard SaaS professional look */}
           <div className="font-headline font-extrabold text-xl tracking-tighter">VENDECO</div>
@@ -246,9 +191,9 @@ export default function HomePage() {
       </div>
 
       {/* Feature Section (The Layering Principle) */}
-      <section id="features" className="py-24 px-6 lg:px-12 relative z-10 bg-surface">
+      <section id="features" className="py-24 px-6 lg:px-12 relative z-10 bg-surface dark:bg-[#0f111a]">
         <div className="max-w-7xl mx-auto">
-          <header className="text-center md:text-left mb-16 md:flex md:justify-between md:items-end">
+          <div className="text-center md:text-left mb-16 md:flex md:justify-between md:items-end">
             <div className="max-w-2xl">
               <h2 className="text-sm font-bold tracking-widest uppercase text-primary mb-3">Sistem Mimarisi</h2>
               <h3 className="text-3xl lg:text-4xl font-extrabold font-headline tracking-tight text-on-surface mb-4">
@@ -261,7 +206,7 @@ export default function HomePage() {
             <Link href="/register" className="hidden md:inline-flex items-center gap-2 text-primary font-bold hover:bg-primary/5 px-4 py-2 rounded-lg transition-all group">
               Tüm Detayları Gör <span className="material-symbols-outlined text-sm group-hover:translate-x-1 transition-transform">arrow_forward</span>
             </Link>
-          </header>
+          </div>
 
           <div className="grid md:grid-cols-3 gap-8">
             {/* Feature 1 */}
@@ -301,7 +246,7 @@ export default function HomePage() {
       </section>
 
       {/* Super CTA Section */}
-      <section className="py-24 px-6 lg:px-12 bg-surface-container-low relative overflow-hidden">
+      <section className="py-24 px-6 lg:px-12 bg-surface-container-low dark:bg-slate-950/80 relative overflow-hidden">
         {/* Decorative Background */}
         <div className="absolute inset-0 signature-gradient opacity-[0.03]"></div>
         <div className="absolute -top-24 -right-24 w-96 h-96 bg-primary/10 rounded-full blur-[80px]"></div>

@@ -583,6 +583,20 @@ export default function EditProductPage() {
             <p className="text-xs text-on-surface-variant leading-relaxed italic text-center">
               {isImageUploading ? "Görsel yükleniyor..." : "Görseli değiştirmek veya eklemek için üzerine tıklayın."}
             </p>
+            {imageUrl && (
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setImageUrl("");
+                  toast.success("Ürün görseli kaldırıldı. Kaydetmek için 'Değişiklikleri Kaydet' butonuna basın.");
+                }}
+                className="mt-4 w-full flex items-center justify-center gap-2 py-2.5 px-4 border border-red-200 dark:border-red-900/50 hover:border-red-500 dark:hover:border-red-700 bg-red-50/50 hover:bg-red-50 dark:bg-red-950/20 dark:hover:bg-red-950/40 text-red-600 dark:text-red-400 rounded-lg text-xs font-bold transition-all active:scale-[0.98] cursor-pointer"
+              >
+                <span className="material-symbols-outlined text-[16px]">delete</span>
+                Görseli Kaldır
+              </button>
+            )}
           </div>
 
           {/* Tahmini Kâr Kartı (Dinamik) */}

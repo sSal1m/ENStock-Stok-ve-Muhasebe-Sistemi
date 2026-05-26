@@ -557,15 +557,14 @@ export default function DashboardPage() {
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
         {/* Main Chart Area */}
         <div className="lg:col-span-2 space-y-6">
-          {/* Sales Trends Chart */}
-          <div className="bg-surface-container-lowest rounded-3xl p-8 shadow-sm relative">
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-8">
+          <div className="bg-surface-container-lowest rounded-3xl p-6 pb-4 shadow-sm relative">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-3">
               <div className="flex items-center gap-3">
                 <div className="w-1.5 h-6 bg-primary rounded-full"></div>
                 <h2 className="text-xl font-bold text-on-surface">Finansal Performans</h2>
               </div>
               
-              <div className="flex flex-wrap items-center gap-4">
+              <div className="flex flex-wrap items-center justify-end gap-4 sm:ml-auto">
                 {/* Legend */}
                 <div className="flex items-center gap-4">
                   <div className="flex items-center gap-1.5">
@@ -608,7 +607,7 @@ export default function DashboardPage() {
             </div>
 
             {/* Chart SVG */}
-            <div className="h-80 md:h-[350px] w-full relative group">
+            <div className="h-80 md:h-[420px] w-full relative group">
               {chartData.length > 0 ? (
                 (() => {
                   // Para birimine göre dönüştürülmüş noktalar
@@ -618,23 +617,23 @@ export default function DashboardPage() {
                     profit: convert(d.profit)
                   }));
 
-                  // Maksimum ve minimum değerleri bul
-                  const maxVal = Math.max(...convertedPoints.map(d => Math.max(d.revenue, d.profit, 0))) || 100;
-                  const minVal = Math.min(...convertedPoints.map(d => Math.min(d.profit, 0))) || 0;
+                  // Maksimum ve minimum değerleri bul (zarar absolute/pozitif yukarıda görünecek, skala en yüksek kâr veya zarar ayarlanacak)
+                  const maxVal = Math.max(...convertedPoints.map(d => Math.abs(d.profit))) || 100;
+                  const minVal = 0;
 
-                  // Üst ve alt boşluklar ekle (%15 padding)
-                  const padding = (maxVal - minVal) * 0.15 || 10;
+                  // Üst boşluk ekle (%5 padding)
+                  const padding = maxVal * 0.05 || 10;
                   const yMax = maxVal + padding;
-                  const yMin = minVal - padding;
+                  const yMin = 0;
                   const yRange = yMax - yMin;
 
-                  // Koordinat eşleme fonksiyonları (Genişlik: 800, Yükseklik: 350)
+                  // Koordinat eşleme fonksiyonları (Genişlik: 800, Yükseklik: 420)
                   const leftPadding = 70;
                   const rightPadding = 30;
-                  const topPadding = 25;
-                  const bottomPadding = 35;
+                  const topPadding = 10;
+                  const bottomPadding = 30;
                   const drawWidth = 800 - leftPadding - rightPadding;
-                  const drawHeight = 350 - topPadding - bottomPadding;
+                  const drawHeight = 420 - topPadding - bottomPadding;
 
                   const getY = (v: number) => topPadding + drawHeight * (1 - (v - yMin) / yRange);
                   const yZero = getY(0);
@@ -655,7 +654,7 @@ export default function DashboardPage() {
                   // Net Kâr/Zarar çizgisi için path oluştur
                   const linePath = convertedPoints.map((d, i) => {
                     const x = leftPadding + (i / (convertedPoints.length - 1 || 1)) * drawWidth;
-                    const y = getY(d.profit);
+                    const y = getY(Math.abs(d.profit));
                     return `${i === 0 ? 'M' : 'L'} ${x} ${y}`;
                   }).join(' ');
 
@@ -668,7 +667,7 @@ export default function DashboardPage() {
                   };
 
                   if (hoveredIndex !== null && convertedPoints[hoveredIndex]) {
-                    const activeY = getY(convertedPoints[hoveredIndex].profit);
+                    const activeY = getY(Math.abs(convertedPoints[hoveredIndex].profit));
                     tooltipStyle.top = `${Math.max(10, activeY - 140)}px`;
                     if (hoveredIndex === 0) {
                       tooltipStyle.left = `${leftPadding + 10}px`;
@@ -684,7 +683,7 @@ export default function DashboardPage() {
                     <>
                       <svg
                         className="w-full h-full overflow-visible"
-                        viewBox="0 0 800 350"
+                        viewBox="0 0 800 420"
                       >
                         <defs>
                           <linearGradient id="greenGradient" x1="0%" x2="0%" y1="0%" y2="100%">
@@ -710,14 +709,15 @@ export default function DashboardPage() {
                                 y1={y}
                                 x2={800 - rightPadding}
                                 y2={y}
-                                stroke={v === 0 ? "#64748b" : "#f1f5f9"}
+                                stroke={v === 0 ? "#64748b" : undefined}
+                                className={v === 0 ? "" : "stroke-slate-300 dark:stroke-slate-800/80"}
                                 strokeWidth={v === 0 ? "1.5" : "1"}
                                 strokeDasharray={v === 0 ? undefined : "3 3"}
                               />
                               <text
-                                x={leftPadding - 10}
+                                x={10}
                                 y={y + 4}
-                                textAnchor="end"
+                                textAnchor="start"
                                 className="text-[10px] font-extrabold text-slate-400 select-none fill-current"
                               >
                                 {v === 0 ? "0" : fmt(Math.round(v), viewCurrency).split(',')[0]}
@@ -751,16 +751,16 @@ export default function DashboardPage() {
                               />
                             );
                           } else {
-                            const yVal = getY(d.profit);
-                            const height = yVal - yZero;
+                            const yVal = getY(Math.abs(d.profit));
+                            const height = yZero - yVal;
                             if (height <= 0) return null;
                             const r = Math.min(6, height);
-                            // Rounded bottom corners
+                            // Rounded top corners (upward red column for loss)
                             const path = `M ${x - colWidth/2} ${yZero} 
-                                          L ${x - colWidth/2} ${yVal - r} 
-                                          A ${r} ${r} 0 0 0 ${x - colWidth/2 + r} ${yVal} 
+                                          L ${x - colWidth/2} ${yVal + r} 
+                                          A ${r} ${r} 0 0 1 ${x - colWidth/2 + r} ${yVal} 
                                           L ${x + colWidth/2 - r} ${yVal} 
-                                          A ${r} ${r} 0 0 0 ${x + colWidth/2} ${yVal - r} 
+                                          A ${r} ${r} 0 0 1 ${x + colWidth/2} ${yVal + r} 
                                           L ${x + colWidth/2} ${yZero} Z`;
                             return (
                               <path
@@ -789,38 +789,58 @@ export default function DashboardPage() {
                          {/* Trend Çizgisi Düğümleri */}
                         {convertedPoints.map((d, i) => {
                           const x = leftPadding + (i / (convertedPoints.length - 1 || 1)) * drawWidth;
-                          const y = getY(d.profit);
+                          const y = getY(Math.abs(d.profit));
+                          const isHovered = hoveredIndex === i;
                           return (
                             <g key={i}>
+                              {/* Dış Parlama Efekti (Hover durumunda) */}
+                              {isHovered && (
+                                <circle
+                                  cx={x}
+                                  cy={y}
+                                  r="13"
+                                  fill="#4b41e1"
+                                  opacity="0.15"
+                                  className="animate-ping"
+                                />
+                              )}
+                              {/* Görsel Düğüm Noktası */}
                               <circle
                                 cx={x}
                                 cy={y}
-                                r="5"
+                                r={isHovered ? "7" : "5"}
                                 fill="#ffffff"
                                 stroke="#4b41e1"
-                                strokeWidth="3"
-                                className="transition-all duration-200 shadow-sm"
+                                strokeWidth={isHovered ? "4" : "3"}
+                                className="transition-all duration-150 shadow-md"
+                              />
+                              {/* İnteraktif Geniş Alan Tetikleyicisi (Görünmez Düğüm) */}
+                              <circle
+                                cx={x}
+                                cy={y}
+                                r="20"
+                                fill="transparent"
+                                className="cursor-pointer"
+                                onMouseEnter={() => setHoveredIndex(i)}
+                                onMouseLeave={() => setHoveredIndex(null)}
                               />
                             </g>
                           );
                         })}
 
-                        {/* Hover Tetikleme Alanları (Görünmez Barlar) */}
+                        {/* X Ekseni Etiketleri */}
                         {convertedPoints.map((d, i) => {
                           const x = leftPadding + (i / (convertedPoints.length - 1 || 1)) * drawWidth;
-                          const stepWidth = drawWidth / (convertedPoints.length - 1 || 1);
                           return (
-                            <rect
+                            <text
                               key={i}
-                              x={x - stepWidth / 2}
-                              y={topPadding - 5}
-                              width={stepWidth}
-                              height={drawHeight + 10}
-                              fill="transparent"
-                              className="cursor-pointer"
-                              onMouseEnter={() => setHoveredIndex(i)}
-                              onMouseLeave={() => setHoveredIndex(null)}
-                            />
+                              x={x}
+                              y={412}
+                              textAnchor="middle"
+                              className="text-[10px] font-extrabold text-slate-400 select-none fill-current uppercase tracking-widest"
+                            >
+                              {d.name}
+                            </text>
                           );
                         })}
                       </svg>
@@ -828,28 +848,28 @@ export default function DashboardPage() {
                       {/* İnteraktif Tooltip */}
                       {hoveredIndex !== null && convertedPoints[hoveredIndex] && (
                         <div
-                          className="absolute bg-white/95 backdrop-blur-md p-4 rounded-2xl shadow-2xl border border-slate-100/80 pointer-events-none z-30 transition-all duration-100 animate-in fade-in zoom-in-95"
+                          className="absolute bg-slate-900/95 backdrop-blur-md p-4 rounded-2xl shadow-2xl border border-slate-800 pointer-events-none z-30 transition-all duration-100 animate-in fade-in zoom-in-95"
                           style={tooltipStyle}
                         >
-                          <div className="text-xs font-black text-slate-800 mb-2 border-b border-slate-100 pb-1">
+                          <div className="text-xs font-black text-white/90 mb-2 border-b border-slate-800 pb-1">
                             {convertedPoints[hoveredIndex].name}
                           </div>
                           <div className="space-y-2">
-                            <div className="flex justify-between items-center text-xs">
+                            <div className="flex justify-between items-center text-xs gap-6">
                               <span className="text-slate-400 font-bold">Brüt Satış:</span>
-                              <span className="text-primary font-black">
+                              <span className="text-indigo-300 font-black">
                                 {fmt(convertedPoints[hoveredIndex].revenue, viewCurrency)}
                               </span>
                             </div>
-                            <div className="flex justify-between items-center text-xs">
+                            <div className="flex justify-between items-center text-xs gap-6">
                               <span className="text-slate-400 font-bold">Maliyet (COGS):</span>
-                              <span className="text-slate-600 font-black">
+                              <span className="text-slate-300 font-black">
                                 {fmt(convertedPoints[hoveredIndex].revenue - convertedPoints[hoveredIndex].profit, viewCurrency)}
                               </span>
                             </div>
-                            <div className="flex justify-between items-center text-xs pt-1 border-t border-slate-50">
-                              <span className="text-slate-500 font-bold">Net Kâr/Zarar:</span>
-                              <span className={`font-black px-2 py-0.5 rounded-md ${convertedPoints[hoveredIndex].profit >= 0 ? 'text-emerald-700 bg-emerald-50' : 'text-rose-700 bg-rose-50'}`}>
+                            <div className="flex justify-between items-center text-xs pt-2 border-t border-slate-800 gap-6">
+                              <span className="text-slate-400 font-bold">Net Kâr/Zarar:</span>
+                              <span className={`font-black px-2 py-0.5 rounded-md ${convertedPoints[hoveredIndex].profit >= 0 ? 'text-emerald-400 bg-emerald-950/60' : 'text-rose-400 bg-rose-950/60'}`}>
                                 {convertedPoints[hoveredIndex].profit >= 0 ? '+' : ''}
                                 {fmt(convertedPoints[hoveredIndex].profit, viewCurrency)}
                               </span>
@@ -870,12 +890,7 @@ export default function DashboardPage() {
               )}
             </div>
 
-            {/* X Ekseni Alt Etiketleri */}
-            <div className="flex justify-between mt-6 px-2 text-[10px] font-extrabold text-slate-400 uppercase tracking-widest pl-[65px] pr-[20px]">
-              {chartData.map((d, i) => (
-                <span key={i} className="text-center w-12 truncate">{d.name}</span>
-              ))}
-            </div>
+
           </div>
 
           {/* Recent Activity Table */}

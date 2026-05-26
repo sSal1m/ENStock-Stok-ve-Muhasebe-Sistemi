@@ -344,7 +344,28 @@ html.dark select option, .dark select option {
   color: #ffffff !important;
 }
 
-/* Global Transition Rules for Smooth Toggling */
-body, aside, header, section, div, button, input, select, textarea, a {
-  transition: background-color 0.3s cubic-bezier(0.4, 0, 0.2, 1), border-color 0.3s cubic-bezier(0.4, 0, 0.2, 1), color 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+/* Global Transition Rules for Smooth Toggling (Optimized to prevent layout thrashing) */
+body, aside, header, button, input, select, textarea, a {
+  transition: background-color 0.2s cubic-bezier(0.4, 0, 0.2, 1), border-color 0.2s cubic-bezier(0.4, 0, 0.2, 1), color 0.2s cubic-bezier(0.4, 0, 0.2, 1);
 }
+
+/* ─── Landing Page Dark Mode Adjustments ─── */
+html.dark .bg-background, .dark .bg-background {
+  background-color: #0b0d16 !important;
+}
+
+html.dark .bg-white\/50, .dark .bg-white\/50 {
+  background-color: rgba(20, 23, 36, 0.5) !important;
+  border-color: rgba(255, 255, 255, 0.1) !important;
+}
+
+html.dark .bg-white\/40, .dark .bg-white\/40 {
+  background-color: rgba(20, 23, 36, 0.4) !important;
+  border-color: rgba(255, 255, 255, 0.15) !important;
+}
+
+html.dark .bg-white\/90, .dark .bg-white\/90 {
+  background-color: rgba(20, 23, 36, 0.9) !important;
+  border-color: rgba(255, 255, 255, 0.15) !important;
+}
+

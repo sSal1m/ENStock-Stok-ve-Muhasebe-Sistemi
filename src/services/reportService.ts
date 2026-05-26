@@ -40,47 +40,34 @@ const TR_MONTHS = ["Oca", "Şub", "Mar", "Nis", "May", "Haz", "Tem", "Ağu", "Ey
  */
 export async function fetchDashboardSummary(userId: string): Promise<DashboardSummaryResponse | null> {
   try {
-    // 1) Tüm aktif faturalar (draft hariç) — currency ve exchange_rate ile
-    const { data: invoices } = await fetchTeamScopedData(
-      userId,
-      "invoices",
-      "id, total_amount, currency, exchange_rate, type, status, issue_date, contact_id",
-      {
-        excludeDeleted: true,
-        additionalFilters: [{ column: "status", operator: "neq", value: "draft" }]
-      }
-    );
-
-    // 2) Stok adedi
-    const { count: totalStockCount } = await fetchTeamScopedData(
-      userId,
-      "products",
-      "id",
-      { excludeDeleted: true, countOnly: true }
-    );
-
-    // 3) Contact isim haritası
-    const contactIds = [...new Set((invoices ?? []).map((i: any) => i.contact_id).filter(Boolean))];
-    const contactMap = new Map<string, string>();
-    if (contactIds.length > 0) {
-      const { data: contactsData } = await fetchTeamScopedData(
+    // 1, 2, 3, 4) Tüm bağımsız veritabanı sorgularını PARALEL (Promise.all) olarak çalıştırarak hızı maksimuma çıkarıyoruz!
+    const [invoicesRes, productsRes, contactsRes, itemsRes] = await Promise.all([
+      // 1) Tüm aktif faturalar (draft hariç) — currency ve exchange_rate ile
+      fetchTeamScopedData(
+        userId,
+        "invoices",
+        "id, total_amount, currency, exchange_rate, type, status, issue_date, contact_id",
+        {
+          excludeDeleted: true,
+          additionalFilters: [{ column: "status", operator: "neq", value: "draft" }]
+        }
+      ),
+      // 2) Stok adedi
+      fetchTeamScopedData(
+        userId,
+        "products",
+        "id",
+        { excludeDeleted: true, countOnly: true }
+      ),
+      // 3) Tüm takım kapsamındaki contacts (hızlı isim eşleme için)
+      fetchTeamScopedData(
         userId,
         "contacts",
         "id, name",
         { excludeDeleted: false }
-      );
-      (contactsData ?? []).forEach((c: any) => {
-        if (contactIds.includes(c.id)) {
-          contactMap.set(c.id, c.name);
-        }
-      });
-    }
-
-    // 4) Fatura kalemleri + ürün kategorileri (kategori bazlı analiz için)
-    let items: any[] = [];
-    if (invoices && invoices.length > 0) {
-      // fetching all invoice items for the team might be large, but it's okay for dashboard summary
-      const { data: itemsData } = await fetchTeamScopedData(
+      ),
+      // 4) Fatura kalemleri + ürün kategorileri (kategori bazlı analiz için)
+      fetchTeamScopedData(
         userId,
         "invoice_items",
         "invoice_id, quantity, unit_price, products(name, categories(name))",
@@ -90,9 +77,23 @@ export async function fetchDashboardSummary(userId: string): Promise<DashboardSu
             { column: 'invoices.deleted_at', operator: 'is', value: null }
           ]
         }
-      );
-      items = (itemsData ?? []).filter((it: any) => invoices.some((inv: any) => inv.id === it.invoice_id));
-    }
+      )
+    ]);
+
+    const invoices = invoicesRes.data ?? [];
+    const totalStockCount = productsRes.count ?? 0;
+    const contactsData = contactsRes.data ?? [];
+    const rawItems = itemsRes.data ?? [];
+
+    // Contact isim haritası oluşturma
+    const contactMap = new Map<string, string>();
+    contactsData.forEach((c: any) => {
+      contactMap.set(c.id, c.name);
+    });
+
+    // Fatura kalemlerini filtreleme ve gruplama (Sadece aktif faturalara ait olanları eşle) - O(N) zaman karmaşıklığı ile optimize edildi!
+    const activeInvoiceIds = new Set(invoices.map((inv: any) => inv.id));
+    const items = rawItems.filter((it: any) => activeInvoiceIds.has(it.invoice_id));
 
     const itemsByInvoice = new Map<string, any[]>();
     items.forEach((it: any) => {

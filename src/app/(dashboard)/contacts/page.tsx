@@ -417,8 +417,8 @@ export default function ContactsPage() {
       {/* ── BENTO FORM ── */}
       <section id="form-hizli-cari" className="bg-white rounded-3xl border border-indigo-50/50 p-8 shadow-sm">
         <div className="mb-8 flex items-center gap-4">
-          <div className="flex h-12 w-12 items-center justify-center rounded-2xl overflow-hidden bg-slate-50 border border-indigo-50/50 p-1 shadow-sm">
-            <img src="/cari.png" alt="Cari Hesap" className="h-full w-full object-contain" />
+          <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-primary/10">
+            <span className="material-symbols-outlined text-primary text-2xl">person_add</span>
           </div>
           <div>
             <h2 className="text-xl font-black text-on-surface">Hızlı Yeni Cari Ekle</h2>

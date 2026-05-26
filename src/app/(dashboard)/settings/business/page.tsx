@@ -14,7 +14,7 @@ export default function BusinessSettingsPage() {
 
   // --- States ---
   const [formData, setFormData] = useState({
-    companyName: "Sovereign Holdings Ltd.",
+    companyName: "ENStock Ltd. Şti.",
     taxId: "GB 938 4210 02",
     tradeRegistryNumber: "REG-77281-XL",
     address: "88 Canary Wharf, Level 42, London E14 5AA",

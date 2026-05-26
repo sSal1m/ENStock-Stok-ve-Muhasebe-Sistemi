@@ -45,8 +45,11 @@ export default function ForgotPasswordPage() {
     <div className="bg-background font-body text-on-surface antialiased">
       {/* TopNavBar */}
       <header className="absolute top-0 w-full z-10 flex justify-between items-center px-8 py-6">
-        <div className="text-xl font-extrabold tracking-tighter text-slate-900 font-headline">
-          The Sovereign Ledger
+        <div className="text-xl font-extrabold tracking-tighter text-slate-900 font-headline flex items-center gap-2">
+          <div className="w-6 h-6 rounded-md overflow-hidden flex items-center justify-center bg-white shadow-sm">
+            <img src="/favicon.png" alt="ENStock" className="w-full h-full object-cover" />
+          </div>
+          ENStock
         </div>
         <div className="flex gap-6 items-center">
           <Link href="#" className="font-headline font-bold text-sm tracking-tight text-slate-500 hover:text-indigo-700 transition-colors">Support</Link>
@@ -97,8 +100,11 @@ export default function ForgotPasswordPage() {
         <section className="w-full md:w-1/2 flex items-center justify-center p-6 md:p-12 lg:p-24 bg-surface-container-low">
           <div className="w-full max-w-md">
             {/* Branding for Mobile */}
-            <div className="md:hidden mb-12 flex justify-center">
-              <span className="font-headline font-extrabold text-2xl tracking-tighter text-primary">Sovereign Ledger</span>
+            <div className="md:hidden mb-12 flex justify-center items-center gap-2">
+              <div className="w-6 h-6 rounded-md overflow-hidden flex items-center justify-center bg-white shadow-md">
+                <img src="/favicon.png" alt="ENStock" className="w-full h-full object-cover" />
+              </div>
+              <span className="font-headline font-extrabold text-2xl tracking-tighter text-primary">ENStock</span>
             </div>
             <div className="bg-surface-container-lowest p-8 md:p-10 rounded-xl shadow-[0_10px_30px_-5px_rgba(19,27,46,0.06)] border border-outline-variant/10">
               <header className="mb-8 text-center md:text-left">

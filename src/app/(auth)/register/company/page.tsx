@@ -6,8 +6,11 @@ export default function CompanyInformationPage() {
     <div className="bg-background font-body text-on-surface antialiased overflow-hidden min-h-screen relative">
       {/* Top Navigation Bar (Branding only for Onboarding) */}
       <header className="absolute top-0 w-full z-10 flex justify-between items-center px-8 py-6 bg-transparent">
-        <div className="text-xl font-extrabold tracking-tight text-indigo-600 font-headline">
-          The Sovereign Ledger
+        <div className="text-xl font-extrabold tracking-tight text-indigo-600 font-headline flex items-center gap-2">
+          <div className="w-6 h-6 rounded-md overflow-hidden flex items-center justify-center bg-white shadow-sm">
+            <img src="/favicon.png" alt="ENStock" className="w-full h-full object-cover" />
+          </div>
+          ENStock
         </div>
         <div className="flex gap-6 items-center">
           <span className="font-inter text-slate-600 font-medium text-sm">Yardım</span>
@@ -77,7 +80,7 @@ export default function CompanyInformationPage() {
                 <label className="font-inter text-[0.6875rem] font-bold tracking-wider uppercase text-on-surface-variant block ml-1">Şirket Adı</label>
                 <input 
                   className="w-full px-4 py-3 rounded-lg border-none bg-surface-container-low text-on-surface placeholder:text-outline focus:ring-2 focus:ring-primary/20 focus:bg-surface-container-lowest transition-all duration-200 outline-none" 
-                  placeholder="e.g. Sovereign Architecture Ltd." 
+                  placeholder="Örn. ENStock Yazılım A.Ş." 
                   type="text"
                 />
               </div>
@@ -124,7 +127,7 @@ export default function CompanyInformationPage() {
 
       {/* Footer */}
       <footer className="absolute bottom-0 w-full flex flex-col md:flex-row justify-between items-center px-6 lg:px-12 py-4 bg-slate-50 border-t border-slate-200/15 z-20">
-        <span className="font-inter text-xs tracking-wider uppercase text-slate-500 mb-2 md:mb-0 text-center md:text-left">© 2024 The Sovereign Ledger. KOBİ'ler İçin Mimari Netlik.</span>
+        <span className="font-inter text-xs tracking-wider uppercase text-slate-500 mb-2 md:mb-0 text-center md:text-left">© ENStock</span>
         <nav className="flex flex-wrap justify-center gap-4 md:gap-6">
           <Link className="font-inter text-xs tracking-wider uppercase text-slate-500 hover:text-slate-900 transition-colors duration-300" href="#">Gizlilik Politikası</Link>
           <Link className="font-inter text-xs tracking-wider uppercase text-slate-500 hover:text-slate-900 transition-colors duration-300" href="#">Kullanım Koşulları</Link>

@@ -44,8 +44,11 @@ export default function LoginPage() {
       <section className="hidden md:flex md:w-[40%] bg-gradient-to-br from-primary to-primary-container p-12 flex-col justify-between relative overflow-hidden">
         <div className="absolute inset-0 mesh-pattern opacity-40"></div>
         <div className="relative z-10">
-          <div className="text-on-primary-container text-xl font-extrabold tracking-tight font-headline">
-            The Sovereign Ledger
+          <div className="text-on-primary-container text-xl font-extrabold tracking-tight font-headline flex items-center gap-2">
+            <div className="w-6 h-6 rounded-md overflow-hidden flex items-center justify-center bg-white">
+              <img src="/favicon.png" alt="ENStock" className="w-full h-full object-cover" />
+            </div>
+            ENStock
           </div>
         </div>
         <div className="relative z-10 mb-20">
@@ -62,8 +65,11 @@ export default function LoginPage() {
       {/* Right Column: Login Form Section */}
       <section className="flex-1 flex flex-col bg-surface-container-lowest justify-center items-center px-6 py-12 md:px-24">
         {/* Mobile Brand Header (Hidden on Desktop) */}
-        <div className="md:hidden absolute top-8 left-8">
-          <span className="text-primary font-headline font-extrabold tracking-tight text-lg">The Sovereign Ledger</span>
+        <div className="md:hidden absolute top-8 left-8 flex items-center gap-2">
+          <div className="w-6 h-6 rounded-md overflow-hidden flex items-center justify-center bg-white shadow-sm">
+            <img src="/favicon.png" alt="ENStock" className="w-full h-full object-cover" />
+          </div>
+          <span className="text-primary font-headline font-extrabold tracking-tight text-lg">ENStock</span>
         </div>
 
         <div className="w-full max-w-md">

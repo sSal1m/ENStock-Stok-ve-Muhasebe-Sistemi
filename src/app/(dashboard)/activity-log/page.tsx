@@ -6,6 +6,7 @@ import { supabase } from "@/lib/supabaseClient";
 import ActivityLogList from "@/components/activity-log/ActivityLogList";
 import {
   listActivityLogs,
+  getActivityLogStats,
   type ActivityLogRecord,
 } from "@/app/(dashboard)/activity-log/actions";
 
@@ -27,7 +28,7 @@ const ACTION_OPTIONS = [
   { value: "balance_change", label: "Bakiye Değişimi" },
 ];
 
-const PAGE_SIZE = 25;
+const PAGE_SIZE = 10;
 
 export default function ActivityLogPage() {
   const router = useRouter();
@@ -41,6 +42,7 @@ export default function ActivityLogPage() {
   const [startDate, setStartDate] = useState("");
   const [endDate, setEndDate] = useState("");
   const [loading, setLoading] = useState(true);
+  const [stats, setStats] = useState({ total: 0, today: 0, week: 0, month: 0 });
   const [, startTransition] = useTransition();
 
   useEffect(() => {
@@ -54,6 +56,16 @@ export default function ActivityLogPage() {
     })();
   }, [router]);
 
+  // Fetch stats
+  useEffect(() => {
+    if (!userId) return;
+    (async () => {
+      const statsData = await getActivityLogStats(userId);
+      setStats(statsData);
+    })();
+  }, [userId]);
+
+  // Fetch logs
   useEffect(() => {
     if (!userId) return;
     setLoading(true);
@@ -89,24 +101,72 @@ export default function ActivityLogPage() {
 
   return (
     <div className="p-6 lg:p-10 space-y-6">
-      {/* Özet İstatistikler */}
-      <div className="flex flex-col md:flex-row md:items-end justify-between gap-4">
-        <div className="text-sm text-slate-500">
-          Toplam <strong className="text-slate-900">{total}</strong> kayıt
+      {/* 4 Stat Cards */}
+      <div className="grid grid-cols-1 gap-6 md:grid-cols-2 lg:grid-cols-4">
+        {/* Card 1: Toplam İşlem */}
+        <div className="bg-surface-container-lowest rounded-xl p-6 shadow-sm border border-outline/5">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-xs uppercase tracking-wider font-bold text-on-surface-variant mb-2">Toplam İşlem</p>
+              <p className="text-3xl font-bold text-on-surface">{stats.total}</p>
+            </div>
+            <div className="w-12 h-12 bg-primary/10 rounded-lg flex items-center justify-center">
+              <span className="material-symbols-outlined text-primary text-2xl">history</span>
+            </div>
+          </div>
+        </div>
+
+        {/* Card 2: Bugün */}
+        <div className="bg-surface-container-lowest rounded-xl p-6 shadow-sm border border-outline/5">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-xs uppercase tracking-wider font-bold text-on-surface-variant mb-2">Bugün</p>
+              <p className="text-3xl font-bold text-on-surface">{stats.today}</p>
+            </div>
+            <div className="w-12 h-12 bg-secondary/10 rounded-lg flex items-center justify-center">
+              <span className="material-symbols-outlined text-secondary text-2xl">today</span>
+            </div>
+          </div>
+        </div>
+
+        {/* Card 3: Bu Hafta */}
+        <div className="bg-surface-container-lowest rounded-xl p-6 shadow-sm border border-outline/5">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-xs uppercase tracking-wider font-bold text-on-surface-variant mb-2">Bu Hafta</p>
+              <p className="text-3xl font-bold text-on-surface">{stats.week}</p>
+            </div>
+            <div className="w-12 h-12 bg-tertiary/10 rounded-lg flex items-center justify-center">
+              <span className="material-symbols-outlined text-tertiary text-2xl">calendar_month</span>
+            </div>
+          </div>
+        </div>
+
+        {/* Card 4: Bu Ay */}
+        <div className="bg-surface-container-lowest rounded-xl p-6 shadow-sm border border-outline/5">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-xs uppercase tracking-wider font-bold text-on-surface-variant mb-2">Bu Ay</p>
+              <p className="text-3xl font-bold text-on-surface">{stats.month}</p>
+            </div>
+            <div className="w-12 h-12 bg-on-surface-variant/10 rounded-lg flex items-center justify-center">
+              <span className="material-symbols-outlined text-on-surface-variant text-2xl">date_range</span>
+            </div>
+          </div>
         </div>
       </div>
 
       {/* Filters */}
-      <div className="bg-white rounded-2xl p-5 shadow-sm border border-slate-100">
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-3">
+      <div className="bg-surface-container-lowest rounded-xl p-6 shadow-sm border border-outline/5">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
           <div>
-            <label className="text-[10px] font-bold uppercase tracking-wider text-slate-500 mb-1.5 block">
+            <label className="text-[11px] font-bold uppercase tracking-wider text-on-surface-variant ml-1 mb-1.5 block">
               Modül
             </label>
             <select
               value={moduleFilter}
               onChange={(e) => { setModuleFilter(e.target.value); setPage(0); }}
-              className="w-full px-3 py-2 text-sm bg-slate-50 border border-slate-200 rounded-lg focus:ring-2 focus:ring-primary/20 outline-none"
+              className="w-full px-4 py-3 rounded-lg bg-surface-container-low border-none focus:bg-surface-container-lowest focus:ring-2 focus:ring-primary/20 transition-all font-medium text-on-surface outline-none"
             >
               {MODULE_OPTIONS.map((o) => (
                 <option key={o.value} value={o.value}>{o.label}</option>
@@ -114,13 +174,13 @@ export default function ActivityLogPage() {
             </select>
           </div>
           <div>
-            <label className="text-[10px] font-bold uppercase tracking-wider text-slate-500 mb-1.5 block">
+            <label className="text-[11px] font-bold uppercase tracking-wider text-on-surface-variant ml-1 mb-1.5 block">
               İşlem
             </label>
             <select
               value={actionFilter}
               onChange={(e) => { setActionFilter(e.target.value); setPage(0); }}
-              className="w-full px-3 py-2 text-sm bg-slate-50 border border-slate-200 rounded-lg focus:ring-2 focus:ring-primary/20 outline-none"
+              className="w-full px-4 py-3 rounded-lg bg-surface-container-low border-none focus:bg-surface-container-lowest focus:ring-2 focus:ring-primary/20 transition-all font-medium text-on-surface outline-none"
             >
               {ACTION_OPTIONS.map((o) => (
                 <option key={o.value} value={o.value}>{o.label}</option>
@@ -128,29 +188,29 @@ export default function ActivityLogPage() {
             </select>
           </div>
           <div>
-            <label className="text-[10px] font-bold uppercase tracking-wider text-slate-500 mb-1.5 block">
+            <label className="text-[11px] font-bold uppercase tracking-wider text-on-surface-variant ml-1 mb-1.5 block">
               Başlangıç
             </label>
             <input
               type="date"
               value={startDate}
               onChange={(e) => { setStartDate(e.target.value); setPage(0); }}
-              className="w-full px-3 py-2 text-sm bg-slate-50 border border-slate-200 rounded-lg focus:ring-2 focus:ring-primary/20 outline-none"
+              className="w-full px-4 py-3 rounded-lg bg-surface-container-low border-none focus:bg-surface-container-lowest focus:ring-2 focus:ring-primary/20 transition-all font-medium text-on-surface outline-none"
             />
           </div>
           <div>
-            <label className="text-[10px] font-bold uppercase tracking-wider text-slate-500 mb-1.5 block">
+            <label className="text-[11px] font-bold uppercase tracking-wider text-on-surface-variant ml-1 mb-1.5 block">
               Bitiş
             </label>
             <input
               type="date"
               value={endDate}
               onChange={(e) => { setEndDate(e.target.value); setPage(0); }}
-              className="w-full px-3 py-2 text-sm bg-slate-50 border border-slate-200 rounded-lg focus:ring-2 focus:ring-primary/20 outline-none"
+              className="w-full px-4 py-3 rounded-lg bg-surface-container-low border-none focus:bg-surface-container-lowest focus:ring-2 focus:ring-primary/20 transition-all font-medium text-on-surface outline-none"
             />
           </div>
           <div>
-            <label className="text-[10px] font-bold uppercase tracking-wider text-slate-500 mb-1.5 block">
+            <label className="text-[11px] font-bold uppercase tracking-wider text-on-surface-variant ml-1 mb-1.5 block">
               Arama
             </label>
             <input
@@ -158,14 +218,14 @@ export default function ActivityLogPage() {
               value={search}
               onChange={(e) => { setSearch(e.target.value); setPage(0); }}
               placeholder="Kayıt veya kullanıcı..."
-              className="w-full px-3 py-2 text-sm bg-slate-50 border border-slate-200 rounded-lg focus:ring-2 focus:ring-primary/20 outline-none"
+              className="w-full px-4 py-3 rounded-lg bg-surface-container-low border-none focus:bg-surface-container-lowest focus:ring-2 focus:ring-primary/20 transition-all font-medium text-on-surface outline-none"
             />
           </div>
         </div>
-        <div className="mt-3 flex justify-end">
+        <div className="mt-4 flex justify-end">
           <button
             onClick={resetFilters}
-            className="text-xs font-semibold text-slate-500 hover:text-primary transition-colors flex items-center gap-1"
+            className="text-xs font-bold uppercase tracking-widest text-on-surface-variant hover:text-primary transition-colors flex items-center gap-1.5"
           >
             <span className="material-symbols-outlined text-sm">refresh</span>
             Filtreleri Sıfırla
@@ -173,42 +233,45 @@ export default function ActivityLogPage() {
         </div>
       </div>
 
-      {/* List */}
-      <div className="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden">
+      {/* Table */}
+      <div className="bg-surface-container-lowest rounded-xl shadow-sm border border-outline/5 overflow-hidden">
         {loading ? (
           <div className="py-16 text-center">
             <span className="material-symbols-outlined animate-spin text-primary text-3xl">
               progress_activity
             </span>
-            <p className="text-sm text-slate-500 mt-2">Loglar yükleniyor...</p>
+            <p className="text-sm text-on-surface-variant mt-2">Loglar yükleniyor...</p>
           </div>
         ) : (
           <ActivityLogList logs={logs} emptyMessage="Bu filtrelere uyan kayıt bulunamadı" />
         )}
       </div>
 
-      {/* Pagination */}
-      {!loading && totalPages > 1 && (
-        <div className="flex items-center justify-between bg-white rounded-2xl p-4 shadow-sm border border-slate-100">
-          <p className="text-sm text-slate-500">
-            Sayfa <strong className="text-slate-900">{page + 1}</strong> / {totalPages}
+      {/* Pagination Footer */}
+      {!loading && total > 0 && (
+        <div className="bg-surface-container-lowest rounded-xl p-4 shadow-sm border border-outline/5 flex items-center justify-between">
+          <p className="text-sm font-medium text-on-surface">
+            Toplam <span className="font-bold text-on-surface">{total}</span> işlemden <span className="font-bold text-on-surface">{logs.length}</span> tanesi gösteriliyor
           </p>
-          <div className="flex gap-2">
+          <div className="flex items-center gap-2">
             <button
               onClick={() => setPage((p) => Math.max(0, p - 1))}
               disabled={page === 0}
-              className="px-4 py-2 text-sm font-semibold rounded-lg bg-slate-50 text-slate-700 hover:bg-slate-100 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+              className="px-3 py-2 text-on-surface hover:bg-surface-container-low rounded-lg transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
             >
-              <span className="material-symbols-outlined text-sm align-middle">chevron_left</span>
-              Önceki
+              <span className="material-symbols-outlined text-xl">chevron_left</span>
+            </button>
+            <button
+              className="px-4 py-2 bg-primary text-on-primary font-bold rounded-lg text-sm min-w-12"
+            >
+              {page + 1}
             </button>
             <button
               onClick={() => setPage((p) => Math.min(totalPages - 1, p + 1))}
               disabled={page >= totalPages - 1}
-              className="px-4 py-2 text-sm font-semibold rounded-lg bg-primary text-white hover:bg-primary/90 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+              className="px-3 py-2 text-on-surface hover:bg-surface-container-low rounded-lg transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
             >
-              Sonraki
-              <span className="material-symbols-outlined text-sm align-middle">chevron_right</span>
+              <span className="material-symbols-outlined text-xl">chevron_right</span>
             </button>
           </div>
         </div>

@@ -297,27 +297,6 @@ export default function InventoryPage() {
   // ── Sayfa İçeriği ─────────────────────────────────────────────────────────
   return (
     <div className="p-6 lg:p-10 space-y-8">
-      {/* ── Kategori & Ürün Yönetim Aksiyonları ── */}
-      <div className="flex flex-col md:flex-row md:items-end justify-between gap-6">
-        <div className="flex items-center gap-3">
-          <button
-            onClick={() => setIsCategoryModalOpen(true)}
-            className="border border-primary text-primary px-5 py-3 rounded-xl font-bold flex items-center gap-2 hover:bg-indigo-50 transition-all active:scale-95"
-          >
-            <span className="material-symbols-outlined text-base">create_new_folder</span>
-            <span>+ Kategori Ekle</span>
-          </button>
-          <button
-            onClick={() => router.push("/inventory/new")}
-            className="bg-primary text-on-primary px-6 py-3 rounded-xl font-bold flex items-center gap-2 shadow-lg shadow-indigo-100 hover:bg-primary-container transition-all active:scale-95"
-          >
-            <span className="material-symbols-outlined">add_box</span>
-            <span>+ Yeni Ürün Ekle</span>
-          </button>
-        </div>
-      </div>
-
-
       {/* ── Bento İstatistik Kartları ── */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
         {/* Toplam Ürün */}
@@ -452,11 +431,22 @@ export default function InventoryPage() {
                 <option value="GBP">GBP (£)</option>
               </select>
             </div>
-            <button className="p-2.5 text-slate-500 hover:bg-slate-50 rounded-xl border border-indigo-50 transition-colors">
-              <span className="material-symbols-outlined">filter_list</span>
-            </button>
             <button onClick={handleExportXlsx} className="p-2.5 text-slate-500 hover:bg-slate-50 rounded-xl border border-indigo-100 transition-colors" title="Excel Olarak İndir">
               <span className="material-symbols-outlined">download</span>
+            </button>
+            <button
+              onClick={() => setIsCategoryModalOpen(true)}
+              className="border border-primary text-primary px-4 py-2.5 rounded-xl font-bold flex items-center gap-2 hover:bg-indigo-50 transition-all active:scale-95"
+            >
+              <span className="material-symbols-outlined text-base">create_new_folder</span>
+              <span>+ Kategori Ekle</span>
+            </button>
+            <button
+              onClick={() => router.push("/inventory/new")}
+              className="bg-primary text-on-primary px-4 py-2.5 rounded-xl font-bold flex items-center gap-2 shadow-lg shadow-indigo-100 hover:bg-primary-container transition-all active:scale-95"
+            >
+              <span className="material-symbols-outlined">add_box</span>
+              <span>+ Yeni Ürün Ekle</span>
             </button>
           </div>
         </div>

@@ -21,6 +21,7 @@ const pathTitleMap: Record<string, string> = {
   '/inventory/[id]': 'Ürün Detayı',
   '/inventory/[id]/edit': 'Ürünü Düzenle',
   '/dashboard': 'Genel Bakış',
+  '/activity-log': 'İşlem Geçmişi',
   '/sales': 'Satış Yönetimi',
   '/contacts': 'Cari Hesap Rehberi',
   '/contacts/[id]': 'Cari Hesap Detayı',
@@ -48,6 +49,7 @@ const pathTitleMap: Record<string, string> = {
 const pathDescriptionMap: Record<string, string> = {
   '/inventory': 'Depo stoklarınızı, kritik seviyeleri ve ürün hareketlerini kontrol altında tutun.',
   '/dashboard': 'İşletmenizin genel finansal özetini ve anlık durumunu buradan takip edin.',
+  '/activity-log': 'Tüm sistem işlemlerinin ayrıntılı kaydı ve izleme.',
   '/contacts': 'Müşteri ve tedarikçi (cari) hesaplarınızı, bakiye ve risk durumlarını yönetin.',
   '/invoices': 'Alış ve satış faturalarınızı oluşturun, ödeme durumlarını takip edin.',
   '/reports': 'İşletmenizin finansal ve stok analizlerini detaylı raporlarla inceleyin.',

@@ -249,17 +249,6 @@ export default function ContactsPage() {
         </div>
       </section>
 
-      {/* ── BUTONLAR / AKSIYONLAR ── */}
-      <section className="flex items-center gap-3">
-        <button
-          onClick={() => document.getElementById('form-hizli-cari')?.scrollIntoView({ behavior: 'smooth' })}
-          className="border border-primary text-primary px-5 py-3 rounded-xl font-bold flex items-center gap-2 hover:bg-indigo-50 transition-all active:scale-95"
-        >
-          <span className="material-symbols-outlined text-base">person_add</span>
-          <span>+ Yeni Cari Ekle</span>
-        </button>
-      </section>
-
       {/* ── TABLE CARD ── */}
       <section className="bg-white rounded-2xl shadow-sm overflow-hidden border border-indigo-50/50">
         {/* Tablo Üstü Toolbar */}
@@ -297,7 +286,7 @@ export default function ContactsPage() {
             </div>
           </div>
 
-          {/* Sağ Taraf: Döviz + Dışa Aktar */}
+          {/* Sağ Taraf: Döviz + Dışa Aktar + Yeni Cari Ekle */}
           <div className="flex items-center gap-3 w-full sm:w-auto justify-end">
             {/* Döviz Seçici */}
             <div className="flex items-center gap-2 bg-white border border-indigo-100 rounded-xl px-3 py-1.5 shadow-sm">
@@ -322,16 +311,16 @@ export default function ContactsPage() {
               <span className="material-symbols-outlined text-[18px]">download</span>
               <span className="hidden sm:inline">Dışa Aktar</span>
             </button>
-          </div>
 
-          {/* Yeni Cari Ekle Butonu */}
-          <button
-            onClick={() => document.getElementById('form-hizli-cari')?.scrollIntoView({ behavior: 'smooth' })}
-            className="bg-primary text-on-primary px-6 py-2.5 rounded-xl font-bold flex items-center gap-2 shadow-lg shadow-indigo-100 hover:bg-primary-container transition-all active:scale-95 whitespace-nowrap"
-          >
-            <span className="material-symbols-outlined">add</span>
-            <span className="hidden sm:inline">Yeni Cari Ekle</span>
-          </button>
+            {/* Yeni Cari Ekle Butonu */}
+            <button
+              onClick={() => document.getElementById('form-hizli-cari')?.scrollIntoView({ behavior: 'smooth' })}
+              className="bg-primary text-on-primary px-6 py-2.5 rounded-xl font-bold flex items-center gap-2 shadow-lg shadow-indigo-100 hover:bg-primary-container transition-all active:scale-95 whitespace-nowrap"
+            >
+              <span className="material-symbols-outlined">add</span>
+              <span className="hidden sm:inline">Yeni Cari Ekle</span>
+            </button>
+          </div>
         </div>
 
         {/* Tablo */}
@@ -358,7 +347,7 @@ export default function ContactsPage() {
                 <tr>
                    <td colSpan={4} className="px-8 py-10 text-center animate-pulse text-slate-400">Yükleniyor...</td>
                 </tr>
-              ) : filtered.map((c) => (
+              ) : paginatedContacts.map((c) => (
                 <tr
                   key={c.id}
                   className="group hover:bg-indigo-50/20 transition-colors"
@@ -428,49 +417,38 @@ export default function ContactsPage() {
             </tbody>
           </table>
         </div>
-      </section>
-
-      {/* ── Pagination ── */}
-      <div className="p-6 bg-surface-container-low/30 border-t border-indigo-50 flex items-center justify-between rounded-b-2xl">
-        <p className="text-sm text-slate-500 font-medium">
-          Toplam{" "}
-          <span className="text-indigo-900 font-bold">
-            {filtered.length.toLocaleString("tr-TR")}
-          </span>{" "}
-          cariden{" "}
-          <span className="text-indigo-900 font-bold">{paginatedContacts.length}</span>{" "}
-          tanesi gösteriliyor
-        </p>
-        <div className="flex items-center gap-1">
-          <button
-            onClick={() => setCurrentPage(Math.max(0, currentPage - 1))}
-            disabled={currentPage === 0}
-            className="p-2 text-slate-400 hover:text-indigo-600 hover:bg-white rounded-lg transition-colors border border-transparent hover:border-indigo-100 disabled:opacity-50 disabled:cursor-not-allowed"
-          >
-            <span className="material-symbols-outlined">chevron_left</span>
-          </button>
-          {Array.from({ length: totalPages }, (_, i) => (
+        {/* Sayfalama */}
+        <div className="p-6 bg-surface-container-low/30 border-t border-indigo-50 flex items-center justify-between">
+          <p className="text-sm text-slate-500 font-medium">
+            Toplam{" "}
+            <span className="text-indigo-900 font-bold">
+              {filtered.length.toLocaleString("tr-TR")}
+            </span>{" "}
+            cariden{" "}
+            <span className="text-indigo-900 font-bold">{paginatedContacts.length}</span>{" "}
+            tanesi gösteriliyor
+          </p>
+          <div className="flex items-center gap-1">
             <button
-              key={i}
-              onClick={() => setCurrentPage(i)}
-              className={`w-8 h-8 flex items-center justify-center rounded-lg font-bold text-sm transition-colors ${
-                currentPage === i
-                  ? "bg-indigo-600 text-white shadow-sm"
-                  : "text-slate-500 hover:text-indigo-600 hover:bg-white border border-transparent hover:border-indigo-100"
-              }`}
+              onClick={() => setCurrentPage(Math.max(0, currentPage - 1))}
+              disabled={currentPage === 0}
+              className="p-2 text-slate-400 hover:text-indigo-600 hover:bg-white rounded-lg transition-colors border border-transparent hover:border-indigo-100 disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              {i + 1}
+              <span className="material-symbols-outlined">chevron_left</span>
             </button>
-          ))}
-          <button
-            onClick={() => setCurrentPage(Math.min(totalPages - 1, currentPage + 1))}
-            disabled={currentPage === totalPages - 1}
-            className="p-2 text-slate-400 hover:text-indigo-600 hover:bg-white rounded-lg transition-colors border border-transparent hover:border-indigo-100 disabled:opacity-50 disabled:cursor-not-allowed"
-          >
-            <span className="material-symbols-outlined">chevron_right</span>
-          </button>
+            <button className="w-8 h-8 flex items-center justify-center bg-indigo-600 text-white rounded-lg font-bold text-sm shadow-sm">
+              {currentPage + 1}
+            </button>
+            <button
+              onClick={() => setCurrentPage(Math.min(totalPages - 1, currentPage + 1))}
+              disabled={currentPage === totalPages - 1}
+              className="p-2 text-slate-400 hover:text-indigo-600 hover:bg-white rounded-lg transition-colors border border-transparent hover:border-indigo-100 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              <span className="material-symbols-outlined">chevron_right</span>
+            </button>
+          </div>
         </div>
-      </div>
+      </section>
 
       {/* ── BENTO FORM ── */}
       <section id="form-hizli-cari" className="bg-white rounded-3xl border border-indigo-50/50 p-8 shadow-sm">

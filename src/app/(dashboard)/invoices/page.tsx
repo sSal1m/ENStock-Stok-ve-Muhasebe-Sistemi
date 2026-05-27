@@ -484,7 +484,7 @@ export default function InvoicesPage() {
               </div>
 
               {/* Pagination */}
-              <div className="p-6 bg-surface-container-low/30 border-t border-indigo-50 flex items-center justify-between rounded-b-2xl">
+              <div className="p-6 bg-surface-container-low/30 border-t border-indigo-50 flex items-center justify-between">
                 <p className="text-sm text-slate-500 font-medium">
                   Toplam{" "}
                   <span className="text-indigo-900 font-bold">
@@ -502,19 +502,9 @@ export default function InvoicesPage() {
                   >
                     <span className="material-symbols-outlined">chevron_left</span>
                   </button>
-                  {Array.from({ length: totalPages }, (_, i) => (
-                    <button
-                      key={i}
-                      onClick={() => setCurrentPage(i)}
-                      className={`w-8 h-8 flex items-center justify-center rounded-lg font-bold text-sm transition-colors ${
-                        currentPage === i
-                          ? "bg-indigo-600 text-white shadow-sm"
-                          : "text-slate-500 hover:text-indigo-600 hover:bg-white border border-transparent hover:border-indigo-100"
-                      }`}
-                    >
-                      {i + 1}
-                    </button>
-                  ))}
+                  <button className="w-8 h-8 flex items-center justify-center bg-indigo-600 text-white rounded-lg font-bold text-sm shadow-sm">
+                    {currentPage + 1}
+                  </button>
                   <button
                     onClick={() => setCurrentPage(Math.min(totalPages - 1, currentPage + 1))}
                     disabled={currentPage === totalPages - 1}

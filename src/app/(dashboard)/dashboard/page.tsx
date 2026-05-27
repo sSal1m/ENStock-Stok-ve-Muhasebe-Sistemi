@@ -123,7 +123,6 @@ export default function DashboardPage() {
               teamFilterColumn: 'invoices.user_id',
               additionalFilters: [
                 { column: 'invoices.deleted_at', operator: 'is', value: null },
-                { column: 'invoices.type', operator: 'eq', value: 'sale' },
                 { column: 'invoices.issue_date', operator: 'gte', value: new Date(Date.now() - 365 * 24 * 60 * 60 * 1000).toISOString().split('T')[0] }
               ]
             }
@@ -157,14 +156,28 @@ export default function DashboardPage() {
         // ile TRY'ye çevirip topluyoruz. Display tarafında convert(TRY → viewCurrency)
         // ile gösterilecek. Sadece "sale" faturalar ciro sayılır.
         let totalRevenueTry = 0;
+        let totalSales = 0;
+        let totalPurchases = 0;
         if (revenueRes.data) {
-          totalRevenueTry = revenueRes.data
-            .filter((inv: any) => inv.type === 'sale')
-            .reduce((sum: number, inv: any) => {
-              const amount = Number(inv.total_amount) || 0;
-              const rate = Number(inv.exchange_rate) || 1; // 1 USD = ? TRY
-              return sum + amount * rate;
-            }, 0);
+          const today = new Date();
+          revenueRes.data.forEach((inv: any) => {
+            const amount = Number(inv.total_amount) || 0;
+            const rate = Number(inv.exchange_rate) || 1;
+            const tryAmount = amount * rate;
+            
+            const issueDate = inv.issue_date ? new Date(inv.issue_date) : null;
+            if (issueDate && 
+                issueDate.getDate() === today.getDate() &&
+                issueDate.getMonth() === today.getMonth() &&
+                issueDate.getFullYear() === today.getFullYear()) {
+              if (inv.type === 'sale') {
+                totalSales += tryAmount;
+              } else if (inv.type === 'purchase') {
+                totalPurchases += tryAmount;
+              }
+            }
+          });
+          totalRevenueTry = totalSales - totalPurchases;
         }
 
         let processedActivities: ActivityLog[] = [];
@@ -289,13 +302,18 @@ export default function DashboardPage() {
         const qty = Number(item.quantity) || 0;
         const unitPrice = Number(item.unit_price) || 0;
         const rate = Number(inv.exchange_rate) || 1;
-        const revenueTry = qty * unitPrice * rate;
+        const amountTry = qty * unitPrice * rate;
 
-        const purchasePriceTry = Number(product?.purchase_price) || 0;
-        const cogsTry = qty * purchasePriceTry;
-
-        dayObj.revenue += revenueTry;
-        dayObj.profit += (revenueTry - cogsTry);
+        if (inv.type === 'sale') {
+          const purchasePriceTry = Number(product?.purchase_price) || 0;
+          const cogsTry = qty * purchasePriceTry;
+          dayObj.revenue += amountTry;
+          dayObj.profit += (amountTry - cogsTry);
+        } else if (inv.type === 'purchase') {
+          // Gider (alış) faturası ise kârdan düş
+          dayObj.revenue -= amountTry;
+          dayObj.profit -= amountTry;
+        }
       });
 
       return daysList.map(d => ({
@@ -337,13 +355,17 @@ export default function DashboardPage() {
         const qty = Number(item.quantity) || 0;
         const unitPrice = Number(item.unit_price) || 0;
         const rate = Number(inv.exchange_rate) || 1;
-        const revenueTry = qty * unitPrice * rate;
+        const amountTry = qty * unitPrice * rate;
 
-        const purchasePriceTry = Number(product?.purchase_price) || 0;
-        const cogsTry = qty * purchasePriceTry;
-
-        weekObj.revenue += revenueTry;
-        weekObj.profit += (revenueTry - cogsTry);
+        if (inv.type === 'sale') {
+          const purchasePriceTry = Number(product?.purchase_price) || 0;
+          const cogsTry = qty * purchasePriceTry;
+          weekObj.revenue += amountTry;
+          weekObj.profit += (amountTry - cogsTry);
+        } else if (inv.type === 'purchase') {
+          weekObj.revenue -= amountTry;
+          weekObj.profit -= amountTry;
+        }
       });
 
       return weeksList.map(w => ({
@@ -379,13 +401,17 @@ export default function DashboardPage() {
         const qty = Number(item.quantity) || 0;
         const unitPrice = Number(item.unit_price) || 0;
         const rate = Number(inv.exchange_rate) || 1;
-        const revenueTry = qty * unitPrice * rate;
+        const amountTry = qty * unitPrice * rate;
 
-        const purchasePriceTry = Number(product?.purchase_price) || 0;
-        const cogsTry = qty * purchasePriceTry;
-
-        monthObj.revenue += revenueTry;
-        monthObj.profit += (revenueTry - cogsTry);
+        if (inv.type === 'sale') {
+          const purchasePriceTry = Number(product?.purchase_price) || 0;
+          const cogsTry = qty * purchasePriceTry;
+          monthObj.revenue += amountTry;
+          monthObj.profit += (amountTry - cogsTry);
+        } else if (inv.type === 'purchase') {
+          monthObj.revenue -= amountTry;
+          monthObj.profit -= amountTry;
+        }
       });
 
       return monthsList.map(m => ({
@@ -419,7 +445,7 @@ export default function DashboardPage() {
       const kpiExport = [
         { "Metrik": "Toplam Ürün", "Değer": kpiData.totalProducts.toString() },
         { "Metrik": "Kritik Stok Ürünleri", "Değer": kpiData.criticalStockItems.toString() },
-        { "Metrik": "Günlük Satış Cirosu", "Değer": fmt(convert(kpiData.todayRevenue), viewCurrency) },
+        { "Metrik": "Günlük Net Cirosu", "Değer": fmt(convert(kpiData.todayRevenue), viewCurrency) },
         { "Metrik": "Stok Sağlığı", "Değer": `%${kpiData.stockHealth}` },
       ];
       const kpiSheet = XLSX.utils.json_to_sheet(kpiExport);
@@ -532,7 +558,7 @@ export default function DashboardPage() {
             </div>
           </div>
           <p className="text-xs font-bold text-slate-500 uppercase tracking-widest">
-            Günlük Satış Cirosu
+            Günlük Net Cirosu
           </p>
           <h3 className="text-2xl font-extrabold mt-1 text-slate-900">
             {fmt(convert(kpiData.todayRevenue), viewCurrency)}

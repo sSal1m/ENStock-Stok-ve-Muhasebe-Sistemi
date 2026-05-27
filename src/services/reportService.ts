@@ -70,7 +70,7 @@ export async function fetchDashboardSummary(userId: string): Promise<DashboardSu
       fetchTeamScopedData(
         userId,
         "invoice_items",
-        "invoice_id, quantity, unit_price, products(name, categories(name))",
+        "invoice_id, quantity, unit_price, products(name, categories(name)), invoices!inner(user_id, deleted_at)",
         {
           teamFilterColumn: 'invoices.user_id',
           additionalFilters: [

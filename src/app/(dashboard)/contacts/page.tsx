@@ -47,6 +47,8 @@ export default function ContactsPage() {
   const [contacts, setContacts] = useState<Contact[]>([]);
   const [loading, setLoading] = useState(true);
   const [isPending, startTransition] = useTransition();
+  const [currentPage, setCurrentPage] = useState(0);
+  const ITEMS_PER_PAGE = 5;
   const formRef = useRef<HTMLFormElement>(null);
 
   // Döviz Durumu
@@ -123,6 +125,13 @@ export default function ContactsPage() {
   const alacakPercent = totalVolume === 0 ? 0 : Math.round((alacak / totalVolume) * 100);
   const borcPercent = totalVolume === 0 ? 0 : Math.round((borc / totalVolume) * 100);
 
+  // Pagination
+  const totalPages = Math.max(1, Math.ceil(filtered.length / ITEMS_PER_PAGE));
+  const paginatedContacts = filtered.slice(
+    currentPage * ITEMS_PER_PAGE,
+    (currentPage + 1) * ITEMS_PER_PAGE
+  );
+
   // ── Form Submit Handler ──
   const handleSubmit = (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
@@ -187,68 +196,13 @@ export default function ContactsPage() {
     toast.success("Excel dosyası başarıyla indirildi.");
   };
 
+  // İstatistik hesaplamaları
+  const yeniEklenenCount = filtered.slice(0, 5).length; // En son eklenenler
+
   return (
     <div className="p-6 lg:p-10 space-y-8">
-      {/* ── Sayfa Başlığı ── */}
-      <div className="flex flex-col md:flex-row md:items-end justify-between gap-6">
-        <div>
-          <nav className="flex items-center gap-2 text-xs font-semibold text-indigo-400 mb-2">
-            <span>Panel</span>
-            <span className="material-symbols-outlined text-[12px]">chevron_right</span>
-            <span className="text-slate-500">Cari Hesap Yönetimi</span>
-          </nav>
-          <h1 className="text-3xl font-extrabold text-on-surface tracking-tight">
-            Cari Hesap Rehberi
-          </h1>
-          <p className="text-slate-500 mt-1">
-            Müşteri ve tedarikçi hesaplarınızı tek panelden yönetin.
-          </p>
-        </div>
-          <div className="flex items-center gap-3">
-            <div className="flex items-center gap-2 bg-white border border-indigo-100 rounded-xl px-3 py-1.5 shadow-sm">
-              <span className="text-[10px] font-bold text-slate-400 uppercase tracking-tighter">Görünüm:</span>
-              <select
-                value={viewCurrency}
-                onChange={(e) => setViewCurrency(e.target.value)}
-                className="bg-transparent border-none text-sm font-black text-primary outline-none focus:ring-0 cursor-pointer"
-              >
-                <option value="TRY">TRY (₺)</option>
-                <option value="USD">USD ($)</option>
-                <option value="EUR">EUR (€)</option>
-                <option value="GBP">GBP (£)</option>
-              </select>
-            </div>
-            <div className="relative">
-            <span className="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 text-[18px]">search</span>
-            <input
-              id="cari-search"
-              type="text"
-              placeholder="Cari ara…"
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              className="w-52 rounded-xl border border-indigo-100 bg-white py-2.5 pl-10 pr-4 text-sm text-slate-700 placeholder:text-slate-400 focus:ring-2 focus:ring-primary outline-none transition-all"
-            />
-          </div>
-          <button
-            onClick={handleExportXlsx}
-            className="border border-indigo-100 text-slate-600 px-5 py-3 rounded-xl font-bold flex items-center gap-2 hover:bg-slate-50 transition-all active:scale-95"
-          >
-            <span className="material-symbols-outlined text-[18px]">download</span>
-            <span>Dışa Aktar</span>
-          </button>
-          <button
-            onClick={() => document.getElementById('form-hizli-cari')?.scrollIntoView({ behavior: 'smooth' })}
-            className="bg-primary text-on-primary px-6 py-3 rounded-xl font-bold flex items-center gap-2 shadow-lg shadow-indigo-100 hover:bg-primary-container transition-all active:scale-95"
-          >
-            <span className="material-symbols-outlined">add</span>
-            <span>Yeni Cari Ekle</span>
-          </button>
-        </div>
-      </div>
-
-
-      {/* ── STATS ── */}
-      <section className="grid grid-cols-1 gap-6 sm:grid-cols-3">
+      {/* ── İstatistik Kartları ── */}
+      <section className="grid grid-cols-1 gap-6 md:grid-cols-2 lg:grid-cols-4">
         {/* Alacak */}
         <div className="bg-white p-6 rounded-2xl shadow-sm border border-indigo-50/50">
           <p className="text-xs font-bold uppercase tracking-widest text-slate-400">Toplam Alacak</p>
@@ -282,34 +236,94 @@ export default function ContactsPage() {
             </span>
           </div>
         </div>
+
+        {/* Son 7 Gün Yeni */}
+        <div className="bg-white p-6 rounded-2xl shadow-sm border border-indigo-50/50">
+          <p className="text-xs font-bold uppercase tracking-widest text-slate-400">Yeni Eklenen (7 Gün)</p>
+          <div className="mt-2 flex items-end gap-3">
+            <p className="text-2xl font-extrabold text-sky-600 tabular-nums leading-none">{yeniEklenenCount}</p>
+            <span className="mb-0.5 text-[11px] font-bold text-sky-500">
+              cari
+            </span>
+          </div>
+        </div>
       </section>
 
       {/* ── TABLE CARD ── */}
       <section className="bg-white rounded-2xl shadow-sm overflow-hidden border border-indigo-50/50">
-        {/* Tabs */}
-        <div className="flex items-center gap-6 border-b border-indigo-50 px-8 pt-5">
-          {TABS.map((tab) => (
+        {/* Tablo Üstü Toolbar */}
+        <div className="flex flex-col sm:flex-row justify-between items-center w-full p-4 md:p-6 bg-surface-container-low/30 border-b border-indigo-50 gap-4">
+          {/* Sol Taraf: Arama + Sekmeler */}
+          <div className="flex items-center gap-4 w-full sm:w-auto">
+            {/* Arama Çubuğu */}
+            <div className="relative flex-1 sm:flex-none">
+              <span className="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 text-[18px]">search</span>
+              <input
+                id="cari-search"
+                type="text"
+                placeholder="Cari ara…"
+                value={search}
+                onChange={(e) => { setSearch(e.target.value); setCurrentPage(0); }}
+                className="w-full sm:w-52 rounded-xl border border-indigo-100 bg-white py-2.5 pl-10 pr-4 text-sm text-slate-700 placeholder:text-slate-400 focus:ring-2 focus:ring-primary outline-none transition-all"
+              />
+            </div>
+
+            {/* Sekmeler */}
+            <div className="flex items-center gap-3 border-l border-indigo-100 pl-4">
+              {TABS.map((tab) => (
+                <button
+                  key={tab}
+                  onClick={() => { setActiveTab(tab); setCurrentPage(0); }}
+                  className={`text-sm font-bold transition-colors whitespace-nowrap ${
+                    activeTab === tab
+                      ? "text-primary"
+                      : "text-slate-400 hover:text-slate-600"
+                  }`}
+                >
+                  {tab}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Sağ Taraf: Döviz + Dışa Aktar + Yeni Cari Ekle */}
+          <div className="flex items-center gap-3 w-full sm:w-auto justify-end">
+            {/* Döviz Seçici */}
+            <div className="flex items-center gap-2 bg-white border border-indigo-100 rounded-xl px-3 py-1.5 shadow-sm">
+              <span className="text-[10px] font-bold text-slate-400 uppercase tracking-tighter">Görünüm:</span>
+              <select
+                value={viewCurrency}
+                onChange={(e) => setViewCurrency(e.target.value)}
+                className="bg-transparent border-none text-sm font-black text-primary outline-none focus:ring-0 cursor-pointer"
+              >
+                <option value="TRY">TRY (₺)</option>
+                <option value="USD">USD ($)</option>
+                <option value="EUR">EUR (€)</option>
+                <option value="GBP">GBP (£)</option>
+              </select>
+            </div>
+
+            {/* Export Button */}
             <button
-              key={tab}
-              onClick={() => setActiveTab(tab)}
-              className={`relative pb-3.5 text-sm font-bold transition-all ${
-                activeTab === tab
-                  ? "text-primary"
-                  : "text-slate-400 hover:text-slate-600"
-              }`}
+              onClick={handleExportXlsx}
+              className="border border-indigo-100 text-slate-600 px-5 py-2.5 rounded-xl font-bold flex items-center gap-2 hover:bg-slate-50 transition-all active:scale-95 whitespace-nowrap"
             >
-              {tab}
-              {activeTab === tab && (
-                <span className="absolute bottom-0 left-0 right-0 h-1 rounded-full bg-primary" />
-              )}
+              <span className="material-symbols-outlined text-[18px]">download</span>
+              <span className="hidden sm:inline">Dışa Aktar</span>
             </button>
-          ))}
-          <span className="ml-auto pb-3.5 text-xs font-bold text-slate-300">
-            {filtered.length} kayıt bulundu
-          </span>
+
+            {/* Yeni Cari Ekle Butonu */}
+            <button
+              onClick={() => document.getElementById('form-hizli-cari')?.scrollIntoView({ behavior: 'smooth' })}
+              className="bg-primary text-on-primary px-6 py-2.5 rounded-xl font-bold flex items-center gap-2 shadow-lg shadow-indigo-100 hover:bg-primary-container transition-all active:scale-95 whitespace-nowrap"
+            >
+              <span className="material-symbols-outlined">add</span>
+              <span className="hidden sm:inline">Yeni Cari Ekle</span>
+            </button>
+          </div>
         </div>
 
-        {/* Table */}
+        {/* Tablo */}
         <div className="overflow-x-auto">
           <table className="w-full text-left">
             <thead>
@@ -333,7 +347,7 @@ export default function ContactsPage() {
                 <tr>
                    <td colSpan={4} className="px-8 py-10 text-center animate-pulse text-slate-400">Yükleniyor...</td>
                 </tr>
-              ) : filtered.map((c) => (
+              ) : paginatedContacts.map((c) => (
                 <tr
                   key={c.id}
                   className="group hover:bg-indigo-50/20 transition-colors"
@@ -400,17 +414,39 @@ export default function ContactsPage() {
                   </td>
                 </tr>
               ))}
-
-              {!loading && filtered.length === 0 && (
-                <tr>
-                  <td colSpan={4} className="px-8 py-16 text-center">
-                    <span className="material-symbols-outlined text-slate-300 text-5xl mb-3 block">search_off</span>
-                    <p className="text-slate-400 font-bold">Kayıt bulunamadı</p>
-                  </td>
-                </tr>
-              )}
             </tbody>
           </table>
+        </div>
+        {/* Sayfalama */}
+        <div className="p-6 bg-surface-container-low/30 border-t border-indigo-50 flex items-center justify-between">
+          <p className="text-sm text-slate-500 font-medium">
+            Toplam{" "}
+            <span className="text-indigo-900 font-bold">
+              {filtered.length.toLocaleString("tr-TR")}
+            </span>{" "}
+            cariden{" "}
+            <span className="text-indigo-900 font-bold">{paginatedContacts.length}</span>{" "}
+            tanesi gösteriliyor
+          </p>
+          <div className="flex items-center gap-1">
+            <button
+              onClick={() => setCurrentPage(Math.max(0, currentPage - 1))}
+              disabled={currentPage === 0}
+              className="p-2 text-slate-400 hover:text-indigo-600 hover:bg-white rounded-lg transition-colors border border-transparent hover:border-indigo-100 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              <span className="material-symbols-outlined">chevron_left</span>
+            </button>
+            <button className="w-8 h-8 flex items-center justify-center bg-indigo-600 text-white rounded-lg font-bold text-sm shadow-sm">
+              {currentPage + 1}
+            </button>
+            <button
+              onClick={() => setCurrentPage(Math.min(totalPages - 1, currentPage + 1))}
+              disabled={currentPage === totalPages - 1}
+              className="p-2 text-slate-400 hover:text-indigo-600 hover:bg-white rounded-lg transition-colors border border-transparent hover:border-indigo-100 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              <span className="material-symbols-outlined">chevron_right</span>
+            </button>
+          </div>
         </div>
       </section>
 

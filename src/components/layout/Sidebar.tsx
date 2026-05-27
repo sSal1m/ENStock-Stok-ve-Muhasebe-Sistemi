@@ -158,8 +158,8 @@ export default function Sidebar() {
       </nav>
 
       {/* Footer Section */}
-      <div className="p-4 border-t border-surface-container-high bg-surface flex justify-center items-center">
-        <img src="/logo_wide.png" alt="ENStock Logo" className="h-48 object-contain opacity-50 hover:opacity-100 transition-opacity duration-200 dark:invert" />
+      <div className="p-4 border-t border-surface-container-high bg-transparent flex justify-center items-center">
+        <img src="/logo_wide.png" alt="ENStock Logo" className="h-16 object-contain opacity-50 hover:opacity-100 transition-opacity duration-200 dark:invert" />
       </div>
     </aside>
   );

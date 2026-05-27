@@ -448,6 +448,12 @@ export default function CreateInvoiceForm({
       return false;
     }
 
+    const invalidQuantityItems = lineItems.filter((item) => Number(item.quantity) <= 0);
+    if (invalidQuantityItems.length > 0) {
+      addToast("error", "❌ Geçersiz Miktar", "Tüm ürünlerin miktarı 0'dan büyük olmalıdır");
+      return false;
+    }
+
     return true;
   };
 
@@ -716,8 +722,8 @@ export default function CreateInvoiceForm({
   // ✅ Loading skeleton
   if (isInitialLoading) {
     return (
-      <div className="w-full bg-slate-50 min-h-screen">
-        <div className="p-8 max-w-[1600px] mx-auto space-y-8 pb-20">
+      <div className="p-6 lg:p-10 space-y-8 pb-20">
+        <div className="space-y-8">
           {/* Header skeleton */}
           <div className="grid grid-cols-12 gap-6">
             <div className="col-span-8 bg-white rounded-2xl p-8 shadow-sm border border-slate-200 space-y-6">
@@ -754,7 +760,7 @@ export default function CreateInvoiceForm({
   }
 
   return (
-    <div className="w-full bg-slate-50">
+    <div className="p-6 lg:p-10 space-y-8 pb-20">
       {/* Toasts */}
       <div className="fixed top-6 right-6 z-50 flex flex-col gap-4 max-w-md">
         {toasts.map((toast) => (
@@ -763,7 +769,7 @@ export default function CreateInvoiceForm({
       </div>
 
       {/* Main Form */}
-      <div className="p-8 max-w-[1600px] mx-auto space-y-8 pb-20">
+      <div className="space-y-8">
         {/* Top Panel: Type & Header Info */}
         <div className="grid grid-cols-12 gap-6 items-start">
           {/* Left: Fatura Tipi & Cari Seçimi */}

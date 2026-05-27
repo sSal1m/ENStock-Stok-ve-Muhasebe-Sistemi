@@ -7,6 +7,7 @@ import { toast, Toaster } from "react-hot-toast";
 import { supabase } from "@/lib/supabaseClient";
 import { useCurrencyConverter } from "@/hooks/useCurrencyConverter";
 import { softDeleteQuote } from "@/app/(dashboard)/trash/actions";
+import { createInvoiceAction } from "@/app/(dashboard)/invoices/actions";
 
 interface Quote {
   id: string;
@@ -133,35 +134,8 @@ export default function QuotesPage() {
 
       if (itemsError) throw itemsError;
 
-      if (quoteItems && quoteItems.length > 0) {
-        const productIds = quoteItems.map((item: any) => item.product_id).filter(Boolean);
-        if (productIds.length > 0) {
-          const { data: productsData, error: productsError } = await supabase
-            .from("products")
-            .select("id, name, stock_quantity")
-            .in("id", productIds);
-
-          if (productsError) throw productsError;
-
-          const insufficientProducts: string[] = [];
-          quoteItems.forEach((item: any) => {
-            if (item.product_id) {
-              const product = productsData?.find((p: any) => p.id === item.product_id);
-              if (product && product.stock_quantity < item.quantity) {
-                insufficientProducts.push(product.name);
-              }
-            }
-          });
-
-          if (insufficientProducts.length > 0) {
-            toast.error(
-              `Yetersiz stok nedeniyle fatura olusturulamadi. Eksik urunler: ${insufficientProducts.join(", ")}`,
-              { id: toastId, duration: 5000 }
-            );
-            setActionLoading(null);
-            return;
-          }
-        }
+      if (!quoteItems || quoteItems.length === 0) {
+        throw new Error("Teklifte hic urun bulunamadi.");
       }
 
       const today = new Date();
@@ -171,45 +145,45 @@ export default function QuotesPage() {
       const randomNum = String(Math.floor(Math.random() * 1000)).padStart(3, "0");
       const invoiceNumber = `FTR-${year}-${month}-${day}-${randomNum}`;
 
-      const { data: newInvoice, error: invoiceError } = await supabase
-        .from("invoices")
-        .insert({
-          user_id: user.id,
-          created_by: user.id,
-          contact_id: quoteData.contact_id,
-          type: "sale",
-          invoice_number: invoiceNumber,
-          issue_date: new Date().toISOString().split("T")[0],
-          subtotal: quoteData.subtotal || 0,
-          tax_total: quoteData.tax_total || 0,
-          total_amount: quoteData.total_amount || 0,
-          notes: quoteData.notes || "",
-          status: "pending",
-          currency: "TRY",
-        })
-        .select()
-        .single();
-
-      if (invoiceError) throw invoiceError;
-
-      if (quoteItems && quoteItems.length > 0) {
-        const invoiceItemsToInsert = quoteItems.map((item: any) => ({
-          invoice_id: newInvoice.id,
+      // Call createInvoiceAction to handle everything including stock & balance
+      const actionResult = await createInvoiceAction({
+        user_id: user.id,
+        contact_id: quoteData.contact_id,
+        invoice_type: "sales",
+        issue_date: new Date().toISOString().split("T")[0],
+        notes: quoteData.notes || "",
+        line_items: quoteItems.map((item: any) => ({
           product_id: item.product_id,
-          quantity: item.quantity,
-          unit_price: item.unit_price,
-          vat_rate: item.vat_rate,
-          line_total: item.line_total,
-        }));
+          quantity: Number(item.quantity),
+          unit_price: Number(item.unit_price),
+          vat_rate: Number(item.vat_rate),
+        })),
+        status: "pending",
+        invoice_number: invoiceNumber,
+        currency: quoteData.currency || "TRY",
+        exchange_rate: quoteData.exchange_rate || 1,
+      });
 
-        const { error: insertItemsError } = await supabase
-          .from("invoice_items")
-          .insert(invoiceItemsToInsert);
-
-        if (insertItemsError) throw insertItemsError;
+      if (!actionResult.success) {
+        const errorMsg = actionResult.errors ? Object.values(actionResult.errors).join(", ") : actionResult.message;
+        throw new Error(errorMsg);
       }
 
-      toast.success("Fatura basariyla olusturuldu!", { id: toastId });
+      // Update quote status to prevent double conversion
+      const { error: updateError } = await supabase
+        .from("quotes")
+        .update({ status: "Invoiced" })
+        .eq("id", quote.id);
+
+      if (updateError) {
+        console.error("Error updating quote status:", updateError);
+        // We won't throw here to not revert the invoice success toast, but we should notify
+        toast.error("Fatura olusturuldu ancak teklif durumu guncellenemedi.", { id: toastId });
+      } else {
+        setQuotes((prev) => prev.map((q) => (q.id === quote.id ? { ...q, status: "Invoiced" } : q)));
+        toast.success("Fatura basariyla olusturuldu!", { id: toastId });
+      }
+
       router.push("/invoices");
     } catch (error: any) {
       console.error("Error converting to invoice:", error);
@@ -321,11 +295,6 @@ export default function QuotesPage() {
     return (filterType === "all" || isMatch) && searchMatch;
   });
 
-  const paginatedQuotes = filtered.slice(
-    currentPage * ITEMS_PER_PAGE,
-    (currentPage + 1) * ITEMS_PER_PAGE
-  );
-
   // Teklifler farklı para birimlerinde olabilir; her birini kendi currency'sinden
   // viewCurrency'ye çevirip topluyoruz.
   const totalAmount = filtered.reduce(
@@ -337,41 +306,136 @@ export default function QuotesPage() {
     0
   );
 
+  const totalPages = Math.max(1, Math.ceil(filtered.length / ITEMS_PER_PAGE));
+  const paginatedQuotes = filtered.slice(
+    currentPage * ITEMS_PER_PAGE,
+    (currentPage + 1) * ITEMS_PER_PAGE
+  );
+
+  // Stat kartları için hesaplamalar
+  const pendingQuotes = filtered.filter((q) => (q.status?.toLowerCase() || "").includes("pending") || (q.status?.toLowerCase() || "").includes("beklemede")).length;
+  const approvedQuotes = filtered.filter((q) => (q.status?.toLowerCase() || "").includes("approved") || (q.status?.toLowerCase() || "").includes("onaylandi")).length;
+  const rejectedQuotes = filtered.filter((q) => (q.status?.toLowerCase() || "").includes("rejected") || (q.status?.toLowerCase() || "").includes("reddedildi")).length;
+
   return (
-    <div className="w-full p-8 max-w-[1600px] mx-auto bg-slate-50 min-h-screen">
+    <div className="p-6 lg:p-10 space-y-8">
       <Toaster position="top-right" />
       <div className="w-full space-y-8">
-        <div className="flex flex-col md:flex-row md:items-end justify-between gap-6 pb-6 border-b border-slate-200">
-          <div>
-            <nav className="flex items-center gap-2 text-xs font-semibold text-indigo-400 mb-2">
-              <span>Panel</span>
-              <span className="material-symbols-outlined text-[12px]">chevron_right</span>
-              <span className="text-slate-500">Teklif Yönetimi</span>
-            </nav>
-            <h1 className="text-3xl font-extrabold text-slate-900 tracking-tight">
-              TEKLİFLER
-            </h1>
-            <p className="text-slate-600 mt-1">Tüm tekliflerinizi yönetin ve takip edin.</p>
+        {/* ── İstatistik Kartları ── */}
+        <section className="grid grid-cols-1 gap-6 md:grid-cols-2 lg:grid-cols-4">
+          {/* Toplam Teklif */}
+          <div className="bg-white p-6 rounded-2xl shadow-sm border border-indigo-50/50">
+            <p className="text-xs font-bold uppercase tracking-widest text-slate-400">Toplam Teklif</p>
+            <div className="mt-2 flex items-end gap-3">
+              <p className="text-2xl font-extrabold text-purple-600 tabular-nums leading-none">{quotes.length}</p>
+              <span className="mb-0.5 text-[11px] font-bold text-purple-500">
+                teklif
+              </span>
+            </div>
           </div>
-          <div className="flex flex-wrap items-center gap-3">
-             {/* Döviz Görünüm Seçici */}
-             <div className="flex items-center gap-2 bg-white border-2 border-purple-100 rounded-xl px-4 py-2.5 shadow-sm">
-                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-tighter">Görünüm:</span>
-                <select
-                  value={viewCurrency}
-                  onChange={(e) => setViewCurrency(e.target.value)}
-                  className="bg-transparent border-none text-sm font-black text-purple-600 outline-none focus:ring-0 cursor-pointer"
-                >
-                  <option value="TRY">TRY (₺)</option>
-                  <option value="USD">USD ($)</option>
-                  <option value="EUR">EUR (€)</option>
-                  <option value="GBP">GBP (£)</option>
-                </select>
-              </div>
 
+          {/* Beklemede */}
+          <div className="bg-white p-6 rounded-2xl shadow-sm border border-indigo-50/50">
+            <p className="text-xs font-bold uppercase tracking-widest text-slate-400">Beklemede</p>
+            <div className="mt-2 flex items-end gap-3">
+              <p className="text-2xl font-extrabold text-orange-600 tabular-nums leading-none">{pendingQuotes}</p>
+              <span className="mb-0.5 text-[11px] font-bold text-orange-500">
+                bekleme
+              </span>
+            </div>
+          </div>
+
+          {/* Onaylanan */}
+          <div className="bg-white p-6 rounded-2xl shadow-sm border border-indigo-50/50">
+            <p className="text-xs font-bold uppercase tracking-widest text-slate-400">Onaylanan</p>
+            <div className="mt-2 flex items-end gap-3">
+              <p className="text-2xl font-extrabold text-green-600 tabular-nums leading-none">{approvedQuotes}</p>
+              <span className="mb-0.5 text-[11px] font-bold text-green-500">
+                onay
+              </span>
+            </div>
+          </div>
+
+          {/* Toplam Tutar */}
+          <div className="bg-white p-6 rounded-2xl shadow-sm border border-indigo-50/50">
+            <p className="text-xs font-bold uppercase tracking-widest text-slate-400">Toplam Tutar</p>
+            <div className="mt-2 flex items-end gap-3">
+              <p className="text-2xl font-extrabold text-emerald-600 tabular-nums leading-none">{fmt(totalAmount)}</p>
+              <span className="mb-0.5 text-[11px] font-bold text-emerald-500">
+                tutar
+              </span>
+            </div>
+          </div>
+        </section>
+
+        {/* Tab Filtresi */}
+        <div className="flex justify-between items-center w-full border-b border-slate-200 pb-2 mb-6">
+          {/* Sol Taraf: Sekmeler */}
+          <div className="flex items-center gap-3">
+            <button
+              onClick={() => { setFilterType("all"); setCurrentPage(0); }}
+              className={`px-4 py-2 text-sm font-semibold transition-colors whitespace-nowrap border-b-2 ${
+                filterType === "all"
+                  ? "border-purple-600 text-purple-600"
+                  : "border-transparent text-slate-500 hover:text-slate-700"
+              }`}
+            >
+              Hepsi
+            </button>
+            <button
+              onClick={() => { setFilterType("pending"); setCurrentPage(0); }}
+              className={`px-4 py-2 text-sm font-semibold transition-colors whitespace-nowrap border-b-2 ${
+                filterType === "pending"
+                  ? "border-orange-500 text-orange-500"
+                  : "border-transparent text-slate-500 hover:text-slate-700"
+              }`}
+            >
+              Beklemede
+            </button>
+            <button
+              onClick={() => { setFilterType("approved"); setCurrentPage(0); }}
+              className={`px-4 py-2 text-sm font-semibold transition-colors whitespace-nowrap border-b-2 ${
+                filterType === "approved"
+                  ? "border-green-500 text-green-500"
+                  : "border-transparent text-slate-500 hover:text-slate-700"
+              }`}
+            >
+              Onaylandi
+            </button>
+            <button
+              onClick={() => { setFilterType("rejected"); setCurrentPage(0); }}
+              className={`px-4 py-2 text-sm font-semibold transition-colors whitespace-nowrap border-b-2 ${
+                filterType === "rejected"
+                  ? "border-red-500 text-red-500"
+                  : "border-transparent text-slate-500 hover:text-slate-700"
+              }`}
+            >
+              Reddedildi
+            </button>
+          </div>
+
+          {/* Sağ Taraf: Döviz + Yeni Teklif */}
+          <div className="flex items-center gap-3">
+            {/* Döviz Seçici */}
+            <div className="flex items-center gap-2 bg-white border-2 border-purple-100 rounded-xl px-4 py-2 shadow-sm">
+              <span className="text-[10px] font-bold text-slate-400 uppercase tracking-tighter">Görünüm:</span>
+              <select
+                value={viewCurrency}
+                onChange={(e) => setViewCurrency(e.target.value)}
+                className="bg-transparent border-none text-sm font-black text-purple-600 outline-none focus:ring-0 cursor-pointer"
+              >
+                <option value="TRY">TRY (₺)</option>
+                <option value="USD">USD ($)</option>
+                <option value="EUR">EUR (€)</option>
+                <option value="GBP">GBP (£)</option>
+              </select>
+            </div>
+
+            {/* Grid/List Görünümü */}
+            {/* Yeni Teklif Butonu */}
             <Link
               href="/quotes/new"
-              className="flex items-center gap-2 px-8 py-3.5 rounded-lg font-semibold text-sm text-white bg-gradient-to-r from-purple-600 to-purple-700 shadow-lg shadow-purple-200 hover:shadow-xl hover:shadow-purple-300 active:scale-[0.98] transition-all"
+              className="flex items-center gap-2 px-6 py-2 rounded-lg font-semibold text-sm text-white bg-gradient-to-r from-purple-600 to-purple-700 shadow-lg shadow-purple-200 hover:shadow-xl hover:shadow-purple-300 active:scale-[0.98] transition-all whitespace-nowrap"
             >
               <span className="material-symbols-outlined">add_circle</span>
               Yeni Teklif
@@ -379,95 +443,20 @@ export default function QuotesPage() {
           </div>
         </div>
 
-
-        <div className="flex items-center gap-3 pb-6 border-b border-slate-200">
-          <button
-            onClick={() => setFilterType("all")}
-            className={`px-5 py-2.5 rounded-lg font-semibold text-sm transition-all ${filterType === "all"
-                ? "bg-purple-600 text-white shadow-md shadow-purple-200"
-                : "bg-white text-slate-700 hover:bg-slate-100 border border-slate-300"
-              }`}
-          >
-            <span className="material-symbols-outlined align-middle mr-2 text-lg">list</span>
-            Hepsi
-          </button>
-          <button
-            onClick={() => setFilterType("pending")}
-            className={`px-5 py-2.5 rounded-lg font-semibold text-sm transition-all ${filterType === "pending"
-                ? "bg-orange-500 text-white shadow-md shadow-orange-500/30"
-                : "bg-white text-slate-700 hover:bg-slate-100 border border-slate-300"
-              }`}
-          >
-            <span className="material-symbols-outlined align-middle mr-2 text-lg">schedule</span>
-            Beklemede
-          </button>
-          <button
-            onClick={() => setFilterType("approved")}
-            className={`px-5 py-2.5 rounded-lg font-semibold text-sm transition-all ${filterType === "approved"
-                ? "bg-green-500 text-white shadow-md shadow-green-500/30"
-                : "bg-white text-slate-700 hover:bg-slate-100 border border-slate-300"
-              }`}
-          >
-            <span className="material-symbols-outlined align-middle mr-2 text-lg">check_circle</span>
-            Onaylandi
-          </button>
-          <button
-            onClick={() => setFilterType("rejected")}
-            className={`px-5 py-2.5 rounded-lg font-semibold text-sm transition-all ${filterType === "rejected"
-                ? "bg-red-500 text-white shadow-md shadow-red-500/30"
-                : "bg-white text-slate-700 hover:bg-slate-100 border border-slate-300"
-              }`}
-          >
-            <span className="material-symbols-outlined align-middle mr-2 text-lg">cancel</span>
-            Reddedildi
-          </button>
-        </div>
-
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
-          <div className="md:col-span-2 relative">
-            <label className="block text-xs font-semibold text-slate-600 uppercase tracking-wide mb-3">
-              Ara
-            </label>
-            <div className="flex items-center bg-white border-2 border-slate-300 rounded-lg px-4 py-3 focus-within:border-purple-400 transition-all">
-              <span className="material-symbols-outlined text-slate-400">search</span>
-              <input
-                className="w-full bg-transparent border-none focus:ring-0 py-2 text-sm placeholder:text-slate-400"
-                placeholder="Teklif no veya musteri adi yazin..."
-                value={searchTerm}
-                onChange={(e) => {
-                  setSearchTerm(e.target.value);
-                  setCurrentPage(0);
-                }}
-              />
-            </div>
-          </div>
-
-          <div className="bg-gradient-to-br from-orange-50 to-orange-100 rounded-lg p-6 border border-orange-200 shadow-sm">
-            <div className="flex items-start justify-between">
-              <div>
-                <p className="text-xs font-semibold text-orange-600 uppercase tracking-wide mb-2">
-                  Toplam KDV
-                </p>
-                <p className="font-bold text-2xl text-orange-700">{fmt(vatAmount)}</p>
-              </div>
-              <div className="w-12 h-12 bg-orange-200/50 rounded-lg flex items-center justify-center">
-                <span className="material-symbols-outlined text-xl text-orange-600">receipt_long</span>
-              </div>
-            </div>
-          </div>
-
-          <div className="bg-gradient-to-br from-green-50 to-green-100 rounded-lg p-6 border border-green-200 shadow-sm">
-            <div className="flex items-start justify-between">
-              <div>
-                <p className="text-xs font-semibold text-green-600 uppercase tracking-wide mb-2">
-                  Toplam Tutar
-                </p>
-                <p className="font-bold text-2xl text-green-700">{fmt(totalAmount)}</p>
-              </div>
-              <div className="w-12 h-12 bg-green-200/50 rounded-lg flex items-center justify-center">
-                <span className="material-symbols-outlined text-xl text-green-600">payments</span>
-              </div>
-            </div>
+        {/* Filtreler & Arama */}
+        <div className="flex flex-col md:flex-row gap-4 items-start md:items-center">
+          <div className="relative flex-1">
+            <span className="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 text-[18px]">search</span>
+            <input
+              className="w-full pl-10 pr-4 py-2.5 rounded-xl border border-purple-100 focus:ring-2 focus:ring-purple-600 focus:border-transparent text-sm outline-none bg-white"
+              placeholder="Teklif no veya müşteri adı yazın..."
+              type="text"
+              value={searchTerm}
+              onChange={(e) => {
+                setSearchTerm(e.target.value);
+                setCurrentPage(0);
+              }}
+            />
           </div>
         </div>
 
@@ -573,8 +562,8 @@ export default function QuotesPage() {
                                   : quote.status}
                           </span>
                         </td>
-                        <td className="w-[170px] px-6 py-5 text-center">
-                          <div className="flex items-center justify-center gap-2">
+                        <td className="w-[170px] px-6 py-5">
+                          <div className="flex items-center justify-end gap-2">
                             {isPending && (
                               <button
                                 onClick={() => handleApprove(quote.id)}
@@ -668,28 +657,43 @@ export default function QuotesPage() {
             </div>
 
             {/* Pagination */}
-            <div className="px-6 py-5 bg-surface-container-low/30 border-t border-indigo-50 flex justify-between items-center">
-              <p className="text-xs text-slate-500">
-                {filtered.length === 0
-                  ? "Kayıt bulunamadı"
-                  : `${paginatedQuotes.length} / ${filtered.length} teklif gösteriliyor (Sayfa ${currentPage + 1})`}
+            <div className="p-6 bg-surface-container-low/30 border-t border-indigo-50 flex items-center justify-between rounded-b-2xl">
+              <p className="text-sm text-slate-500 font-medium">
+                Toplam{" "}
+                <span className="text-indigo-900 font-bold">
+                  {filtered.length.toLocaleString("tr-TR")}
+                </span>{" "}
+                tekliften{" "}
+                <span className="text-indigo-900 font-bold">{paginatedQuotes.length}</span>{" "}
+                tanesi gösteriliyor
               </p>
-              <div className="flex gap-2">
+              <div className="flex items-center gap-1">
                 <button
-                  onClick={() => setCurrentPage(currentPage - 1)}
+                  onClick={() => setCurrentPage(Math.max(0, currentPage - 1))}
                   disabled={currentPage === 0}
-                  className="px-4 py-2 text-xs font-bold rounded-lg border border-indigo-50 transition-all bg-white flex items-center gap-2 disabled:text-slate-300 disabled:cursor-not-allowed disabled:opacity-50 enabled:text-primary enabled:hover:bg-indigo-50"
+                  className="p-2 text-slate-400 hover:text-indigo-600 hover:bg-white rounded-lg transition-colors border border-transparent hover:border-indigo-100 disabled:opacity-50 disabled:cursor-not-allowed"
                 >
-                  <span className="material-symbols-outlined text-sm">arrow_back</span>
-                  Önceki
+                  <span className="material-symbols-outlined">chevron_left</span>
                 </button>
+                {Array.from({ length: totalPages }, (_, i) => (
+                  <button
+                    key={i}
+                    onClick={() => setCurrentPage(i)}
+                    className={`w-8 h-8 flex items-center justify-center rounded-lg font-bold text-sm transition-colors ${
+                      currentPage === i
+                        ? "bg-indigo-600 text-white shadow-sm"
+                        : "text-slate-500 hover:text-indigo-600 hover:bg-white border border-transparent hover:border-indigo-100"
+                    }`}
+                  >
+                    {i + 1}
+                  </button>
+                ))}
                 <button
-                  onClick={() => setCurrentPage(currentPage + 1)}
-                  disabled={(currentPage + 1) * ITEMS_PER_PAGE >= filtered.length}
-                  className="px-4 py-2 text-xs font-bold rounded-lg border border-indigo-50 transition-all bg-white flex items-center gap-2 disabled:text-slate-300 disabled:cursor-not-allowed disabled:opacity-50 enabled:text-primary enabled:hover:bg-indigo-50"
+                  onClick={() => setCurrentPage(Math.min(totalPages - 1, currentPage + 1))}
+                  disabled={currentPage === totalPages - 1}
+                  className="p-2 text-slate-400 hover:text-indigo-600 hover:bg-white rounded-lg transition-colors border border-transparent hover:border-indigo-100 disabled:opacity-50 disabled:cursor-not-allowed"
                 >
-                  <span className="material-symbols-outlined text-sm">arrow_forward</span>
-                  Sonraki
+                  <span className="material-symbols-outlined">chevron_right</span>
                 </button>
               </div>
             </div>

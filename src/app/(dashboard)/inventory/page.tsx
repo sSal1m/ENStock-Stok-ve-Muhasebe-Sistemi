@@ -91,6 +91,9 @@ export default function InventoryPage() {
   const [stats, setStats] = useState<Stats | null>(null);
   const [criticalItems, setCriticalItems] = useState<Product[]>([]);
 
+  const [currentPage, setCurrentPage] = useState(0);
+  const ITEMS_PER_PAGE = 5;
+
   const [search, setSearch] = useState("");
   const [categoryFilter, setCategoryFilter] = useState("all");
   const [stockFilter, setStockFilter] = useState("all");
@@ -209,6 +212,7 @@ export default function InventoryPage() {
     }
 
     setFiltered(result);
+    setCurrentPage(0);
   }, [search, stockFilter, products, categoryFilter, categories]);
 
   // ── Excel Export Handler ──
@@ -249,6 +253,13 @@ export default function InventoryPage() {
     XLSX.writeFile(workbook, `Stoklar_${new Date().toISOString().split("T")[0]}.xlsx`);
     toast.success("Excel dosyası başarıyla indirildi.");
   };
+
+  // Pagination
+  const totalPages = Math.max(1, Math.ceil(filtered.length / ITEMS_PER_PAGE));
+  const paginatedProducts = filtered.slice(
+    currentPage * ITEMS_PER_PAGE,
+    (currentPage + 1) * ITEMS_PER_PAGE
+  );
 
   // ── Hata Durumu ──────────────────────────────────────────────────────────
   if (error) {
@@ -297,41 +308,6 @@ export default function InventoryPage() {
   // ── Sayfa İçeriği ─────────────────────────────────────────────────────────
   return (
     <div className="p-6 lg:p-10 space-y-8">
-
-      {/* ── Sayfa Başlığı ── */}
-      <div className="flex flex-col md:flex-row md:items-end justify-between gap-6">
-        <div>
-          <nav className="flex items-center gap-2 text-xs font-semibold text-indigo-400 mb-2">
-            <span>Panel</span>
-            <span className="material-symbols-outlined text-[12px]">chevron_right</span>
-            <span className="text-slate-500">Stok Yönetimi</span>
-          </nav>
-          <h1 className="text-3xl font-extrabold text-on-surface tracking-tight">
-            Stok Kontrol Paneli
-          </h1>
-          <p className="text-slate-500 mt-1">
-            Envanter durumunu izleyin, stok seviyelerini yönetin ve ürünlerinizi organize edin.
-          </p>
-        </div>
-        <div className="flex items-center gap-3">
-          <button
-            onClick={() => setIsCategoryModalOpen(true)}
-            className="border border-primary text-primary px-5 py-3 rounded-xl font-bold flex items-center gap-2 hover:bg-indigo-50 transition-all active:scale-95"
-          >
-            <span className="material-symbols-outlined text-base">create_new_folder</span>
-            <span>+ Kategori Ekle</span>
-          </button>
-          <button
-            onClick={() => router.push("/inventory/new")}
-            className="bg-primary text-on-primary px-6 py-3 rounded-xl font-bold flex items-center gap-2 shadow-lg shadow-indigo-100 hover:bg-primary-container transition-all active:scale-95"
-          >
-            <span className="material-symbols-outlined">add_box</span>
-            <span>+ Yeni Ürün Ekle</span>
-          </button>
-        </div>
-      </div>
-
-
       {/* ── Bento İstatistik Kartları ── */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
         {/* Toplam Ürün */}
@@ -466,11 +442,22 @@ export default function InventoryPage() {
                 <option value="GBP">GBP (£)</option>
               </select>
             </div>
-            <button className="p-2.5 text-slate-500 hover:bg-slate-50 rounded-xl border border-indigo-50 transition-colors">
-              <span className="material-symbols-outlined">filter_list</span>
-            </button>
             <button onClick={handleExportXlsx} className="p-2.5 text-slate-500 hover:bg-slate-50 rounded-xl border border-indigo-100 transition-colors" title="Excel Olarak İndir">
               <span className="material-symbols-outlined">download</span>
+            </button>
+            <button
+              onClick={() => setIsCategoryModalOpen(true)}
+              className="border border-primary text-primary px-4 py-2.5 rounded-xl font-bold flex items-center gap-2 hover:bg-indigo-50 transition-all active:scale-95"
+            >
+              <span className="material-symbols-outlined text-base">create_new_folder</span>
+              <span>+ Kategori Ekle</span>
+            </button>
+            <button
+              onClick={() => router.push("/inventory/new")}
+              className="bg-primary text-on-primary px-4 py-2.5 rounded-xl font-bold flex items-center gap-2 shadow-lg shadow-indigo-100 hover:bg-primary-container transition-all active:scale-95"
+            >
+              <span className="material-symbols-outlined">add_box</span>
+              <span>+ Yeni Ürün Ekle</span>
             </button>
           </div>
         </div>
@@ -517,7 +504,7 @@ export default function InventoryPage() {
                   </td>
                 </tr>
               ) : (
-                filtered.map((item) => {
+                paginatedProducts.map((item) => {
                   const level = getStockLevel(item.stock_quantity, item.critical_limit);
                   const percent = getStockPercent(item.stock_quantity, item.critical_limit);
                   const parsed = parseDescription(item.description);
@@ -638,13 +625,21 @@ export default function InventoryPage() {
             tanesi gösteriliyor
           </p>
           <div className="flex items-center gap-1">
-            <button className="p-2 text-slate-400 hover:text-indigo-600 hover:bg-white rounded-lg transition-colors border border-transparent hover:border-indigo-100">
+            <button 
+              onClick={() => setCurrentPage(Math.max(0, currentPage - 1))}
+              disabled={currentPage === 0}
+              className="p-2 text-slate-400 hover:text-indigo-600 hover:bg-white rounded-lg transition-colors border border-transparent hover:border-indigo-100 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
               <span className="material-symbols-outlined">chevron_left</span>
             </button>
             <button className="w-8 h-8 flex items-center justify-center bg-indigo-600 text-white rounded-lg font-bold text-sm shadow-sm">
-              1
+              {currentPage + 1}
             </button>
-            <button className="p-2 text-slate-400 hover:text-indigo-600 hover:bg-white rounded-lg transition-colors border border-transparent hover:border-indigo-100">
+            <button 
+              onClick={() => setCurrentPage(Math.min(totalPages - 1, currentPage + 1))}
+              disabled={currentPage === totalPages - 1}
+              className="p-2 text-slate-400 hover:text-indigo-600 hover:bg-white rounded-lg transition-colors border border-transparent hover:border-indigo-100 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
               <span className="material-symbols-outlined">chevron_right</span>
             </button>
           </div>

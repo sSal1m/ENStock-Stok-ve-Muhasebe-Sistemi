@@ -147,3 +147,52 @@ export async function getRecentActivityLogs(userId: string, limit = 8) {
   const result = await listActivityLogs({ userId, limit });
   return result;
 }
+
+export async function getActivityLogStats(userId: string) {
+  try {
+    const teamIds = await resolveTeamIdsServer(userId);
+    const now = new Date();
+    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    const weekAgo = new Date(today.getTime() - 7 * 24 * 60 * 60 * 1000);
+    const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+
+    const userIds = teamIds.length > 0 ? teamIds : [userId];
+
+    // Get total
+    const { count: totalCount } = await supabaseServer
+      .from("activity_logs")
+      .select("*", { count: "exact" })
+      .in("user_id", userIds);
+
+    // Get today
+    const { count: todayCount } = await supabaseServer
+      .from("activity_logs")
+      .select("*", { count: "exact" })
+      .in("user_id", userIds)
+      .gte("created_at", today.toISOString());
+
+    // Get last 7 days
+    const { count: weekCount } = await supabaseServer
+      .from("activity_logs")
+      .select("*", { count: "exact" })
+      .in("user_id", userIds)
+      .gte("created_at", weekAgo.toISOString());
+
+    // Get this month
+    const { count: monthCount } = await supabaseServer
+      .from("activity_logs")
+      .select("*", { count: "exact" })
+      .in("user_id", userIds)
+      .gte("created_at", monthStart.toISOString());
+
+    return {
+      total: totalCount ?? 0,
+      today: todayCount ?? 0,
+      week: weekCount ?? 0,
+      month: monthCount ?? 0,
+    };
+  } catch (err) {
+    console.error("getActivityLogStats error:", err);
+    return { total: 0, today: 0, week: 0, month: 0 };
+  }
+}

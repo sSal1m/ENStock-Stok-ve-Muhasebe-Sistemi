@@ -21,6 +21,7 @@ const pathTitleMap: Record<string, string> = {
   '/inventory/[id]': 'Ürün Detayı',
   '/inventory/[id]/edit': 'Ürünü Düzenle',
   '/dashboard': 'Genel Bakış',
+  '/activity-log': 'İşlem Geçmişi',
   '/sales': 'Satış Yönetimi',
   '/contacts': 'Cari Hesap Rehberi',
   '/contacts/[id]': 'Cari Hesap Detayı',
@@ -44,6 +45,18 @@ const pathTitleMap: Record<string, string> = {
   '/quotes/[id]/edit': 'Teklifi Düzenle',
 };
 
+// Path to page description mapping (dynamic subtitles)
+const pathDescriptionMap: Record<string, string> = {
+  '/inventory': 'Depo stoklarınızı, kritik seviyeleri ve ürün hareketlerini kontrol altında tutun.',
+  '/dashboard': 'İşletmenizin genel finansal özetini ve anlık durumunu buradan takip edin.',
+  '/activity-log': 'Tüm sistem işlemlerinin ayrıntılı kaydı ve izleme.',
+  '/contacts': 'Müşteri ve tedarikçi (cari) hesaplarınızı, bakiye ve risk durumlarını yönetin.',
+  '/invoices': 'Alış ve satış faturalarınızı oluşturun, ödeme durumlarını takip edin.',
+  '/reports': 'İşletmenizin finansal ve stok analizlerini detaylı raporlarla inceleyin.',
+  '/trash': 'Silinen kayıtlarınızı buradan görüntüleyebilir veya kalıcı olarak silebilirsiniz.',
+  '/quotes': 'Müşterilerinize sunduğunuz teklifleri buradan yönetin ve kolayca faturaya dönüştürün.',
+};
+
 // Helper function to get page title from pathname
 function getTitleFromPath(pathname: string): string {
   // Try exact match first
@@ -64,6 +77,29 @@ function getTitleFromPath(pathname: string): string {
   }
 
   return 'Panel';
+}
+
+// Helper function to get page description from pathname
+function getDescriptionFromPath(pathname: string): string {
+  // Try exact match first
+  if (pathDescriptionMap[pathname]) {
+    return pathDescriptionMap[pathname];
+  }
+
+  // Try pattern matching for dynamic routes
+  for (const [pattern, desc] of Object.entries(pathDescriptionMap)) {
+    if (pattern.includes('[')) {
+      const regex = new RegExp(
+        '^' + pattern.replace(/\[.*?\]/g, '[^/]+') + '$'
+      );
+      if (regex.test(pathname)) {
+        return desc;
+      }
+    }
+  }
+
+  // Default description
+  return '';
 }
 
 // Skeleton loader component
@@ -247,6 +283,7 @@ export default function Header() {
   };
 
   const pageTitle = getTitleFromPath(pathname);
+  const pageDescription = getDescriptionFromPath(pathname);
   const userDisplayName = profile?.full_name?.split(' ')[0] || 'Kullanıcı';
   const userRole = profile?.role || 'Kullanıcı';
 
@@ -261,9 +298,8 @@ export default function Header() {
             <h1 className="text-3xl font-extrabold text-slate-900 tracking-tight">
               {pageTitle}
             </h1>
-            <p className="text-xs text-slate-400 mt-1">
-              {profile?.company_name && `${profile.company_name} • `}
-              Hoş geldiniz
+            <p className="text-sm text-gray-500 mt-1">
+              {pageDescription || (profile?.company_name && `${profile.company_name} • Hoş geldiniz`)}
             </p>
           </div>
         )}

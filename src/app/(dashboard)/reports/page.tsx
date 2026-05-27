@@ -230,8 +230,8 @@ export default function RaporlarSayfasi() {
           </div>
           
           {pieData.length > 0 ? (
-            <div style={{ width: '100%', height: '280px' }}>
-              <ResponsiveContainer width="100%" height="100%">
+            <div style={{ width: '100%', height: '280px', minHeight: '280px' }}>
+              <ResponsiveContainer width="100%" height="100%" minHeight={280}>
                 <PieChart>
                   <Pie
                     data={pieData}
@@ -273,9 +273,9 @@ export default function RaporlarSayfasi() {
             </div>
           </div>
           
-          <div style={{ width: '100%', height: '320px' }}>
+          <div style={{ width: '100%', height: '320px', minHeight: '320px' }}>
             {barData.length > 0 ? (
-              <ResponsiveContainer width="100%" height="100%">
+              <ResponsiveContainer width="100%" height="100%" minHeight={320}>
                 <BarChart
                   data={barData}
                   margin={{ top: 10, right: 10, left: 0, bottom: 0 }}

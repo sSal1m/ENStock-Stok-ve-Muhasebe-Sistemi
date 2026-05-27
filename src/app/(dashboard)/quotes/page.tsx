@@ -7,6 +7,7 @@ import { toast, Toaster } from "react-hot-toast";
 import { supabase } from "@/lib/supabaseClient";
 import { useCurrencyConverter } from "@/hooks/useCurrencyConverter";
 import { softDeleteQuote } from "@/app/(dashboard)/trash/actions";
+import { createInvoiceAction } from "@/app/(dashboard)/invoices/actions";
 
 interface Quote {
   id: string;
@@ -133,35 +134,8 @@ export default function QuotesPage() {
 
       if (itemsError) throw itemsError;
 
-      if (quoteItems && quoteItems.length > 0) {
-        const productIds = quoteItems.map((item: any) => item.product_id).filter(Boolean);
-        if (productIds.length > 0) {
-          const { data: productsData, error: productsError } = await supabase
-            .from("products")
-            .select("id, name, stock_quantity")
-            .in("id", productIds);
-
-          if (productsError) throw productsError;
-
-          const insufficientProducts: string[] = [];
-          quoteItems.forEach((item: any) => {
-            if (item.product_id) {
-              const product = productsData?.find((p: any) => p.id === item.product_id);
-              if (product && product.stock_quantity < item.quantity) {
-                insufficientProducts.push(product.name);
-              }
-            }
-          });
-
-          if (insufficientProducts.length > 0) {
-            toast.error(
-              `Yetersiz stok nedeniyle fatura olusturulamadi. Eksik urunler: ${insufficientProducts.join(", ")}`,
-              { id: toastId, duration: 5000 }
-            );
-            setActionLoading(null);
-            return;
-          }
-        }
+      if (!quoteItems || quoteItems.length === 0) {
+        throw new Error("Teklifte hic urun bulunamadi.");
       }
 
       const today = new Date();
@@ -171,45 +145,45 @@ export default function QuotesPage() {
       const randomNum = String(Math.floor(Math.random() * 1000)).padStart(3, "0");
       const invoiceNumber = `FTR-${year}-${month}-${day}-${randomNum}`;
 
-      const { data: newInvoice, error: invoiceError } = await supabase
-        .from("invoices")
-        .insert({
-          user_id: user.id,
-          created_by: user.id,
-          contact_id: quoteData.contact_id,
-          type: "sale",
-          invoice_number: invoiceNumber,
-          issue_date: new Date().toISOString().split("T")[0],
-          subtotal: quoteData.subtotal || 0,
-          tax_total: quoteData.tax_total || 0,
-          total_amount: quoteData.total_amount || 0,
-          notes: quoteData.notes || "",
-          status: "pending",
-          currency: "TRY",
-        })
-        .select()
-        .single();
-
-      if (invoiceError) throw invoiceError;
-
-      if (quoteItems && quoteItems.length > 0) {
-        const invoiceItemsToInsert = quoteItems.map((item: any) => ({
-          invoice_id: newInvoice.id,
+      // Call createInvoiceAction to handle everything including stock & balance
+      const actionResult = await createInvoiceAction({
+        user_id: user.id,
+        contact_id: quoteData.contact_id,
+        invoice_type: "sales",
+        issue_date: new Date().toISOString().split("T")[0],
+        notes: quoteData.notes || "",
+        line_items: quoteItems.map((item: any) => ({
           product_id: item.product_id,
-          quantity: item.quantity,
-          unit_price: item.unit_price,
-          vat_rate: item.vat_rate,
-          line_total: item.line_total,
-        }));
+          quantity: Number(item.quantity),
+          unit_price: Number(item.unit_price),
+          vat_rate: Number(item.vat_rate),
+        })),
+        status: "pending",
+        invoice_number: invoiceNumber,
+        currency: quoteData.currency || "TRY",
+        exchange_rate: quoteData.exchange_rate || 1,
+      });
 
-        const { error: insertItemsError } = await supabase
-          .from("invoice_items")
-          .insert(invoiceItemsToInsert);
-
-        if (insertItemsError) throw insertItemsError;
+      if (!actionResult.success) {
+        const errorMsg = actionResult.errors ? Object.values(actionResult.errors).join(", ") : actionResult.message;
+        throw new Error(errorMsg);
       }
 
-      toast.success("Fatura basariyla olusturuldu!", { id: toastId });
+      // Update quote status to prevent double conversion
+      const { error: updateError } = await supabase
+        .from("quotes")
+        .update({ status: "Invoiced" })
+        .eq("id", quote.id);
+
+      if (updateError) {
+        console.error("Error updating quote status:", updateError);
+        // We won't throw here to not revert the invoice success toast, but we should notify
+        toast.error("Fatura olusturuldu ancak teklif durumu guncellenemedi.", { id: toastId });
+      } else {
+        setQuotes((prev) => prev.map((q) => (q.id === quote.id ? { ...q, status: "Invoiced" } : q)));
+        toast.success("Fatura basariyla olusturuldu!", { id: toastId });
+      }
+
       router.push("/invoices");
     } catch (error: any) {
       console.error("Error converting to invoice:", error);
@@ -344,7 +318,7 @@ export default function QuotesPage() {
   const rejectedQuotes = filtered.filter((q) => (q.status?.toLowerCase() || "").includes("rejected") || (q.status?.toLowerCase() || "").includes("reddedildi")).length;
 
   return (
-    <div className="w-full p-8 max-w-[1600px] mx-auto bg-slate-50 min-h-screen">
+    <div className="p-6 lg:p-10 space-y-8">
       <Toaster position="top-right" />
       <div className="w-full space-y-8">
         {/* ── İstatistik Kartları ── */}
@@ -588,8 +562,8 @@ export default function QuotesPage() {
                                   : quote.status}
                           </span>
                         </td>
-                        <td className="w-[170px] px-6 py-5 text-center">
-                          <div className="flex items-center justify-center gap-2">
+                        <td className="w-[170px] px-6 py-5">
+                          <div className="flex items-center justify-end gap-2">
                             {isPending && (
                               <button
                                 onClick={() => handleApprove(quote.id)}

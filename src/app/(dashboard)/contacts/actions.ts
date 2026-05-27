@@ -189,6 +189,7 @@ export async function islemYapAction(formData: FormData) {
   const tutarStr = (formData.get("tutar") as string)?.trim();
   const notlar = (formData.get("notlar") as string)?.trim();
   const userId = (formData.get("user_id") as string)?.trim();
+  const invoiceId = (formData.get("invoice_id") as string)?.trim();
   
   if (!cariId || !islemTuru || !tutarStr || !userId) {
     return { success: false, message: "Eksik bilgi girdiniz." };
@@ -231,7 +232,6 @@ export async function islemYapAction(formData: FormData) {
       return { success: false, message: "Bakiye güncellenemedi." };
     }
 
-    // 4️⃣ INSERT CONTACT_LOGS (audit trail + single source of truth)
     const actionType = islemTuru === "Tahsilat" ? "manual_collection" : "manual_payment";
     const logNote = `${islemTuru} - ${notlar || "Açıklama yok"}`;
 
@@ -241,6 +241,7 @@ export async function islemYapAction(formData: FormData) {
         {
           business_id: userId,
           contact_id: cariId,
+          invoice_id: invoiceId || null,
           action_type: actionType,
           amount_change: balanceChange,
           previous_balance: previousBalance,
@@ -251,12 +252,27 @@ export async function islemYapAction(formData: FormData) {
       ]);
 
     if (logError) {
-      console.error("❌ contact_logs INSERT hatası:", logError);
-      // Not critical - balance already updated, log is just audit trail
-      return {
-        success: true,
-        message: "⚠️ İşlem kaydedildi ama log oluşturulamadı",
-      };
+      console.error("Contact log kaydedilemedi:", logError);
+      return { success: false, message: "İşlem logu kaydedilemedi." };
+    }
+
+    // 5️⃣ IF INVOICE SELECTED, UPDATE ITS STATUS IF FULLY PAID
+    if (invoiceId) {
+      const { data: invoice } = await supabaseServer
+        .from("invoices")
+        .select("total_amount, exchange_rate")
+        .eq("id", invoiceId)
+        .single();
+        
+      if (invoice) {
+        const invoiceTotalTry = Number(invoice.total_amount) * (Number(invoice.exchange_rate) || 1);
+        if (tutar >= invoiceTotalTry - 0.01) {
+          await supabaseServer
+            .from("invoices")
+            .update({ status: "paid", is_paid: true })
+            .eq("id", invoiceId);
+        }
+      }
     }
 
     // Audit trail (activity_logs)

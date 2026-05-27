@@ -33,6 +33,7 @@ export default function InvoicesPage() {
   const [contacts, setContacts] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(true);
   const [filterType, setFilterType] = useState<"all" | "sales" | "purchase">("all");
+  const [statusFilter, setStatusFilter] = useState<"all" | "paid" | "pending">("all");
   const [searchTerm, setSearchTerm] = useState("");
   const [downloadingPdfId, setDownloadingPdfId] = useState<string | null>(null);
   const [currentPage, setCurrentPage] = useState(0);
@@ -95,15 +96,22 @@ export default function InvoicesPage() {
   const filtered = invoices.filter((invoice) => {
     const typeMatch = filterType === "all" || invoice.type === (filterType === "sales" ? "sale" : filterType === "purchase" ? "purchase" : invoice.type);
     
+    const isPaid = invoice.is_paid === true || invoice.status === "paid";
+    const statusMatch = statusFilter === "all" || 
+                        (statusFilter === "paid" && isPaid) || 
+                        (statusFilter === "pending" && !isPaid);
+
+    const matchTypeAndStatus = typeMatch && statusMatch;
+
     if (!searchTerm.trim()) {
-      return typeMatch;
+      return matchTypeAndStatus;
     }
     
     const searchLower = searchTerm.toLowerCase().trim();
     const searchMatch =
       invoice.invoice_number.toLowerCase().includes(searchLower) ||
       (contacts[invoice.contact_id]?.toLowerCase().includes(searchLower) ?? false);
-    return typeMatch && searchMatch;
+    return matchTypeAndStatus && searchMatch;
   });
 
   // Fatura tutarları faturanın kendi para biriminde saklanır.
@@ -213,7 +221,7 @@ export default function InvoicesPage() {
   const paidInvoices = invoices.filter((inv) => inv.is_paid === true || inv.status === "paid").length;
 
   return (
-    <div className="w-full p-8 max-w-[1600px] mx-auto bg-slate-50 min-h-screen">
+    <div className="p-6 lg:p-10 space-y-8">
       {/* Content Area */}
       <div className="w-full space-y-8">
         {/* ── İstatistik Kartları ── */}
@@ -298,8 +306,22 @@ export default function InvoicesPage() {
             </button>
           </div>
 
-          {/* Sağ Taraf: Döviz + Yeni Fatura */}
+          {/* Sağ Taraf: Durum Filtresi + Döviz + Yeni Fatura */}
           <div className="flex items-center gap-3">
+            {/* Status Filter */}
+            <div className="flex items-center gap-2 bg-white border-2 border-indigo-50/50 rounded-xl px-3 py-1.5 shadow-sm">
+              <span className="text-[10px] font-bold text-slate-400 uppercase tracking-tighter">Durum:</span>
+              <select
+                value={statusFilter}
+                onChange={(e) => { setStatusFilter(e.target.value as any); setCurrentPage(0); }}
+                className="bg-transparent border-none text-sm font-semibold text-slate-600 outline-none focus:ring-0 cursor-pointer"
+              >
+                <option value="all">Tümü</option>
+                <option value="pending">Bekleyen</option>
+                <option value="paid">Ödenen</option>
+              </select>
+            </div>
+
             {/* Döviz Seçici */}
             <div className="flex items-center gap-2 bg-white border-2 border-purple-100 rounded-xl px-4 py-2 shadow-sm">
               <span className="text-[10px] font-bold text-slate-400 uppercase tracking-tighter">Görünüm:</span>

@@ -48,12 +48,12 @@ type Tab = (typeof TABS)[number];
 
 // fmt function is now handled by the hook
 
-function fmtDate(iso: string): { date: string; time: string } {
+function fmtDate(iso: string) {
   const d = new Date(iso);
-  return {
-    date: d.toLocaleDateString("tr-TR", { day: "2-digit", month: "short", year: "numeric" }),
-    time: d.toLocaleTimeString("tr-TR", { hour: "2-digit", minute: "2-digit" }),
-  };
+  return d.toLocaleDateString("tr-TR", { 
+    day: "2-digit", month: "short", year: "numeric", 
+    hour: "2-digit", minute: "2-digit" 
+  }).replace(" ", " ");
 }
 
 // durumStyle removed - contact_logs doesn't track status
@@ -94,6 +94,7 @@ export default function ContactDetailPage() {
 
   const [cari, setCari] = useState<ContactRecord | null>(null);
   const [allLogs, setAllLogs] = useState<ContactLog[]>([]);
+  const [unpaidInvoices, setUnpaidInvoices] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [notFound, setNotFound] = useState(false);
   const [activeTab, setActiveTab] = useState<Tab>("Tüm İşlemler");
@@ -110,6 +111,7 @@ export default function ContactDetailPage() {
   const editFormRef = useRef<HTMLFormElement>(null);
   const txFormRef = useRef<HTMLFormElement>(null);
   const [islemTipi, setIslemTipi] = useState<"Tahsilat" | "Ödeme">("Tahsilat");
+  const [selectedInvoice, setSelectedInvoice] = useState<any>(null);
 
   const { rates, viewCurrency, setViewCurrency, convert, format: fmt } = useCurrencyConverter();
 
@@ -149,6 +151,30 @@ export default function ContactDetailPage() {
       } else {
         setAllLogs([]);
       }
+
+      // ✅ Fetch unpaid invoices using fetchTeamScopedData to ensure team filtering works properly
+      const { data: { user } } = await supabase.auth.getUser();
+      if (user) {
+        const { fetchTeamScopedData } = await import("@/app/(dashboard)/teamActions");
+        const { data: invoicesData } = await fetchTeamScopedData(user.id, "invoices", "id, invoice_number, total_amount, currency, exchange_rate, type, status, issue_date", {
+          excludeDeleted: true,
+          additionalFilters: [
+            { column: "contact_id", operator: "eq", value: cariId }
+          ],
+          orderBy: "issue_date",
+          orderAscending: false
+        });
+
+        if (invoicesData) {
+          const filteredInvoices = invoicesData.filter((inv: any) => inv.status === "pending" || inv.status === "approved");
+          setUnpaidInvoices(filteredInvoices);
+        } else {
+          setUnpaidInvoices([]);
+        }
+      } else {
+        setUnpaidInvoices([]);
+      }
+
       setCurrentPage(0);
     } catch (err) {
       console.error("Fetch error:", err);
@@ -215,11 +241,15 @@ export default function ContactDetailPage() {
       fd.set("user_id", user.id);
       fd.set("cari_id", cariId);
       fd.set("islem_turu", islemTipi);
+      if (selectedInvoice) {
+        fd.set("invoice_id", selectedInvoice.id);
+      }
       
       const result = await islemYapAction(fd);
       if (result.success) {
         toast.success(result.message);
         setIsTransactionModalOpen(false);
+        setSelectedInvoice(null);
         txFormRef.current?.reset();
         await fetchData(false); // Reload data dynamically without full page reload
         await router.refresh(); // Invalidate Next.js cache
@@ -379,12 +409,54 @@ export default function ContactDetailPage() {
             </div>
           </div>
 
-          <button onClick={() => setIsTransactionModalOpen(true)} className="mt-6 flex w-full items-center justify-center gap-2 rounded-xl bg-primary py-3.5 text-sm font-black text-on-primary shadow-lg transition-all active:scale-95">
+          <button onClick={() => { setSelectedInvoice(null); setIsTransactionModalOpen(true); }} className="mt-6 flex w-full items-center justify-center gap-2 rounded-xl bg-primary py-3.5 text-sm font-black text-on-primary shadow-lg transition-all active:scale-95">
             <span className="material-symbols-outlined text-lg">payments</span>
             İşlem Yap
           </button>
         </div>
       </section>
+
+      {/* ── ÖDENMEMİŞ FATURALAR ── */}
+      {unpaidInvoices.length > 0 && (
+        <section className="mb-6 rounded-2xl bg-white border border-indigo-50/50 shadow-sm p-6">
+          <div className="flex items-center gap-2 mb-4">
+            <span className="material-symbols-outlined text-amber-500 text-xl">receipt_long</span>
+            <h3 className="text-sm font-black text-on-surface uppercase tracking-widest">Ödenmemiş / Bekleyen Faturalar</h3>
+          </div>
+          <div className="flex gap-4 overflow-x-auto pb-4 snap-x">
+            {unpaidInvoices.map((inv) => (
+              <div 
+                key={inv.id} 
+                className="shrink-0 w-64 rounded-xl border border-indigo-100 bg-slate-50 p-4 hover:shadow-md hover:-translate-y-1 transition-all cursor-pointer snap-start flex flex-col justify-between"
+                onClick={() => {
+                  setSelectedInvoice(inv);
+                  setIslemTipi(inv.type === 'sale' ? 'Tahsilat' : 'Ödeme');
+                  setIsTransactionModalOpen(true);
+                }}
+              >
+                <div>
+                  <div className="flex justify-between items-start mb-2">
+                    <span className="text-xs font-bold text-slate-500">{inv.invoice_number}</span>
+                    <span className={`text-[10px] font-bold px-2 py-0.5 rounded uppercase ${inv.type === 'sale' ? 'bg-emerald-100 text-emerald-700' : 'bg-rose-100 text-rose-700'}`}>
+                      {inv.type === 'sale' ? 'SATIŞ' : 'ALIŞ'}
+                    </span>
+                  </div>
+                  <div className="text-xl font-black text-slate-800 mb-1">
+                    {fmt(convert(inv.total_amount * (inv.exchange_rate || 1)), viewCurrency)}
+                  </div>
+                </div>
+                <div className="flex items-center justify-between mt-3 text-[10px] text-slate-400 font-bold">
+                  <span>{new Date(inv.issue_date).toLocaleDateString('tr-TR')}</span>
+                  <span className="text-primary group-hover:underline flex items-center gap-1">
+                    Ödeme Al
+                    <span className="material-symbols-outlined text-[12px]">arrow_forward</span>
+                  </span>
+                </div>
+              </div>
+            ))}
+          </div>
+        </section>
+      )}
 
       {/* ── TRANSACTION HISTORY ── */}
       <section className="rounded-2xl bg-white border border-indigo-50/50 shadow-sm overflow-hidden">
@@ -441,23 +513,19 @@ export default function ContactDetailPage() {
                   .slice(currentPage * ITEMS_PER_PAGE, (currentPage + 1) * ITEMS_PER_PAGE)
                   .map((log) => {
                     const { icon, color, label } = actionTypeToDisplay(log.action_type);
-                    const { date, time } = fmtDate(log.created_at);
                     return (
-                      <tr key={log.id} className="group hover:bg-indigo-50/30 transition-colors align-middle">
+                      <tr key={log.id} className="group hover:bg-indigo-50/30 transition-colors">
                         <td className="px-8 py-5 align-middle">
-                          <div className="flex flex-col">
-                            <span className="text-sm font-semibold text-slate-500">{date}</span>
-                            <span className="text-[10px] text-slate-400">{time}</span>
-                          </div>
+                          <span className="text-sm font-bold text-slate-500 whitespace-nowrap">{fmtDate(log.created_at)}</span>
                         </td>
                         <td className="px-4 py-5 align-middle">
                           <div className="flex items-center gap-2">
                             <span className={`material-symbols-outlined text-lg ${color}`}>{icon}</span>
-                            <span className="text-sm font-bold text-on-surface">{label}</span>
+                            <span className="text-sm font-bold text-on-surface whitespace-nowrap">{label}</span>
                           </div>
                         </td>
-                        <td className="px-4 py-5 align-middle">
-                          <span className="text-sm text-slate-500 italic line-clamp-2 break-words" title={log.note || ""}>{log.note || "—"}</span>
+                        <td className="px-4 py-5 align-middle max-w-[200px]">
+                          <span className="text-sm text-slate-600 font-medium break-words" title={log.note || ""}>{log.note || "—"}</span>
                         </td>
                         <td className="px-4 py-5 text-right font-black text-on-surface tabular-nums align-middle">
                           {log.amount_change < 0 ? "-" : ""}{fmt(convert(Math.abs(log.amount_change)), viewCurrency)}
@@ -564,11 +632,11 @@ export default function ContactDetailPage() {
           <div className="bg-white rounded-3xl w-full max-w-md p-8 shadow-2xl">
             <div className="flex items-center justify-between mb-6">
               <h2 className="text-xl font-black text-on-surface">İşlem Yap (Nakit)</h2>
-              <button onClick={() => setIsTransactionModalOpen(false)} className="text-slate-400 hover:text-error transition-colors">
+              <button onClick={() => { setIsTransactionModalOpen(false); setSelectedInvoice(null); }} className="text-slate-400 hover:text-error transition-colors">
                 <span className="material-symbols-outlined">close</span>
               </button>
             </div>
-            <form ref={txFormRef} onSubmit={handleTxSubmit} className="space-y-4">
+            <form key={selectedInvoice ? selectedInvoice.id : "new-tx"} ref={txFormRef} onSubmit={handleTxSubmit} className="space-y-4">
               <div>
                 <label className="mb-1.5 block text-xs font-bold uppercase tracking-widest text-slate-400">İşlem Türü</label>
                 <div className="flex gap-2 p-1 bg-slate-50 rounded-xl border border-indigo-100">
@@ -590,14 +658,14 @@ export default function ContactDetailPage() {
               </div>
               <div>
                 <label className="mb-1.5 block text-xs font-bold uppercase tracking-widest text-slate-400">Tutar (TRY)</label>
-                <input name="tutar" type="number" step="0.01" min="0" required placeholder="0.00" className="w-full rounded-xl border border-indigo-100 bg-white px-4 py-2.5 text-sm outline-none focus:ring-2 focus:ring-primary font-black" />
+                <input name="tutar" type="number" step="0.01" min="0" required defaultValue={selectedInvoice ? selectedInvoice.total_amount * (selectedInvoice.exchange_rate || 1) : ""} placeholder="0.00" className="w-full rounded-xl border border-indigo-100 bg-white px-4 py-2.5 text-sm outline-none focus:ring-2 focus:ring-primary font-black" />
               </div>
               <div>
                 <label className="mb-1.5 block text-xs font-bold uppercase tracking-widest text-slate-400">Notlar / Açıklama</label>
-                <textarea name="notlar" rows={3} placeholder="İşlem ile ilgili notlarınız..." className="w-full rounded-xl border border-indigo-100 bg-white px-4 py-2.5 text-sm resize-none outline-none focus:ring-2 focus:ring-primary" />
+                <textarea name="notlar" rows={3} defaultValue={selectedInvoice ? `Fatura #${selectedInvoice.invoice_number} Ödemesi` : ""} placeholder="İşlem ile ilgili notlarınız..." className="w-full rounded-xl border border-indigo-100 bg-white px-4 py-2.5 text-sm resize-none outline-none focus:ring-2 focus:ring-primary" />
               </div>
               <div className="flex justify-end gap-3 mt-6">
-                <button type="button" onClick={() => setIsTransactionModalOpen(false)} className="px-5 py-2.5 rounded-xl font-bold text-slate-500 hover:bg-slate-50">İptal</button>
+                <button type="button" onClick={() => { setIsTransactionModalOpen(false); setSelectedInvoice(null); }} className="px-5 py-2.5 rounded-xl font-bold text-slate-500 hover:bg-slate-50">İptal</button>
                 <button type="submit" disabled={isPendingTx} className="px-6 py-2.5 rounded-xl font-black bg-primary text-on-primary shadow-lg hover:bg-opacity-90 disabled:opacity-50">
                   {isPendingTx ? "Kaydediliyor..." : "İşlemi Tamamla"}
                 </button>

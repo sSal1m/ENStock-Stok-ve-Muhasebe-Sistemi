@@ -91,6 +91,9 @@ export default function InventoryPage() {
   const [stats, setStats] = useState<Stats | null>(null);
   const [criticalItems, setCriticalItems] = useState<Product[]>([]);
 
+  const [currentPage, setCurrentPage] = useState(0);
+  const ITEMS_PER_PAGE = 5;
+
   const [search, setSearch] = useState("");
   const [categoryFilter, setCategoryFilter] = useState("all");
   const [stockFilter, setStockFilter] = useState("all");
@@ -209,6 +212,7 @@ export default function InventoryPage() {
     }
 
     setFiltered(result);
+    setCurrentPage(0);
   }, [search, stockFilter, products, categoryFilter, categories]);
 
   // ── Excel Export Handler ──
@@ -249,6 +253,13 @@ export default function InventoryPage() {
     XLSX.writeFile(workbook, `Stoklar_${new Date().toISOString().split("T")[0]}.xlsx`);
     toast.success("Excel dosyası başarıyla indirildi.");
   };
+
+  // Pagination
+  const totalPages = Math.max(1, Math.ceil(filtered.length / ITEMS_PER_PAGE));
+  const paginatedProducts = filtered.slice(
+    currentPage * ITEMS_PER_PAGE,
+    (currentPage + 1) * ITEMS_PER_PAGE
+  );
 
   // ── Hata Durumu ──────────────────────────────────────────────────────────
   if (error) {
@@ -493,7 +504,7 @@ export default function InventoryPage() {
                   </td>
                 </tr>
               ) : (
-                filtered.map((item) => {
+                paginatedProducts.map((item) => {
                   const level = getStockLevel(item.stock_quantity, item.critical_limit);
                   const percent = getStockPercent(item.stock_quantity, item.critical_limit);
                   const parsed = parseDescription(item.description);
@@ -614,13 +625,21 @@ export default function InventoryPage() {
             tanesi gösteriliyor
           </p>
           <div className="flex items-center gap-1">
-            <button className="p-2 text-slate-400 hover:text-indigo-600 hover:bg-white rounded-lg transition-colors border border-transparent hover:border-indigo-100">
+            <button 
+              onClick={() => setCurrentPage(Math.max(0, currentPage - 1))}
+              disabled={currentPage === 0}
+              className="p-2 text-slate-400 hover:text-indigo-600 hover:bg-white rounded-lg transition-colors border border-transparent hover:border-indigo-100 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
               <span className="material-symbols-outlined">chevron_left</span>
             </button>
             <button className="w-8 h-8 flex items-center justify-center bg-indigo-600 text-white rounded-lg font-bold text-sm shadow-sm">
-              1
+              {currentPage + 1}
             </button>
-            <button className="p-2 text-slate-400 hover:text-indigo-600 hover:bg-white rounded-lg transition-colors border border-transparent hover:border-indigo-100">
+            <button 
+              onClick={() => setCurrentPage(Math.min(totalPages - 1, currentPage + 1))}
+              disabled={currentPage === totalPages - 1}
+              className="p-2 text-slate-400 hover:text-indigo-600 hover:bg-white rounded-lg transition-colors border border-transparent hover:border-indigo-100 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
               <span className="material-symbols-outlined">chevron_right</span>
             </button>
           </div>

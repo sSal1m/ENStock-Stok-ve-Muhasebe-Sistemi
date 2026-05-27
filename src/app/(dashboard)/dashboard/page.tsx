@@ -157,14 +157,21 @@ export default function DashboardPage() {
         // ile TRY'ye çevirip topluyoruz. Display tarafında convert(TRY → viewCurrency)
         // ile gösterilecek. Sadece "sale" faturalar ciro sayılır.
         let totalRevenueTry = 0;
+        let totalSales = 0;
+        let totalPurchases = 0;
         if (revenueRes.data) {
-          totalRevenueTry = revenueRes.data
-            .filter((inv: any) => inv.type === 'sale')
-            .reduce((sum: number, inv: any) => {
-              const amount = Number(inv.total_amount) || 0;
-              const rate = Number(inv.exchange_rate) || 1; // 1 USD = ? TRY
-              return sum + amount * rate;
-            }, 0);
+          revenueRes.data.forEach((inv: any) => {
+            const amount = Number(inv.total_amount) || 0;
+            const rate = Number(inv.exchange_rate) || 1;
+            const tryAmount = amount * rate;
+            
+            if (inv.type === 'sale') {
+              totalSales += tryAmount;
+            } else if (inv.type === 'purchase') {
+              totalPurchases += tryAmount;
+            }
+          });
+          totalRevenueTry = totalSales - totalPurchases;
         }
 
         let processedActivities: ActivityLog[] = [];
@@ -419,7 +426,7 @@ export default function DashboardPage() {
       const kpiExport = [
         { "Metrik": "Toplam Ürün", "Değer": kpiData.totalProducts.toString() },
         { "Metrik": "Kritik Stok Ürünleri", "Değer": kpiData.criticalStockItems.toString() },
-        { "Metrik": "Günlük Satış Cirosu", "Değer": fmt(convert(kpiData.todayRevenue), viewCurrency) },
+        { "Metrik": "Günlük Net Cirosu", "Değer": fmt(convert(kpiData.todayRevenue), viewCurrency) },
         { "Metrik": "Stok Sağlığı", "Değer": `%${kpiData.stockHealth}` },
       ];
       const kpiSheet = XLSX.utils.json_to_sheet(kpiExport);
@@ -532,7 +539,7 @@ export default function DashboardPage() {
             </div>
           </div>
           <p className="text-xs font-bold text-slate-500 uppercase tracking-widest">
-            Günlük Satış Cirosu
+            Günlük Net Cirosu
           </p>
           <h3 className="text-2xl font-extrabold mt-1 text-slate-900">
             {fmt(convert(kpiData.todayRevenue), viewCurrency)}

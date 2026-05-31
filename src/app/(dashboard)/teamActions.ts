@@ -82,11 +82,24 @@ export interface InventoryData {
 export async function fetchInventoryData(userId: string): Promise<InventoryData> {
   const teamIds = await getTeamIdsSecure(userId);
 
+  // 0. Get user's business_id for categories
+  const { data: myProfile } = await supabaseAdmin
+    .from("profiles")
+    .select("business_id")
+    .eq("id", userId)
+    .single();
+  const businessId = myProfile?.business_id;
+
   // 1. Categories
-  const { data: categoryData } = await applyTeamFilterServer(
-    supabaseAdmin.from("categories").select("id, name"),
-    teamIds
-  ).order("name");
+  let categoryData: any = [];
+  if (businessId) {
+    const { data } = await supabaseAdmin
+      .from("categories")
+      .select("id, name")
+      .eq("business_id", businessId)
+      .order("name");
+    categoryData = data;
+  }
 
   // 2. Products (exclude trash)
   const { data: productData } = await applyTeamFilterServer(

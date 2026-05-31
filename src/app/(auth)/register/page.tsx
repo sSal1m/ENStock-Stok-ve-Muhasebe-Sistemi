@@ -166,6 +166,7 @@ export default function RegisterPage() {
               company_name: formData.companyName,
               tax_id: formData.taxId,
               business_sector: formData.businessSector,
+              role: 'admin',
             },
           },
         });

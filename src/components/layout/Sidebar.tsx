@@ -1,6 +1,7 @@
 
 'use client';
 
+import Image from 'next/image';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import React, { useState, useEffect } from 'react';
@@ -41,39 +42,70 @@ export default function Sidebar() {
     const fetchProfile = async () => {
       try {
         const { data: { user } } = await supabase.auth.getUser();
-        if (user) {
-          const { data } = await supabase
+        if (!user) return;
+
+        // Aktif kullanıcının profilini çekerek business_id'yi bul
+        const { data: myProfile } = await supabase
+          .from('profiles')
+          .select('business_id')
+          .eq('id', user.id)
+          .single();
+
+        if (myProfile?.business_id) {
+          // Bu şirketin admin profilini çek (logoyu admin yüklüyor)
+          const { data: adminProfile } = await supabase
             .from('profiles')
-            .select('company_name, logo_url')
-            .eq('id', user.id)
+            .select('id, company_name, logo_url')
+            .eq('business_id', myProfile.business_id)
+            .eq('role', 'admin')
+            .limit(1)
             .single();
-          
-          if (data) {
-            setProfile(data as UserProfile);
+
+          if (adminProfile) {
+            let finalLogoUrl = adminProfile.logo_url;
+            
+            // Eğer URL tam bir http linki değilse storage'dan public URL'e çevir
+            if (finalLogoUrl && !finalLogoUrl.startsWith('http')) {
+              const { data: publicUrlData } = supabase.storage.from('logos').getPublicUrl(finalLogoUrl);
+              finalLogoUrl = publicUrlData.publicUrl;
+            }
+
+            setProfile({
+              company_name: adminProfile.company_name || 'Şirketim',
+              logo_url: finalLogoUrl
+            });
+
+            // Realtime listener'ı doğrudan admin profilini dinleyecek şekilde kur
+            channel = supabase
+              .channel('sidebar-profile-changes')
+              .on(
+                'postgres_changes',
+                {
+                  event: 'UPDATE',
+                  schema: 'public',
+                  table: 'profiles',
+                  filter: `id=eq.${adminProfile.id}`,
+                },
+                (payload) => {
+                  let updatedLogoUrl = payload.new.logo_url;
+                  if (updatedLogoUrl && !updatedLogoUrl.startsWith('http')) {
+                    const { data: publicUrlData } = supabase.storage.from('logos').getPublicUrl(updatedLogoUrl);
+                    updatedLogoUrl = publicUrlData.publicUrl;
+                  }
+
+                  setProfile(prev => prev ? {
+                    ...prev,
+                    company_name: payload.new.company_name || prev.company_name,
+                    logo_url: payload.new.logo_url !== undefined ? updatedLogoUrl : prev.logo_url
+                  } : null);
+                }
+              )
+              .subscribe();
           } else {
             setProfile({ company_name: 'Şirketim', logo_url: null });
           }
-
-          // Realtime listener for company name & logo updates
-          channel = supabase
-            .channel('sidebar-profile-changes')
-            .on(
-              'postgres_changes',
-              {
-                event: 'UPDATE',
-                schema: 'public',
-                table: 'profiles',
-                filter: `id=eq.${user.id}`,
-              },
-              (payload) => {
-                setProfile(prev => prev ? {
-                  ...prev,
-                  company_name: payload.new.company_name || prev.company_name,
-                  logo_url: payload.new.logo_url !== undefined ? payload.new.logo_url : prev.logo_url
-                } : null);
-              }
-            )
-            .subscribe();
+        } else {
+          setProfile({ company_name: 'Şirketim', logo_url: null });
         }
       } catch (error) {
         console.error('Sidebar profil yükleme hatası:', error);
@@ -110,11 +142,13 @@ export default function Sidebar() {
       {/* Logo/Brand Section */}
       <div className="p-5 border-b border-surface-container-high flex items-center gap-4">
         {profile?.logo_url ? (
-          <div className="w-14 h-14 rounded-xl overflow-hidden border border-surface-container-high flex-shrink-0 relative shadow-sm hover:scale-[1.03] transition-transform duration-200 bg-white dark:bg-slate-900 flex items-center justify-center">
-            <img
+          <div className="w-14 h-14 rounded-xl overflow-hidden border border-surface-container-high flex-shrink-0 relative shadow-sm hover:scale-[1.03] transition-transform duration-200 bg-white dark:bg-slate-900 flex items-center justify-center relative">
+            <Image
               src={profile.logo_url}
               alt="Logo"
-              className="w-full h-full object-cover"
+              fill
+              sizes="(max-width: 768px) 56px, 56px"
+              className="object-cover"
             />
           </div>
         ) : (

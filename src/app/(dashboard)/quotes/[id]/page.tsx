@@ -7,6 +7,7 @@ import { supabase } from "@/lib/supabaseClient";
 import toast from "react-hot-toast";
 import { useCurrencyConverter } from "@/hooks/useCurrencyConverter";
 import CurrencySwitcher from "@/components/common/CurrencySwitcher";
+import { fetchTeamQuoteById } from "../actions";
 
 interface QuoteItem {
   id: string;
@@ -61,28 +62,16 @@ export default function QuoteDetailsPage() {
           return;
         }
 
-        const { data: quoteData, error: quoteError } = await supabase
-          .from("quotes")
-          .select(`*, contacts (name, tax_number, tax_office, address)`)
-          .eq("id", quoteId)
-          .single();
+        const res = await fetchTeamQuoteById(user.id, quoteId);
 
-        if (quoteError || !quoteData) {
-          console.error("Teklif bulunamadı:", quoteError);
+        if (!res.success || !res.quote) {
+          console.error("Teklif bulunamadı:", res.error);
           setLoading(false);
           return;
         }
 
-        setQuote(quoteData as any);
-
-        const { data: itemsData, error: itemsError } = await supabase
-          .from("quote_items")
-          .select("*, products(name)")
-          .eq("quote_id", quoteId);
-
-        if (!itemsError && itemsData) {
-          setItems(itemsData);
-        }
+        setQuote(res.quote as any);
+        setItems(res.items || []);
       } catch (err) {
         console.error("Beklenmeyen hata:", err);
       } finally {

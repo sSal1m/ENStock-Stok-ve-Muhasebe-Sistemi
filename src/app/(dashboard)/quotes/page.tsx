@@ -9,6 +9,7 @@ import { useCurrencyConverter } from "@/hooks/useCurrencyConverter";
 import { softDeleteQuote } from "@/app/(dashboard)/trash/actions";
 import { createInvoiceAction } from "@/app/(dashboard)/invoices/actions";
 import { usePermissions } from "@/hooks/usePermissions";
+import { fetchTeamQuotes } from "./actions";
 
 interface Quote {
   id: string;
@@ -50,21 +51,15 @@ export default function QuotesPage() {
       return;
     }
 
-    const { data: quotesData, error: quotesError } = await supabase
-      .from("quotes")
-      .select("*")
-      .eq("user_id", user.id)
-      .is("deleted_at", null)
-      .order("created_at", { ascending: false });
+    const res = await fetchTeamQuotes(user.id);
 
-    if (quotesError) {
-      console.error("Error fetching quotes:", quotesError);
+    if (!res.success) {
       toast.error("Teklifler yuklenirken bir hata olustu.");
       setLoading(false);
       return;
     }
 
-    const normalizedQuotes = (quotesData || []) as Quote[];
+    const normalizedQuotes = (res.quotes || []) as Quote[];
     normalizedQuotes.sort((a, b) => {
       const aDate = a.issue_date || a.quote_date || a.created_at || "";
       const bDate = b.issue_date || b.quote_date || b.created_at || "";
@@ -72,22 +67,7 @@ export default function QuotesPage() {
     });
 
     setQuotes(normalizedQuotes);
-
-    if (normalizedQuotes.length > 0) {
-      const contactIds = [...new Set(normalizedQuotes.map((q) => q.contact_id).filter(Boolean))];
-      if (contactIds.length > 0) {
-        const { data: contactsData } = await supabase
-          .from("contacts")
-          .select("id, name")
-          .in("id", contactIds);
-
-        const contactMap: Record<string, string> = {};
-        (contactsData || []).forEach((c: any) => {
-          contactMap[c.id] = c.name;
-        });
-        setContacts(contactMap);
-      }
-    }
+    setContacts(res.contacts || {});
 
     setLoading(false);
   };

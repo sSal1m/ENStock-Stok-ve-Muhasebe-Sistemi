@@ -8,7 +8,8 @@ import { useCurrencyConverter } from "@/hooks/useCurrencyConverter";
 import { fetchDefaultCurrency } from "@/lib/defaultCurrency";
 import { toast, Toaster } from "react-hot-toast";
 import { usePermissions } from "@/hooks/usePermissions";
-import { fetchTeamQuoteById } from "../actions";
+import { fetchTeamQuoteById, saveQuoteAction } from "../actions";
+import { fetchTeamScopedData } from "@/app/(dashboard)/teamActions";
 
 interface Contact {
   id: string;
@@ -269,13 +270,12 @@ export default function NewQuotePage() {
         prevCurrencyRef.current = defaultCur;
       }
 
-      const { data: contactsData } = await supabase.from("contacts").select("*").order("name");
+      const resContacts = await fetchTeamScopedData(user.id, "contacts", "*", { orderBy: "name" });
+      const contactsData = resContacts.data;
       if (contactsData) setContacts(contactsData as Contact[]);
 
-      const { data: productsData } = await supabase
-        .from("products")
-        .select("id, name, sale_price, sale_price_in_currency, currency, tax_rate, stock_quantity")
-        .order("name");
+      const resProducts = await fetchTeamScopedData(user.id, "products", "id, name, sale_price, sale_price_in_currency, currency, tax_rate, stock_quantity", { orderBy: "name" });
+      const productsData = resProducts.data;
       if (productsData) setProducts(productsData as Product[]);
 
       if (editQuoteId) {
@@ -375,14 +375,15 @@ export default function NewQuotePage() {
       return;
     }
 
-    const { data } = await supabase
-      .from("products")
-      .select("id, name, sale_price, sale_price_in_currency, currency, tax_rate, stock_quantity")
-      .ilike("name", `%${term}%`)
-      .limit(10);
+    if (!userId) return;
 
-    if (data) {
-      setProductSuggestions((prev) => ({ ...prev, [id]: data as Product[] }));
+    const res = await fetchTeamScopedData(userId, "products", "id, name, sale_price, sale_price_in_currency, currency, tax_rate, stock_quantity", {
+      additionalFilters: [{ column: "name", operator: "ilike", value: `%${term}%` }],
+      limit: 10
+    });
+
+    if (res.data) {
+      setProductSuggestions((prev) => ({ ...prev, [id]: res.data as Product[] }));
       setShowProductSuggestions((prev) => ({ ...prev, [id]: true }));
     }
   };
@@ -444,55 +445,21 @@ export default function NewQuotePage() {
       // Teklif currency'sine göre exchange_rate (TCMB selling) — TRY için 1
       const exchangeRate = currency === "TRY" ? 1 : (rates?.[currency]?.selling || 1);
 
-      if (editQuoteId) {
-        const { data: updated, error: updateError } = await supabase
-          .from("quotes")
-          .update({
-            contact_id: contactId,
-            quote_number: quoteNumber.trim(),
-            issue_date: issueDate,
-            subtotal,
-            tax_total,
-            total_amount,
-            currency,
-            exchange_rate: exchangeRate,
-            notes,
-            validity_days: parseValidityDays(validityDays),
-          })
-          .eq("id", editQuoteId)
-          .select()
-          .single();
-
-        if (updateError) throw updateError;
-        quoteData = updated;
-
-        await supabase.from("quote_items").delete().eq("quote_id", editQuoteId);
-      } else {
-        const { data: created, error: quoteError } = await supabase
-          .from("quotes")
-          .insert({
-            user_id: user.id,
-            contact_id: contactId,
-            quote_number: quoteNumber.trim() || fallbackQuoteNumber,
-            issue_date: issueDate,
-            subtotal,
-            tax_total,
-            total_amount,
-            currency,
-            exchange_rate: exchangeRate,
-            notes,
-            status: "Pending",
-            validity_days: parseValidityDays(validityDays),
-          })
-          .select()
-          .single();
-
-        if (quoteError) throw quoteError;
-        quoteData = created;
-      }
+      const quoteToSave = {
+        contact_id: contactId,
+        quote_number: quoteNumber.trim() || fallbackQuoteNumber,
+        issue_date: issueDate,
+        subtotal,
+        tax_total,
+        total_amount,
+        currency,
+        exchange_rate: exchangeRate,
+        notes,
+        validity_days: parseValidityDays(validityDays),
+        status: "Pending", // Will be ignored by update if not needed, but good for insert
+      };
 
       const itemsToInsert = validItems.map((item) => ({
-        quote_id: quoteData.id,
         product_id: item.product_id || null,
         quantity: Number(item.quantity) || 0,
         unit_price: Number(item.price) || 0,
@@ -500,8 +467,11 @@ export default function NewQuotePage() {
         line_total: (Number(item.quantity) || 0) * (Number(item.price) || 0) * (1 + item.vatRate / 100),
       }));
 
-      const { error: itemsError } = await supabase.from("quote_items").insert(itemsToInsert);
-      if (itemsError) throw itemsError;
+      const result = await saveQuoteAction(user.id, quoteToSave, itemsToInsert, editQuoteId || undefined);
+
+      if (!result.success) {
+        throw new Error(result.error || "Teklif kaydedilemedi.");
+      }
 
       const message = editQuoteId ? "Teklif başarıyla güncellendi!" : "Teklif başarıyla oluşturuldu!";
       setSuccessMsg(message + " Yönlendiriliyorsunuz...");

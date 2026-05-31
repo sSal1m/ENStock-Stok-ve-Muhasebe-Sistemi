@@ -200,3 +200,25 @@ export async function updateUserProfileSecure(currentUserId: string, targetProfi
     return { success: false, error: error.message };
   }
 }
+
+/* ═══════════════════════════════════════════
+   USER PERMISSIONS (bypasses RLS)
+   ═══════════════════════════════════════════ */
+
+export async function fetchUserPermissionsAction(userId: string, role: string) {
+  try {
+    const [rolePermsRes, userPermsRes] = await Promise.all([
+      supabaseAdmin.from('role_permissions').select('*').eq('role', role),
+      supabaseAdmin.from('role_permissions').select('*').eq('role', userId)
+    ]);
+    
+    return {
+      success: true,
+      rolePerms: rolePermsRes.data || [],
+      userPerms: userPermsRes.data || []
+    };
+  } catch (error: any) {
+    return { success: false, error: error.message, rolePerms: [], userPerms: [] };
+  }
+}
+

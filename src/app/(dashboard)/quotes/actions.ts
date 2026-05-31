@@ -92,3 +92,67 @@ export async function fetchTeamQuoteById(userId: string, quoteId: string) {
     return { success: false, error: String(error) };
   }
 }
+
+import { checkPermission } from "@/lib/authHelpers";
+
+export async function saveQuoteAction(userId: string, quoteData: any, itemsData: any[], editQuoteId?: string) {
+  try {
+    const isEditing = !!editQuoteId;
+    const permissionAction = isEditing ? "can_edit" : "can_create";
+    const hasAccess = await checkPermission("quotes", permissionAction);
+    
+    if (!hasAccess) {
+      return { success: false, error: "Bu işlem için yetkiniz bulunmamaktadır." };
+    }
+
+    const teamIds = await getTeamIdsSecure(userId);
+    let finalQuoteId = editQuoteId;
+
+    if (editQuoteId) {
+      // Check if user has access to edit this quote
+      const { data: existingQuote } = await supabaseAdmin
+        .from("quotes")
+        .select("user_id")
+        .eq("id", editQuoteId)
+        .single();
+      
+      if (!existingQuote || !teamIds.includes(existingQuote.user_id)) {
+        return { success: false, error: "Yetkisiz işlem: Bu teklifi düzenleyemezsiniz." };
+      }
+
+      const { error: updateError } = await supabaseAdmin
+        .from("quotes")
+        .update(quoteData)
+        .eq("id", editQuoteId);
+      
+      if (updateError) return { success: false, error: updateError.message };
+
+      // Delete old items
+      await supabaseAdmin.from("quote_items").delete().eq("quote_id", editQuoteId);
+    } else {
+      const { data: created, error: insertError } = await supabaseAdmin
+        .from("quotes")
+        .insert({ ...quoteData, user_id: userId })
+        .select()
+        .single();
+      
+      if (insertError) return { success: false, error: insertError.message };
+      finalQuoteId = created.id;
+    }
+
+    // Insert new items
+    const itemsToInsert = itemsData.map((item) => ({
+      ...item,
+      quote_id: finalQuoteId,
+    }));
+
+    const { error: itemsError } = await supabaseAdmin.from("quote_items").insert(itemsToInsert);
+    if (itemsError) return { success: false, error: itemsError.message };
+
+    return { success: true, quote_id: finalQuoteId };
+  } catch (error: any) {
+    console.error("Exception in saveQuoteAction:", error);
+    return { success: false, error: error.message || String(error) };
+  }
+}
+

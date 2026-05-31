@@ -25,6 +25,14 @@ const MODULES = [
     actions: { view: true, create: true, edit: true, delete: true },
   },
   {
+    id: "quotes",
+    title: "Teklifler",
+    description: "Müşteri Teklif Yönetimi",
+    icon: "description",
+    color: "amber",
+    actions: { view: true, create: true, edit: true, delete: true },
+  },
+  {
     id: "invoices",
     title: "Fatura",
     description: "Alış, Satış ve Gider Faturası",
@@ -46,24 +54,28 @@ const DEFAULT_ROLE_PERMS: Record<string, any> = {
   admin: {
     stock: { view: true, create: true, edit: true, delete: true },
     contacts: { view: true, create: true, edit: false, delete: true },
+    quotes: { view: true, create: true, edit: true, delete: true },
     invoices: { view: true, create: true, edit: false, delete: true },
     reports: { view: true, create: false, edit: false, delete: false },
   },
   accounting: {
     stock: { view: false, create: false, edit: false, delete: false },
     contacts: { view: true, create: true, edit: false, delete: true },
+    quotes: { view: true, create: true, edit: true, delete: true },
     invoices: { view: true, create: true, edit: false, delete: true },
     reports: { view: true, create: false, edit: false, delete: false },
   },
   warehouse: {
     stock: { view: true, create: true, edit: true, delete: true },
     contacts: { view: false, create: false, edit: false, delete: false },
+    quotes: { view: false, create: false, edit: false, delete: false },
     invoices: { view: false, create: false, edit: false, delete: false },
     reports: { view: false, create: false, edit: false, delete: false },
   },
   manager: {
     stock: { view: true, create: true, edit: true, delete: false },
     contacts: { view: true, create: true, edit: false, delete: false },
+    quotes: { view: true, create: true, edit: true, delete: false },
     invoices: { view: true, create: true, edit: false, delete: false },
     reports: { view: false, create: false, edit: false, delete: false },
   }

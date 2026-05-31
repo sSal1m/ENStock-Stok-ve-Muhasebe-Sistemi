@@ -3,6 +3,7 @@
 import { createClient } from "@supabase/supabase-js";
 import { revalidatePath } from "next/cache";
 import { logActivity } from "@/lib/activityLogger";
+import { checkPermission } from "@/lib/authHelpers";
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
@@ -226,6 +227,13 @@ export async function getNextInvoiceNumber(userId: string, invoiceType: "sales" 
    ═══════════════════════════════════════════ */
 
 export async function createInvoiceAction(request: CreateInvoiceRequest): Promise<InvoiceActionState> {
+  const isEditing = !!request.invoice_id;
+  const permissionAction = isEditing ? "can_edit" : "can_create";
+  const hasAccess = await checkPermission("invoices", permissionAction);
+  if (!hasAccess) {
+    return { success: false, message: "Bu işlem için yetkiniz bulunmamaktadır." };
+  }
+
   const { 
     user_id, contact_id, invoice_type, issue_date, notes, line_items, 
     status = "draft", invoice_id, invoice_number: reqInvoiceNumber,
@@ -827,6 +835,14 @@ export async function createInvoiceAction(request: CreateInvoiceRequest): Promis
 export async function updateProposalAction(
   formData: FormData
 ): Promise<InvoiceActionState> {
+  const hasAccess = await checkPermission("quotes", "can_edit");
+  if (!hasAccess) {
+    return {
+      success: false,
+      message: "Bu işlem için yetkiniz bulunmamaktadır.",
+    };
+  }
+
   try {
     const userId = formData.get("user_id") as string;
     const proposalId = formData.get("proposal_id") as string;

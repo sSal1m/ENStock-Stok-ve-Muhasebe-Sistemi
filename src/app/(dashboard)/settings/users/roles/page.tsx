@@ -25,6 +25,14 @@ const MODULES = [
     actions: { view: true, create: true, edit: true, delete: true },
   },
   {
+    id: "quotes",
+    title: "Teklifler",
+    description: "Teklif ve Fiyatlandırma Yönetimi",
+    icon: "description",
+    color: "amber",
+    actions: { view: true, create: true, edit: true, delete: true },
+  },
+  {
     id: "invoices",
     title: "Fatura",
     description: "Alış, Satış ve Gider Faturası",
@@ -119,7 +127,7 @@ export default function RolesPermissionsPage() {
               canView = true;
               canAll = true;
             } else if (r.id === 'accounting') {
-              if (['invoices', 'reports', 'contacts'].includes(m.id)) {
+              if (['invoices', 'reports', 'contacts', 'quotes'].includes(m.id)) {
                 canView = true;
                 canAll = true;
               }
@@ -129,7 +137,7 @@ export default function RolesPermissionsPage() {
                 canAll = true;
               }
             } else if (r.id === 'manager') {
-              if (['stock', 'contacts', 'invoices'].includes(m.id)) {
+              if (['stock', 'contacts', 'invoices', 'quotes'].includes(m.id)) {
                 canView = true;
                 // Manager can create/edit but not delete usually
                 if (m.id !== 'reports') canAll = true;

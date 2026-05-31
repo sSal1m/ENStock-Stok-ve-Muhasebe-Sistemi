@@ -3,6 +3,7 @@
 import { createClient } from "@supabase/supabase-js";
 import { revalidatePath } from "next/cache";
 import { logActivity } from "@/lib/activityLogger";
+import { checkPermission } from "@/lib/authHelpers";
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
@@ -49,6 +50,11 @@ function applyTeamFilterServer(query: any, teamIds: string[], column = "user_id"
    ═══════════════════════════════════════════ */
 
 export async function softDeleteProduct(productId: string, userId: string) {
+  const hasAccess = await checkPermission("stock", "can_delete");
+  if (!hasAccess) {
+    return { success: false, message: "Bu işlem için yetkiniz bulunmamaktadır." };
+  }
+
   try {
     const { data: product } = await supabaseServer
       .from("products")
@@ -91,6 +97,11 @@ export async function softDeleteProduct(productId: string, userId: string) {
    ═══════════════════════════════════════════ */
 
 export async function softDeleteContact(contactId: string, userId: string) {
+  const hasAccess = await checkPermission("contacts", "can_delete");
+  if (!hasAccess) {
+    return { success: false, message: "Bu işlem için yetkiniz bulunmamaktadır." };
+  }
+
   try {
     const { data: contact } = await supabaseServer
       .from("contacts")
@@ -133,6 +144,11 @@ export async function softDeleteContact(contactId: string, userId: string) {
    ═══════════════════════════════════════════ */
 
 export async function softDeleteInvoice(invoiceId: string, userId: string) {
+  const hasAccess = await checkPermission("invoices", "can_delete");
+  if (!hasAccess) {
+    return { success: false, message: "Bu işlem için yetkiniz bulunmamaktadır." };
+  }
+
   try {
     // 1. Fatura bilgilerini al (bakiye geri alma için)
     const { data: invoice, error: fetchError } = await supabaseServer
@@ -214,6 +230,11 @@ export async function softDeleteInvoice(invoiceId: string, userId: string) {
    ═══════════════════════════════════════════ */
 
 export async function restoreProduct(productId: string, userId: string) {
+  const hasAccess = await checkPermission("stock", "can_delete");
+  if (!hasAccess) {
+    return { success: false, message: "Bu işlem için yetkiniz bulunmamaktadır." };
+  }
+
   try {
     const { data: product } = await supabaseServer
       .from("products")
@@ -255,6 +276,11 @@ export async function restoreProduct(productId: string, userId: string) {
    ═══════════════════════════════════════════ */
 
 export async function restoreContact(contactId: string, userId: string) {
+  const hasAccess = await checkPermission("contacts", "can_delete");
+  if (!hasAccess) {
+    return { success: false, message: "Bu işlem için yetkiniz bulunmamaktadır." };
+  }
+
   try {
     const { data: contact } = await supabaseServer
       .from("contacts")
@@ -296,6 +322,11 @@ export async function restoreContact(contactId: string, userId: string) {
    ═══════════════════════════════════════════ */
 
 export async function restoreInvoice(invoiceId: string, userId: string) {
+  const hasAccess = await checkPermission("invoices", "can_delete");
+  if (!hasAccess) {
+    return { success: false, message: "Bu işlem için yetkiniz bulunmamaktadır." };
+  }
+
   try {
     // 1. Fatura bilgilerini al (bakiye tekrar ekleme için)
     const { data: invoice, error: fetchError } = await supabaseServer
@@ -372,6 +403,11 @@ export async function restoreInvoice(invoiceId: string, userId: string) {
    ═══════════════════════════════════════════ */
 
 export async function permanentDeleteProduct(productId: string, userId: string) {
+  const hasAccess = await checkPermission("stock", "can_delete");
+  if (!hasAccess) {
+    return { success: false, message: "Bu işlem için yetkiniz bulunmamaktadır." };
+  }
+
   try {
     const { data: product } = await supabaseServer
       .from("products")
@@ -413,6 +449,11 @@ export async function permanentDeleteProduct(productId: string, userId: string) 
    ═══════════════════════════════════════════ */
 
 export async function permanentDeleteContact(contactId: string, userId: string) {
+  const hasAccess = await checkPermission("contacts", "can_delete");
+  if (!hasAccess) {
+    return { success: false, message: "Bu işlem için yetkiniz bulunmamaktadır." };
+  }
+
   try {
     const { data: contact } = await supabaseServer
       .from("contacts")
@@ -454,6 +495,11 @@ export async function permanentDeleteContact(contactId: string, userId: string) 
    ═══════════════════════════════════════════ */
 
 export async function permanentDeleteInvoice(invoiceId: string, userId: string) {
+  const hasAccess = await checkPermission("invoices", "can_delete");
+  if (!hasAccess) {
+    return { success: false, message: "Bu işlem için yetkiniz bulunmamaktadır." };
+  }
+
   try {
     const { data: invoice } = await supabaseServer
       .from("invoices")
@@ -501,6 +547,11 @@ export async function permanentDeleteInvoice(invoiceId: string, userId: string) 
    ═══════════════════════════════════════════ */
 
 export async function softDeleteQuote(quoteId: string, userId: string) {
+  const hasAccess = await checkPermission("quotes", "can_delete");
+  if (!hasAccess) {
+    return { success: false, message: "Bu işlem için yetkiniz bulunmamaktadır." };
+  }
+
   try {
     const { data: quote, error: fetchError } = await supabaseServer
       .from("quotes")
@@ -535,6 +586,11 @@ export async function softDeleteQuote(quoteId: string, userId: string) {
 }
 
 export async function restoreQuote(quoteId: string, userId: string) {
+  const hasAccess = await checkPermission("quotes", "can_delete");
+  if (!hasAccess) {
+    return { success: false, message: "Bu işlem için yetkiniz bulunmamaktadır." };
+  }
+
   try {
     const { error } = await supabaseServer
       .from("quotes")
@@ -557,6 +613,11 @@ export async function restoreQuote(quoteId: string, userId: string) {
 }
 
 export async function permanentDeleteQuote(quoteId: string, userId: string) {
+  const hasAccess = await checkPermission("quotes", "can_delete");
+  if (!hasAccess) {
+    return { success: false, message: "Bu işlem için yetkiniz bulunmamaktadır." };
+  }
+
   try {
     await supabaseServer
       .from("quote_items")
@@ -725,55 +786,72 @@ export async function getTrashItems(userId: string): Promise<{ success: boolean;
 
 export async function emptyTrash(userId: string) {
   try {
+    const canDeleteStock = await checkPermission("stock", "can_delete");
+    const canDeleteContacts = await checkPermission("contacts", "can_delete");
+    const canDeleteInvoices = await checkPermission("invoices", "can_delete");
+    const canDeleteQuotes = await checkPermission("quotes", "can_delete");
+
+    if (!canDeleteStock && !canDeleteContacts && !canDeleteInvoices && !canDeleteQuotes) {
+      return { success: false, message: "Bu işlem için yetkiniz bulunmamaktadır." };
+    }
+
     const teamIds = await resolveTeamIdsServer(userId);
 
     // 1. Fatura kalemlerini sil (silinen faturalara ait)
-    const { data: deletedInvoices } = await applyTeamFilterServer(
-      supabaseServer.from("invoices").select("id").not("deleted_at", "is", null),
-      teamIds
-    );
-    if (deletedInvoices && deletedInvoices.length > 0) {
-      const invoiceIds = deletedInvoices.map((inv: any) => inv.id);
-      await supabaseServer.from("invoice_items").delete().in("invoice_id", invoiceIds);
-    }
+    if (canDeleteInvoices) {
+      const { data: deletedInvoices } = await applyTeamFilterServer(
+        supabaseServer.from("invoices").select("id").not("deleted_at", "is", null),
+        teamIds
+      );
+      if (deletedInvoices && deletedInvoices.length > 0) {
+        const invoiceIds = deletedInvoices.map((inv: any) => inv.id);
+        await supabaseServer.from("invoice_items").delete().in("invoice_id", invoiceIds);
+      }
 
-    // 2. Faturalar
-    const { error: invError } = await applyTeamFilterServer(
-      supabaseServer.from("invoices").delete().not("deleted_at", "is", null),
-      teamIds
-    );
-    if (invError) console.error("Empty trash invoices error:", invError);
+      // 2. Faturalar
+      const { error: invError } = await applyTeamFilterServer(
+        supabaseServer.from("invoices").delete().not("deleted_at", "is", null),
+        teamIds
+      );
+      if (invError) console.error("Empty trash invoices error:", invError);
+    }
 
     // 3. Ürünler
-    const { error: prodError } = await applyTeamFilterServer(
-      supabaseServer.from("products").delete().not("deleted_at", "is", null),
-      teamIds
-    );
-    if (prodError) console.error("Empty trash products error:", prodError);
-
-    // 4. Cariler
-    const { error: contError } = await applyTeamFilterServer(
-      supabaseServer.from("contacts").delete().not("deleted_at", "is", null),
-      teamIds
-    );
-    if (contError) console.error("Empty trash contacts error:", contError);
-
-    // 5. Teklif kalemlerini sil
-    const { data: deletedQuotes } = await applyTeamFilterServer(
-      supabaseServer.from("quotes").select("id").not("deleted_at", "is", null),
-      teamIds
-    );
-    if (deletedQuotes && deletedQuotes.length > 0) {
-      const quoteIds = deletedQuotes.map((q: any) => q.id);
-      await supabaseServer.from("quote_items").delete().in("quote_id", quoteIds);
+    if (canDeleteStock) {
+      const { error: prodError } = await applyTeamFilterServer(
+        supabaseServer.from("products").delete().not("deleted_at", "is", null),
+        teamIds
+      );
+      if (prodError) console.error("Empty trash products error:", prodError);
     }
 
-    // 6. Teklifler
-    const { error: quoteError } = await applyTeamFilterServer(
-      supabaseServer.from("quotes").delete().not("deleted_at", "is", null),
-      teamIds
-    );
-    if (quoteError) console.error("Empty trash quotes error:", quoteError);
+    // 4. Cariler
+    if (canDeleteContacts) {
+      const { error: contError } = await applyTeamFilterServer(
+        supabaseServer.from("contacts").delete().not("deleted_at", "is", null),
+        teamIds
+      );
+      if (contError) console.error("Empty trash contacts error:", contError);
+    }
+
+    // 5. Teklif kalemlerini sil
+    if (canDeleteQuotes) {
+      const { data: deletedQuotes } = await applyTeamFilterServer(
+        supabaseServer.from("quotes").select("id").not("deleted_at", "is", null),
+        teamIds
+      );
+      if (deletedQuotes && deletedQuotes.length > 0) {
+        const quoteIds = deletedQuotes.map((q: any) => q.id);
+        await supabaseServer.from("quote_items").delete().in("quote_id", quoteIds);
+      }
+
+      // 6. Teklifler
+      const { error: quoteError } = await applyTeamFilterServer(
+        supabaseServer.from("quotes").delete().not("deleted_at", "is", null),
+        teamIds
+      );
+      if (quoteError) console.error("Empty trash quotes error:", quoteError);
+    }
 
     revalidatePath("/trash");
     return { success: true, message: "Çöp kutusu başarıyla boşaltıldı." };

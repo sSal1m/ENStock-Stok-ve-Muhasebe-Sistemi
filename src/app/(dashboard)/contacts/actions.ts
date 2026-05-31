@@ -3,6 +3,7 @@
 import { createClient } from "@supabase/supabase-js";
 import { revalidatePath } from "next/cache";
 import { logActivity } from "@/lib/activityLogger";
+import { checkPermission } from "@/lib/authHelpers";
 
 /* ═══════════════════════════════════════════
    Server-side Supabase client (uses Service Role Key)
@@ -32,6 +33,11 @@ export interface CariFormState {
 }
 
 export async function cariEkleAction(formData: FormData): Promise<CariFormState> {
+  const hasAccess = await checkPermission("contacts", "can_create");
+  if (!hasAccess) {
+    return { success: false, message: "Bu işlem için yetkiniz bulunmamaktadır." };
+  }
+
   const tip = (formData.get("tip") as string)?.trim();
   const unvan = (formData.get("unvan") as string)?.trim();
   const vergiNo = (formData.get("vergi_no") as string)?.trim();
@@ -116,6 +122,11 @@ export async function cariEkleAction(formData: FormData): Promise<CariFormState>
 }
 
 export async function cariGuncelleAction(formData: FormData): Promise<CariFormState> {
+  const hasAccess = await checkPermission("contacts", "can_edit");
+  if (!hasAccess) {
+    return { success: false, message: "Bu işlem için yetkiniz bulunmamaktadır." };
+  }
+
   const id = (formData.get("id") as string)?.trim();
   const tip = (formData.get("tip") as string)?.trim();
   const unvan = (formData.get("unvan") as string)?.trim();
@@ -184,6 +195,11 @@ export async function cariGuncelleAction(formData: FormData): Promise<CariFormSt
 }
 
 export async function islemYapAction(formData: FormData) {
+  const hasAccess = await checkPermission("invoices", "can_create");
+  if (!hasAccess) {
+    return { success: false, message: "Bu işlem için yetkiniz bulunmamaktadır." };
+  }
+
   const cariId = (formData.get("cari_id") as string)?.trim();
   const islemTuru = (formData.get("islem_turu") as string)?.trim(); // "Tahsilat" | "Ödeme"
   const tutarStr = (formData.get("tutar") as string)?.trim();

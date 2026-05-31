@@ -10,6 +10,7 @@ import Link from "next/link";
 import { useCurrencyConverter } from "@/hooks/useCurrencyConverter";
 import * as XLSX from "xlsx";
 import { parseDescription } from "@/lib/productImageHelper";
+import { usePermissions } from "@/hooks/usePermissions";
 
 // ─── Tipler ────────────────────────────────────────────────────────────────
 
@@ -85,6 +86,7 @@ function SkeletonRow() {
 // ─── Sayfa Bileşeni ─────────────────────────────────────────────────────────
 
 export default function InventoryPage() {
+  const { hasPermission } = usePermissions();
   const [products, setProducts] = useState<Product[]>([]);
   const [filtered, setFiltered] = useState<Product[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
@@ -445,20 +447,24 @@ export default function InventoryPage() {
             <button onClick={handleExportXlsx} className="p-2.5 text-slate-500 hover:bg-slate-50 rounded-xl border border-indigo-100 transition-colors" title="Excel Olarak İndir">
               <span className="material-symbols-outlined">download</span>
             </button>
-            <button
-              onClick={() => setIsCategoryModalOpen(true)}
-              className="border border-primary text-primary px-4 py-2.5 rounded-xl font-bold flex items-center gap-2 hover:bg-indigo-50 transition-all active:scale-95"
-            >
-              <span className="material-symbols-outlined text-base">create_new_folder</span>
-              <span>+ Kategori Ekle</span>
-            </button>
-            <button
-              onClick={() => router.push("/inventory/new")}
-              className="bg-primary text-on-primary px-4 py-2.5 rounded-xl font-bold flex items-center gap-2 shadow-lg shadow-indigo-100 hover:bg-primary-container transition-all active:scale-95"
-            >
-              <span className="material-symbols-outlined">add_box</span>
-              <span>+ Yeni Ürün Ekle</span>
-            </button>
+            {hasPermission("stock", "create") && (
+              <>
+                <button
+                  onClick={() => setIsCategoryModalOpen(true)}
+                  className="border border-primary text-primary px-4 py-2.5 rounded-xl font-bold flex items-center gap-2 hover:bg-indigo-50 transition-all active:scale-95"
+                >
+                  <span className="material-symbols-outlined text-base">create_new_folder</span>
+                  <span>+ Kategori Ekle</span>
+                </button>
+                <button
+                  onClick={() => router.push("/inventory/new")}
+                  className="bg-primary text-on-primary px-4 py-2.5 rounded-xl font-bold flex items-center gap-2 shadow-lg shadow-indigo-100 hover:bg-primary-container transition-all active:scale-95"
+                >
+                  <span className="material-symbols-outlined">add_box</span>
+                  <span>+ Yeni Ürün Ekle</span>
+                </button>
+              </>
+            )}
           </div>
         </div>
 
@@ -588,21 +594,25 @@ export default function InventoryPage() {
                       {/* İşlemler */}
                       <td className="px-6 py-4 text-right">
                         <div className="flex items-center justify-end gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                          <button
-                            onClick={() => router.push(`/inventory/${item.id}/edit`)}
-                            className="p-2 text-indigo-600 hover:bg-indigo-50 rounded-lg"
-                          >
-                            <span className="material-symbols-outlined text-lg">edit</span>
-                          </button>
-                          <button
-                            onClick={() => {
-                              setDeleteTarget({ id: item.id, name: item.name });
-                              setIsDeleteModalOpen(true);
-                            }}
-                            className="p-2 text-error hover:bg-error-container/20 rounded-lg"
-                          >
-                            <span className="material-symbols-outlined text-lg">delete</span>
-                          </button>
+                          {hasPermission("stock", "edit") && (
+                            <button
+                              onClick={() => router.push(`/inventory/${item.id}/edit`)}
+                              className="p-2 text-indigo-600 hover:bg-indigo-50 rounded-lg"
+                            >
+                              <span className="material-symbols-outlined text-lg">edit</span>
+                            </button>
+                          )}
+                          {hasPermission("stock", "delete") && (
+                            <button
+                              onClick={() => {
+                                setDeleteTarget({ id: item.id, name: item.name });
+                                setIsDeleteModalOpen(true);
+                              }}
+                              className="p-2 text-error hover:bg-error-container/20 rounded-lg"
+                            >
+                              <span className="material-symbols-outlined text-lg">delete</span>
+                            </button>
+                          )}
                         </div>
                       </td>
                     </tr>

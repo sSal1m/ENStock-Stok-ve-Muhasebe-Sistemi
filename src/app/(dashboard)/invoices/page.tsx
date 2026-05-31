@@ -6,6 +6,7 @@ import { useCurrencyConverter } from "@/hooks/useCurrencyConverter";
 import { softDeleteInvoice } from "@/app/(dashboard)/trash/actions";
 import Link from "next/link";
 import toast from "react-hot-toast";
+import { usePermissions } from "@/hooks/usePermissions";
 
 
 interface Invoice {
@@ -28,6 +29,7 @@ interface Contact {
 }
 
 export default function InvoicesPage() {
+  const { hasPermission } = usePermissions();
   const { viewCurrency, setViewCurrency, convertFull, format } = useCurrencyConverter();
   const [invoices, setInvoices] = useState<Invoice[]>([]);
   const [contacts, setContacts] = useState<Record<string, string>>({});
@@ -338,13 +340,15 @@ export default function InvoicesPage() {
             </div>
 
             {/* Yeni Fatura Butonu */}
-            <Link
-              href="/invoices/new"
-              className="flex items-center gap-2 px-6 py-2 rounded-lg font-semibold text-sm text-white bg-gradient-to-r from-purple-600 to-purple-700 shadow-lg shadow-purple-200 hover:shadow-xl hover:shadow-purple-300 active:scale-[0.98] transition-all whitespace-nowrap"
-            >
-              <span className="material-symbols-outlined">add_circle</span>
-              Yeni Fatura
-            </Link>
+            {hasPermission("invoices", "create") && (
+              <Link
+                href="/invoices/new"
+                className="flex items-center gap-2 px-6 py-2 rounded-lg font-semibold text-sm text-white bg-gradient-to-r from-purple-600 to-purple-700 shadow-lg shadow-purple-200 hover:shadow-xl hover:shadow-purple-300 active:scale-[0.98] transition-all whitespace-nowrap"
+              >
+                <span className="material-symbols-outlined">add_circle</span>
+                Yeni Fatura
+              </Link>
+            )}
           </div>
         </div>
 
@@ -473,30 +477,34 @@ export default function InvoicesPage() {
                                 {downloadingPdfId === invoice.id ? 'sync' : 'picture_as_pdf'}
                               </span>
                             </button>
-                            <Link
-                              href={`/invoices/new?id=${invoice.id}`}
-                              className="inline-flex items-center justify-center w-10 h-10 rounded-lg text-primary hover:bg-primary/10 transition-all"
-                              title="Faturayı düzenle"
-                            >
-                              <span className="material-symbols-outlined">edit</span>
-                            </Link>
-                            <button
-                              onClick={async () => {
-                                const { data: { user } } = await supabase.auth.getUser();
-                                if (!user) { toast.error("Oturum açma gerekli."); return; }
-                                const result = await softDeleteInvoice(invoice.id, user.id);
-                                if (result.success) {
-                                  toast.success(`Fatura çöp kutusuna taşındı.`, { icon: "🗑️" });
-                                  setInvoices(prev => prev.filter(x => x.id !== invoice.id));
-                                } else {
-                                  toast.error(result.message);
-                                }
-                              }}
-                              className="inline-flex items-center justify-center w-10 h-10 rounded-lg text-amber-500 hover:bg-amber-50 transition-all"
-                              title="Çöp Kutusuna Taşı"
-                            >
-                              <span className="material-symbols-outlined">delete</span>
-                            </button>
+                            {hasPermission("invoices", "edit") && (
+                              <Link
+                                href={`/invoices/new?id=${invoice.id}`}
+                                className="inline-flex items-center justify-center w-10 h-10 rounded-lg text-primary hover:bg-primary/10 transition-all"
+                                title="Faturayı düzenle"
+                              >
+                                <span className="material-symbols-outlined">edit</span>
+                              </Link>
+                            )}
+                            {hasPermission("invoices", "delete") && (
+                              <button
+                                onClick={async () => {
+                                  const { data: { user } } = await supabase.auth.getUser();
+                                  if (!user) { toast.error("Oturum açma gerekli."); return; }
+                                  const result = await softDeleteInvoice(invoice.id, user.id);
+                                  if (result.success) {
+                                    toast.success(`Fatura çöp kutusuna taşındı.`, { icon: "🗑️" });
+                                    setInvoices(prev => prev.filter(x => x.id !== invoice.id));
+                                  } else {
+                                    toast.error(result.message);
+                                  }
+                                }}
+                                className="inline-flex items-center justify-center w-10 h-10 rounded-lg text-amber-500 hover:bg-amber-50 transition-all"
+                                title="Çöp Kutusuna Taşı"
+                              >
+                                <span className="material-symbols-outlined">delete</span>
+                              </button>
+                            )}
                           </div>
                         </td>
                       </tr>

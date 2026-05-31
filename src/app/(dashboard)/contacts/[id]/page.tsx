@@ -4,6 +4,7 @@ import { useState, useEffect, useTransition, useRef } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import { supabase } from "@/lib/supabaseClient";
+import { usePermissions } from "@/hooks/usePermissions";
 import toast from "react-hot-toast";
 import { cariGuncelleAction, islemYapAction } from "../actions";
 import { useCurrencyConverter } from "@/hooks/useCurrencyConverter";
@@ -88,6 +89,7 @@ const badgeStyle = (tip: "customer" | "supplier") =>
    ═══════════════════════════════════════════ */
 
 export default function ContactDetailPage() {
+  const { hasPermission } = usePermissions();
   const params = useParams();
   const router = useRouter();
   const cariId = params.id as string;
@@ -323,14 +325,18 @@ export default function ContactDetailPage() {
               <option value="GBP">GBP (£)</option>
             </select>
           </div>
-          <button onClick={() => setIsEditModalOpen(true)} className="flex items-center gap-2 rounded-xl bg-white border border-indigo-100 px-4 py-2.5 text-sm font-bold text-slate-600 hover:bg-slate-50 transition-all">
-            <span className="material-symbols-outlined text-[18px]">edit</span>
-            Düzenle
-          </button>
-          <Link href={`/invoices/new?contact_id=${cariId}`} className="flex items-center gap-2 rounded-xl bg-primary text-on-primary px-5 py-2.5 text-sm font-black shadow-lg hover:bg-opacity-90 transition-all">
-            <span className="material-symbols-outlined text-[18px]">receipt</span>
-            Yeni Fatura
-          </Link>
+          {hasPermission("contacts", "edit") && (
+            <button onClick={() => setIsEditModalOpen(true)} className="flex items-center gap-2 rounded-xl bg-white border border-indigo-100 px-4 py-2.5 text-sm font-bold text-slate-600 hover:bg-slate-50 transition-all">
+              <span className="material-symbols-outlined text-[18px]">edit</span>
+              Düzenle
+            </button>
+          )}
+          {hasPermission("invoices", "create") && (
+            <Link href={`/invoices/new?contact_id=${cariId}`} className="flex items-center gap-2 rounded-xl bg-primary text-on-primary px-5 py-2.5 text-sm font-black shadow-lg hover:bg-opacity-90 transition-all">
+              <span className="material-symbols-outlined text-[18px]">receipt</span>
+              Yeni Fatura
+            </Link>
+          )}
         </div>
       </div>
 
@@ -409,10 +415,12 @@ export default function ContactDetailPage() {
             </div>
           </div>
 
-          <button onClick={() => { setSelectedInvoice(null); setIsTransactionModalOpen(true); }} className="mt-6 flex w-full items-center justify-center gap-2 rounded-xl bg-primary py-3.5 text-sm font-black text-on-primary shadow-lg transition-all active:scale-95">
-            <span className="material-symbols-outlined text-lg">payments</span>
-            İşlem Yap
-          </button>
+          {hasPermission("invoices", "create") && (
+            <button onClick={() => { setSelectedInvoice(null); setIsTransactionModalOpen(true); }} className="mt-6 flex w-full items-center justify-center gap-2 rounded-xl bg-primary py-3.5 text-sm font-black text-on-primary shadow-lg transition-all active:scale-95">
+              <span className="material-symbols-outlined text-lg">payments</span>
+              İşlem Yap
+            </button>
+          )}
         </div>
       </section>
 

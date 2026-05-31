@@ -7,6 +7,7 @@ import { supabase } from "@/lib/supabaseClient";
 import { useCurrencyConverter } from "@/hooks/useCurrencyConverter";
 import { fetchDefaultCurrency } from "@/lib/defaultCurrency";
 import { toast, Toaster } from "react-hot-toast";
+import { usePermissions } from "@/hooks/usePermissions";
 
 interface Contact {
   id: string;
@@ -172,12 +173,34 @@ export default function NewQuotePage() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const editQuoteId = searchParams.get("id");
+  const { hasPermission, isLoading: permsLoading } = usePermissions();
 
   const { rates, convertFull } = useCurrencyConverter();
 
   const [items, setItems] = useState<QuoteItem[]>([
     { id: "1", product_id: undefined, name: "", quantity: 1, unit: "Adet", price: 0, vatRate: 20 },
   ]);
+
+  useEffect(() => {
+    if (!permsLoading) {
+      const requiredPermission = editQuoteId ? "edit" : "create";
+      if (!hasPermission("quotes", requiredPermission)) {
+        toast.error("Bu işlem için yetkiniz bulunmamaktadır.");
+        router.replace("/quotes");
+      }
+    }
+  }, [permsLoading, hasPermission, router, editQuoteId]);
+
+  if (permsLoading) {
+    return (
+      <div className="flex-1 overflow-y-auto p-8 flex items-center justify-center min-h-[400px]">
+        <div className="flex flex-col items-center gap-4">
+          <div className="w-12 h-12 border-4 border-purple-200 border-t-purple-600 rounded-full animate-spin"></div>
+          <p className="text-slate-600">Yetkiler kontrol ediliyor...</p>
+        </div>
+      </div>
+    );
+  }
 
   const [contacts, setContacts] = useState<Contact[]>([]);
   const [products, setProducts] = useState<Product[]>([]);

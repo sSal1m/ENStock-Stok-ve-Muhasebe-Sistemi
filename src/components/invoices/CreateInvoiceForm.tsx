@@ -6,6 +6,7 @@ import { createInvoiceAction, searchContacts, searchProducts, getNextInvoiceNumb
 import { supabase } from "@/lib/supabaseClient";
 import Toast from "@/components/invoices/Toast";
 import { useCurrencyConverter } from "@/hooks/useCurrencyConverter";
+import { usePermissions } from "@/hooks/usePermissions";
 
 
 interface Contact {
@@ -70,6 +71,17 @@ export default function CreateInvoiceForm({
   const editInvoiceId = searchParams.get("id") || initialData?.id;  // ✅ Draft fatura ID'si
   const preselectedContactId = searchParams.get("contact_id"); // ✅ URL'den gelen cari ID
   const [isEditMode, setIsEditMode] = useState(!!editInvoiceId);
+
+  const { hasPermission, isLoading: permsLoading } = usePermissions();
+  const moduleName = forceProposalMode ? "quotes" : "invoices";
+  const requiredPermission = isEditMode ? "edit" : "create";
+
+  useEffect(() => {
+    if (!permsLoading && !hasPermission(moduleName, requiredPermission)) {
+      alert("Bu işlem için yetkiniz bulunmamaktadır.");
+      router.replace(forceProposalMode ? "/proposals" : "/invoices");
+    }
+  }, [permsLoading, hasPermission, router, moduleName, requiredPermission, forceProposalMode]);
 
   const [toasts, setToasts] = useState<Toast[]>([]);
   const [invoiceType, setInvoiceType] = useState<"sales" | "purchase">("sales");
@@ -720,7 +732,7 @@ export default function CreateInvoiceForm({
   const totals = calculateTotals();
 
   // ✅ Loading skeleton
-  if (isInitialLoading) {
+  if (permsLoading || isInitialLoading) {
     return (
       <div className="p-6 lg:p-10 space-y-8 pb-20">
         <div className="space-y-8">

@@ -23,14 +23,13 @@ export function usePermissions() {
           
           if (profile) {
             setRole(profile.role);
-            // 1. Önce kullanıcı bazlı (user.id) izinleri yükle
-            let perms = await getRolePermissions(user.id);
+            // 1. Önce rol varsayılanlarını yükle
+            const rolePerms = await getRolePermissions(profile.role);
+            // 2. Sonra kullanıcı bazlı (user.id) özel izinleri yükle (delta)
+            const userPerms = await getRolePermissions(user.id);
             
-            // 2. Kullanıcı bazlı izin tanımlı değilse, rol varsayılanlarını yükle
-            if (Object.keys(perms).length === 0) {
-              perms = await getRolePermissions(profile.role);
-            }
-            setPermissions(perms);
+            // 3. İzinleri birleştir: rol izinlerinin üzerine kullanıcı izinlerini (varsa) yaz
+            setPermissions({ ...rolePerms, ...userPerms });
           }
         }
       } catch (error) {

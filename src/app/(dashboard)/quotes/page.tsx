@@ -8,6 +8,7 @@ import { supabase } from "@/lib/supabaseClient";
 import { useCurrencyConverter } from "@/hooks/useCurrencyConverter";
 import { softDeleteQuote } from "@/app/(dashboard)/trash/actions";
 import { createInvoiceAction } from "@/app/(dashboard)/invoices/actions";
+import { usePermissions } from "@/hooks/usePermissions";
 
 interface Quote {
   id: string;
@@ -27,6 +28,7 @@ interface Quote {
 }
 
 export default function QuotesPage() {
+  const { hasPermission } = usePermissions();
   const { viewCurrency, setViewCurrency, convertFull, format: fmt } = useCurrencyConverter();
   const convertQuote = (amount: number, fromCurrency: string | null | undefined) =>
     convertFull(amount, fromCurrency || "TRY", viewCurrency);
@@ -433,13 +435,15 @@ export default function QuotesPage() {
 
             {/* Grid/List Görünümü */}
             {/* Yeni Teklif Butonu */}
-            <Link
-              href="/quotes/new"
-              className="flex items-center gap-2 px-6 py-2 rounded-lg font-semibold text-sm text-white bg-gradient-to-r from-purple-600 to-purple-700 shadow-lg shadow-purple-200 hover:shadow-xl hover:shadow-purple-300 active:scale-[0.98] transition-all whitespace-nowrap"
-            >
-              <span className="material-symbols-outlined">add_circle</span>
-              Yeni Teklif
-            </Link>
+            {hasPermission("quotes", "create") && (
+              <Link
+                href="/quotes/new"
+                className="flex items-center gap-2 px-6 py-2 rounded-lg font-semibold text-sm text-white bg-gradient-to-r from-purple-600 to-purple-700 shadow-lg shadow-purple-200 hover:shadow-xl hover:shadow-purple-300 active:scale-[0.98] transition-all whitespace-nowrap"
+              >
+                <span className="material-symbols-outlined">add_circle</span>
+                Yeni Teklif
+              </Link>
+            )}
           </div>
         </div>
 
@@ -566,7 +570,7 @@ export default function QuotesPage() {
                           <div className="flex items-center justify-end gap-2">
                             {/* Sabit Genişlikli Dinamik Buton Alanı */}
                             <div className="w-[150px] flex justify-end">
-                              {isPending && (
+                              {isPending && hasPermission("quotes", "edit") && (
                                 <button
                                   onClick={() => handleApprove(quote.id)}
                                   disabled={actionLoading === quote.id}
@@ -574,15 +578,14 @@ export default function QuotesPage() {
                                   title="Onayla"
                                 >
                                   <span
-                                    className={`material-symbols-outlined text-base ${actionLoading === quote.id ? "animate-spin" : ""
-                                      }`}
+                                    className={`material-symbols-outlined text-base ${actionLoading === quote.id ? "animate-spin" : ""}`}
                                   >
                                     {actionLoading === quote.id ? "progress_activity" : "check_circle"}
                                   </span>
                                   Onayla
                                 </button>
                               )}
-                              {isApproved && (
+                              {isApproved && hasPermission("invoices", "create") && (
                                 <button
                                   onClick={() => handleConvertToInvoice(quote)}
                                   disabled={actionLoading === quote.id + "_convert"}
@@ -590,8 +593,7 @@ export default function QuotesPage() {
                                   title="Faturaya Dönüştür"
                                 >
                                   <span
-                                    className={`material-symbols-outlined text-base ${actionLoading === quote.id + "_convert" ? "animate-spin" : ""
-                                      }`}
+                                    className={`material-symbols-outlined text-base ${actionLoading === quote.id + "_convert" ? "animate-spin" : ""}`}
                                   >
                                     {actionLoading === quote.id + "_convert" ? "progress_activity" : "receipt_long"}
                                   </span>
@@ -615,13 +617,15 @@ export default function QuotesPage() {
                             </button>
 
                             {/* Edit Quote */}
-                            <Link
-                              href={`/quotes/new?id=${quote.id}`}
-                              className="inline-flex items-center justify-center w-8 h-8 rounded-lg text-indigo-600 hover:bg-indigo-100 transition-all"
-                              title="Teklifi düzenle"
-                            >
-                              <span className="material-symbols-outlined text-lg">edit</span>
-                            </Link>
+                            {hasPermission("quotes", "edit") && (
+                              <Link
+                                href={`/quotes/new?id=${quote.id}`}
+                                className="inline-flex items-center justify-center w-8 h-8 rounded-lg text-indigo-600 hover:bg-indigo-100 transition-all"
+                                title="Teklifi düzenle"
+                              >
+                                <span className="material-symbols-outlined text-lg">edit</span>
+                              </Link>
+                            )}
 
                             {/* View Detail */}
                             <Link
@@ -633,23 +637,25 @@ export default function QuotesPage() {
                             </Link>
 
                             {/* Soft Delete to Trash */}
-                            <button
-                              onClick={async () => {
-                                const { data: { user } } = await supabase.auth.getUser();
-                                if (!user) { toast.error("Oturum açma gerekli."); return; }
-                                const result = await softDeleteQuote(quote.id, user.id);
-                                if (result.success) {
-                                  toast.success("Teklif çöp kutusuna taşındı.", { icon: "🗑️" });
-                                  setQuotes(prev => prev.filter(q => q.id !== quote.id));
-                                } else {
-                                  toast.error(result.message);
-                                }
-                              }}
-                              className="inline-flex items-center justify-center w-8 h-8 rounded-lg text-red-500 hover:bg-red-50 transition-all"
-                              title="Çöp Kutusuna Taşı"
-                            >
-                              <span className="material-symbols-outlined text-lg">delete</span>
-                            </button>
+                            {hasPermission("quotes", "delete") && (
+                              <button
+                                onClick={async () => {
+                                  const { data: { user } } = await supabase.auth.getUser();
+                                  if (!user) { toast.error("Oturum açma gerekli."); return; }
+                                  const result = await softDeleteQuote(quote.id, user.id);
+                                  if (result.success) {
+                                    toast.success("Teklif çöp kutusuna taşındı.", { icon: "🗑️" });
+                                    setQuotes(prev => prev.filter(q => q.id !== quote.id));
+                                  } else {
+                                    toast.error(result.message);
+                                  }
+                                }}
+                                className="inline-flex items-center justify-center w-8 h-8 rounded-lg text-red-500 hover:bg-red-50 transition-all"
+                                title="Çöp Kutusuna Taşı"
+                              >
+                                <span className="material-symbols-outlined text-lg">delete</span>
+                              </button>
+                            )}
                           </div>
                         </td>
                       </tr>

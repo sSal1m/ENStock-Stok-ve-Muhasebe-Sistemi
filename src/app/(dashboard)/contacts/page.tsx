@@ -7,6 +7,7 @@ import { softDeleteContact } from "@/app/(dashboard)/trash/actions";
 import toast from "react-hot-toast";
 import Link from "next/link";
 import * as XLSX from "xlsx";
+import { usePermissions } from "@/hooks/usePermissions";
 
 /* ═══════════════════════════════════════════
    DATA
@@ -41,6 +42,7 @@ const fmt = (val: number, currency: string = "TRY") =>
    ═══════════════════════════════════════════ */
 
 export default function ContactsPage() {
+  const { hasPermission } = usePermissions();
   const [activeTab, setActiveTab] = useState<Tab>("Hepsi");
   const [search, setSearch] = useState("");
   const [cariTuru, setCariTuru] = useState<"Müşteri" | "Tedarikçi">("Müşteri");
@@ -313,13 +315,15 @@ export default function ContactsPage() {
             </button>
 
             {/* Yeni Cari Ekle Butonu */}
-            <button
-              onClick={() => document.getElementById('form-hizli-cari')?.scrollIntoView({ behavior: 'smooth' })}
-              className="bg-primary text-on-primary px-6 py-2.5 rounded-xl font-bold flex items-center gap-2 shadow-lg shadow-indigo-100 hover:bg-primary-container transition-all active:scale-95 whitespace-nowrap"
-            >
-              <span className="material-symbols-outlined">add</span>
-              <span className="hidden sm:inline">Yeni Cari Ekle</span>
-            </button>
+            {hasPermission("contacts", "create") && (
+              <button
+                onClick={() => document.getElementById('form-hizli-cari')?.scrollIntoView({ behavior: 'smooth' })}
+                className="bg-primary text-on-primary px-6 py-2.5 rounded-xl font-bold flex items-center gap-2 shadow-lg shadow-indigo-100 hover:bg-primary-container transition-all active:scale-95 whitespace-nowrap"
+              >
+                <span className="material-symbols-outlined">add</span>
+                <span className="hidden sm:inline">Yeni Cari Ekle</span>
+              </button>
+            )}
           </div>
         </div>
 
@@ -393,23 +397,25 @@ export default function ContactsPage() {
                       <Link href={`/contacts/${c.id}`} className="p-2 text-primary hover:bg-indigo-50 rounded-lg">
                         <span className="material-symbols-outlined text-lg">visibility</span>
                       </Link>
-                      <button
-                        onClick={async () => {
-                          const { data: { user } } = await supabase.auth.getUser();
-                          if (!user) { toast.error("Oturum açma gerekli."); return; }
-                          const result = await softDeleteContact(c.id, user.id);
-                          if (result.success) {
-                            toast.success(`"${c.name}" çöp kutusuna taşındı.`, { icon: "🗑️" });
-                            setContacts(prev => prev.filter(x => x.id !== c.id));
-                          } else {
-                            toast.error(result.message);
-                          }
-                        }}
-                        className="p-2 text-amber-500 hover:bg-amber-50 rounded-lg"
-                        title="Çöp Kutusuna Taşı"
-                      >
-                        <span className="material-symbols-outlined text-lg">delete</span>
-                      </button>
+                      {hasPermission("contacts", "delete") && (
+                        <button
+                          onClick={async () => {
+                            const { data: { user } } = await supabase.auth.getUser();
+                            if (!user) { toast.error("Oturum açma gerekli."); return; }
+                            const result = await softDeleteContact(c.id, user.id);
+                            if (result.success) {
+                              toast.success(`"${c.name}" çöp kutusuna taşındı.`, { icon: "🗑️" });
+                              setContacts(prev => prev.filter(x => x.id !== c.id));
+                            } else {
+                              toast.error(result.message);
+                            }
+                          }}
+                          className="p-2 text-amber-500 hover:bg-amber-50 rounded-lg"
+                          title="Çöp Kutusuna Taşı"
+                        >
+                          <span className="material-symbols-outlined text-lg">delete</span>
+                        </button>
+                      )}
                     </div>
                   </td>
                 </tr>
@@ -451,86 +457,88 @@ export default function ContactsPage() {
       </section>
 
       {/* ── BENTO FORM ── */}
-      <section id="form-hizli-cari" className="bg-white rounded-3xl border border-indigo-50/50 p-8 shadow-sm">
-        <div className="mb-8 flex items-center gap-4">
-          <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-primary/10">
-            <span className="material-symbols-outlined text-primary text-2xl">person_add</span>
-          </div>
-          <div>
-            <h2 className="text-xl font-black text-on-surface">Hızlı Yeni Cari Ekle</h2>
-            <p className="text-sm text-slate-500">Müşteri veya tedarikçi bilgilerini sisteme kaydedin.</p>
-          </div>
-        </div>
-
-        <form ref={formRef} onSubmit={handleSubmit} className="grid grid-cols-12 gap-6">
-          <div className="col-span-12 md:col-span-4 bg-slate-50/50 rounded-2xl p-6 border border-indigo-50/50 space-y-4">
+      {hasPermission("contacts", "create") && (
+        <section id="form-hizli-cari" className="bg-white rounded-3xl border border-indigo-50/50 p-8 shadow-sm">
+          <div className="mb-8 flex items-center gap-4">
+            <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-primary/10">
+              <span className="material-symbols-outlined text-primary text-2xl">person_add</span>
+            </div>
             <div>
-              <label className="mb-2 block text-xs font-bold uppercase tracking-widest text-slate-400">Cari Türü</label>
-              <div className="flex gap-2 p-1 bg-white rounded-xl border border-indigo-100">
+              <h2 className="text-xl font-black text-on-surface">Hızlı Yeni Cari Ekle</h2>
+              <p className="text-sm text-slate-500">Müşteri veya tedarikçi bilgilerini sisteme kaydedin.</p>
+            </div>
+          </div>
+
+          <form ref={formRef} onSubmit={handleSubmit} className="grid grid-cols-12 gap-6">
+            <div className="col-span-12 md:col-span-4 bg-slate-50/50 rounded-2xl p-6 border border-indigo-50/50 space-y-4">
+              <div>
+                <label className="mb-2 block text-xs font-bold uppercase tracking-widest text-slate-400">Cari Türü</label>
+                <div className="flex gap-2 p-1 bg-white rounded-xl border border-indigo-100">
+                  <button
+                    type="button"
+                    onClick={() => setCariTuru("Müşteri")}
+                    className={`flex-1 rounded-lg py-2 text-sm font-bold transition-all ${
+                      cariTuru === "Müşteri" ? "bg-primary text-on-primary shadow-sm" : "text-slate-500 hover:bg-slate-50"
+                    }`}
+                  >Müşteri</button>
+                  <button
+                    type="button"
+                    onClick={() => setCariTuru("Tedarikçi")}
+                    className={`flex-1 rounded-lg py-2 text-sm font-bold transition-all ${
+                      cariTuru === "Tedarikçi" ? "bg-primary text-on-primary shadow-sm" : "text-slate-500 hover:bg-slate-50"
+                    }`}
+                  >Tedarikçi</button>
+                </div>
+              </div>
+              <div>
+                <label htmlFor="cari-unvan" className="mb-1.5 block text-xs font-bold uppercase tracking-widest text-slate-400">Firma / Şahıs Adı</label>
+                <input id="cari-unvan" name="unvan" type="text" required placeholder="Şirket veya kişi adı" className="w-full rounded-xl border border-indigo-100 bg-white px-4 py-2.5 text-sm outline-none focus:ring-2 focus:ring-primary transition-all" />
+              </div>
+            </div>
+
+            <div className="col-span-12 md:col-span-4 bg-slate-50/50 rounded-2xl p-6 border border-indigo-50/50 space-y-4">
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label htmlFor="cari-vergi" className="mb-1.5 block text-xs font-bold uppercase tracking-widest text-slate-400">Vergi No</label>
+                  <input id="cari-vergi" name="vergi_no" type="text" placeholder="1234567890" className="w-full rounded-xl border border-indigo-100 bg-white px-4 py-2.5 text-sm font-mono outline-none focus:ring-2 focus:ring-primary transition-all" />
+                </div>
+                <div>
+                  <label htmlFor="cari-vd" className="mb-1.5 block text-xs font-bold uppercase tracking-widest text-slate-400">Vergi Dairesi</label>
+                  <input id="cari-vd" name="vergi_dairesi" type="text" placeholder="Kadıköy V.D." className="w-full rounded-xl border border-indigo-100 bg-white px-4 py-2.5 text-sm outline-none focus:ring-2 focus:ring-primary transition-all" />
+                </div>
+              </div>
+              <div>
+                <label htmlFor="cari-email" className="mb-1.5 block text-xs font-bold uppercase tracking-widest text-slate-400">E-posta</label>
+                <input id="cari-email" name="email" type="email" placeholder="ornek@sirket.com" className="w-full rounded-xl border border-indigo-100 bg-white px-4 py-2.5 text-sm outline-none focus:ring-2 focus:ring-primary transition-all" />
+              </div>
+            </div>
+
+            <div className="col-span-12 md:col-span-4 bg-slate-50/50 rounded-2xl p-6 border border-indigo-50/50 flex flex-col">
+              <div className="flex-1 space-y-4">
+                <div>
+                  <label htmlFor="cari-telefon" className="mb-1.5 block text-xs font-bold uppercase tracking-widest text-slate-400">Telefon</label>
+                  <input id="cari-telefon" name="telefon" type="tel" placeholder="05XX XXX XX XX" className="w-full rounded-xl border border-indigo-100 bg-white px-4 py-2.5 text-sm outline-none focus:ring-2 focus:ring-primary transition-all" />
+                </div>
+                <div>
+                  <label htmlFor="cari-adres" className="mb-1.5 block text-xs font-bold uppercase tracking-widest text-slate-400">Adres</label>
+                  <textarea id="cari-adres" name="adres" rows={2} placeholder="Açık adres bilgisi..." className="w-full rounded-xl border border-indigo-100 bg-white px-4 py-2.5 text-sm resize-none outline-none focus:ring-2 focus:ring-primary transition-all" />
+                </div>
+              </div>
+              
+              <div className="mt-6 flex items-center justify-between">
                 <button
-                  type="button"
-                  onClick={() => setCariTuru("Müşteri")}
-                  className={`flex-1 rounded-lg py-2 text-sm font-bold transition-all ${
-                    cariTuru === "Müşteri" ? "bg-primary text-on-primary shadow-sm" : "text-slate-500 hover:bg-slate-50"
-                  }`}
-                >Müşteri</button>
-                <button
-                  type="button"
-                  onClick={() => setCariTuru("Tedarikçi")}
-                  className={`flex-1 rounded-lg py-2 text-sm font-bold transition-all ${
-                    cariTuru === "Tedarikçi" ? "bg-primary text-on-primary shadow-sm" : "text-slate-500 hover:bg-slate-50"
-                  }`}
-                >Tedarikçi</button>
+                  type="submit"
+                  disabled={isPending}
+                  className="ml-auto flex items-center gap-2 rounded-xl bg-primary px-8 py-3 text-sm font-black text-on-primary shadow-lg shadow-indigo-100 hover:bg-primary-container transition-all active:scale-95 disabled:opacity-50"
+                >
+                  <span className="material-symbols-outlined text-lg">{isPending ? "sync" : "save"}</span>
+                  {isPending ? "Kaydediliyor..." : "Cariyi Kaydet"}
+                </button>
               </div>
             </div>
-            <div>
-              <label htmlFor="cari-unvan" className="mb-1.5 block text-xs font-bold uppercase tracking-widest text-slate-400">Firma / Şahıs Adı</label>
-              <input id="cari-unvan" name="unvan" type="text" required placeholder="Şirket veya kişi adı" className="w-full rounded-xl border border-indigo-100 bg-white px-4 py-2.5 text-sm outline-none focus:ring-2 focus:ring-primary transition-all" />
-            </div>
-          </div>
-
-          <div className="col-span-12 md:col-span-4 bg-slate-50/50 rounded-2xl p-6 border border-indigo-50/50 space-y-4">
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <label htmlFor="cari-vergi" className="mb-1.5 block text-xs font-bold uppercase tracking-widest text-slate-400">Vergi No</label>
-                <input id="cari-vergi" name="vergi_no" type="text" placeholder="1234567890" className="w-full rounded-xl border border-indigo-100 bg-white px-4 py-2.5 text-sm font-mono outline-none focus:ring-2 focus:ring-primary transition-all" />
-              </div>
-              <div>
-                <label htmlFor="cari-vd" className="mb-1.5 block text-xs font-bold uppercase tracking-widest text-slate-400">Vergi Dairesi</label>
-                <input id="cari-vd" name="vergi_dairesi" type="text" placeholder="Kadıköy V.D." className="w-full rounded-xl border border-indigo-100 bg-white px-4 py-2.5 text-sm outline-none focus:ring-2 focus:ring-primary transition-all" />
-              </div>
-            </div>
-            <div>
-              <label htmlFor="cari-email" className="mb-1.5 block text-xs font-bold uppercase tracking-widest text-slate-400">E-posta</label>
-              <input id="cari-email" name="email" type="email" placeholder="ornek@sirket.com" className="w-full rounded-xl border border-indigo-100 bg-white px-4 py-2.5 text-sm outline-none focus:ring-2 focus:ring-primary transition-all" />
-            </div>
-          </div>
-
-          <div className="col-span-12 md:col-span-4 bg-slate-50/50 rounded-2xl p-6 border border-indigo-50/50 flex flex-col">
-            <div className="flex-1 space-y-4">
-              <div>
-                <label htmlFor="cari-telefon" className="mb-1.5 block text-xs font-bold uppercase tracking-widest text-slate-400">Telefon</label>
-                <input id="cari-telefon" name="telefon" type="tel" placeholder="05XX XXX XX XX" className="w-full rounded-xl border border-indigo-100 bg-white px-4 py-2.5 text-sm outline-none focus:ring-2 focus:ring-primary transition-all" />
-              </div>
-              <div>
-                <label htmlFor="cari-adres" className="mb-1.5 block text-xs font-bold uppercase tracking-widest text-slate-400">Adres</label>
-                <textarea id="cari-adres" name="adres" rows={2} placeholder="Açık adres bilgisi..." className="w-full rounded-xl border border-indigo-100 bg-white px-4 py-2.5 text-sm resize-none outline-none focus:ring-2 focus:ring-primary transition-all" />
-              </div>
-            </div>
-            
-            <div className="mt-6 flex items-center justify-between">
-              <button
-                type="submit"
-                disabled={isPending}
-                className="ml-auto flex items-center gap-2 rounded-xl bg-primary px-8 py-3 text-sm font-black text-on-primary shadow-lg shadow-indigo-100 hover:bg-primary-container transition-all active:scale-95 disabled:opacity-50"
-              >
-                <span className="material-symbols-outlined text-lg">{isPending ? "sync" : "save"}</span>
-                {isPending ? "Kaydediliyor..." : "Cariyi Kaydet"}
-              </button>
-            </div>
-          </div>
-        </form>
-      </section>
+          </form>
+        </section>
+      )}
 
       <footer className="pt-8 text-center border-t border-indigo-50/50">
         <p className="text-slate-400 text-xs font-bold">

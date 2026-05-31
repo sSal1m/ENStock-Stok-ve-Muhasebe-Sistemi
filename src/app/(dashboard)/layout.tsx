@@ -88,8 +88,25 @@ export default function DashboardLayout({
       router.push('/unauthorized');
       return;
     }
-    if (moduleId && moduleId !== 'users' && moduleId !== 'business' && !hasPermission(moduleId, 'view')) {
-      router.push('/unauthorized');
+    
+    if (moduleId && moduleId !== 'users' && moduleId !== 'business') {
+      // 1. Görüntüleme yetkisi var mı?
+      if (!hasPermission(moduleId, 'view')) {
+        router.push('/unauthorized');
+        return;
+      }
+
+      // 2. Ekleme yetkisi var mı? (URL'de /new veya new query'si varsa)
+      if ((pathname.includes('/new') || pathname.endsWith('/new')) && !hasPermission(moduleId, 'create')) {
+        router.push('/unauthorized');
+        return;
+      }
+
+      // 3. Düzenleme yetkisi var mı? (URL'de /edit veya edit query'si varsa)
+      if (pathname.includes('/edit') && !hasPermission(moduleId, 'edit')) {
+        router.push('/unauthorized');
+        return;
+      }
     }
 
   }, [permsLoading, isAuthenticated, role, hasPermission, router]);

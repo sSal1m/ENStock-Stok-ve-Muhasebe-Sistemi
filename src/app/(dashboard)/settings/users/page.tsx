@@ -25,6 +25,14 @@ const MODULES = [
     actions: { view: true, create: true, edit: true, delete: true },
   },
   {
+    id: "quotes",
+    title: "Teklifler",
+    description: "Müşteri Teklif Yönetimi",
+    icon: "description",
+    color: "amber",
+    actions: { view: true, create: true, edit: true, delete: true },
+  },
+  {
     id: "invoices",
     title: "Fatura",
     description: "Alış, Satış ve Gider Faturası",
@@ -46,24 +54,28 @@ const DEFAULT_ROLE_PERMS: Record<string, any> = {
   admin: {
     stock: { view: true, create: true, edit: true, delete: true },
     contacts: { view: true, create: true, edit: false, delete: true },
+    quotes: { view: true, create: true, edit: true, delete: true },
     invoices: { view: true, create: true, edit: false, delete: true },
     reports: { view: true, create: false, edit: false, delete: false },
   },
   accounting: {
     stock: { view: false, create: false, edit: false, delete: false },
     contacts: { view: true, create: true, edit: false, delete: true },
+    quotes: { view: true, create: true, edit: true, delete: true },
     invoices: { view: true, create: true, edit: false, delete: true },
     reports: { view: true, create: false, edit: false, delete: false },
   },
   warehouse: {
     stock: { view: true, create: true, edit: true, delete: true },
     contacts: { view: false, create: false, edit: false, delete: false },
+    quotes: { view: false, create: false, edit: false, delete: false },
     invoices: { view: false, create: false, edit: false, delete: false },
     reports: { view: false, create: false, edit: false, delete: false },
   },
   manager: {
     stock: { view: true, create: true, edit: true, delete: false },
     contacts: { view: true, create: true, edit: false, delete: false },
+    quotes: { view: true, create: true, edit: true, delete: false },
     invoices: { view: true, create: true, edit: false, delete: false },
     reports: { view: false, create: false, edit: false, delete: false },
   }
@@ -90,28 +102,33 @@ export default function UserListPage() {
   // User Permission Drawer State
   const [selectedUserForPerms, setSelectedUserForPerms] = useState<UserProfile | null>(null);
   const [userPermsMatrix, setUserPermsMatrix] = useState<Record<string, any>>({});
+  const [rolePermsMatrix, setRolePermsMatrix] = useState<Record<string, any>>({});
   const [isPermsLoading, setIsPermsLoading] = useState(false);
   const [isPermsSaving, setIsPermsSaving] = useState(false);
 
   const fetchUserPermissions = async (user: UserProfile) => {
     setIsPermsLoading(true);
     try {
-      const { data: userPerms, error: userError } = await supabase
+      const roleKey = user.role?.toLowerCase() || 'staff';
+      
+      // 1. Önce rol izinlerini çek
+      const { data: rolePermsData, error: roleError } = await supabase
         .from('role_permissions')
         .select('*')
-        .eq('role', user.id);
+        .eq('role', roleKey);
+        
+      if (roleError) throw roleError;
 
-      if (userError) throw userError;
-
-      let matrix: Record<string, any> = {};
+      let rMatrix: Record<string, any> = {};
+      const defaults = DEFAULT_ROLE_PERMS[roleKey] || DEFAULT_ROLE_PERMS['staff'] || {};
       MODULES.forEach(m => {
-        matrix[m.id] = { view: false, create: false, edit: false, delete: false };
+        rMatrix[m.id] = defaults[m.id] ? { ...defaults[m.id] } : { view: false, create: false, edit: false, delete: false };
       });
-
-      if (userPerms && userPerms.length > 0) {
-        userPerms.forEach(p => {
-          if (matrix[p.module]) {
-            matrix[p.module] = {
+      
+      if (rolePermsData && rolePermsData.length > 0) {
+        rolePermsData.forEach(p => {
+          if (rMatrix[p.module]) {
+            rMatrix[p.module] = {
               view: p.can_view,
               create: p.can_create,
               edit: p.can_edit,
@@ -119,33 +136,33 @@ export default function UserListPage() {
             };
           }
         });
-        setUserPermsMatrix(matrix);
-      } else {
-        const roleKey = user.role?.toLowerCase() || 'staff';
-        const { data: rolePerms, error: roleError } = await supabase
-          .from('role_permissions')
-          .select('*')
-          .eq('role', roleKey);
-
-        if (roleError) throw roleError;
-
-        if (rolePerms && rolePerms.length > 0) {
-          rolePerms.forEach(p => {
-            if (matrix[p.module]) {
-              matrix[p.module] = {
-                view: p.can_view,
-                create: p.can_create,
-                edit: p.can_edit,
-                delete: p.can_delete
-              };
-            }
-          });
-        } else {
-          const defaults = DEFAULT_ROLE_PERMS[roleKey] || DEFAULT_ROLE_PERMS['staff'];
-          matrix = { ...defaults };
-        }
-        setUserPermsMatrix(matrix);
       }
+      setRolePermsMatrix(rMatrix);
+      
+      // 2. Kullanıcı bazlı özel (override) izinleri çek
+      const { data: userPermsData, error: userError } = await supabase
+        .from('role_permissions')
+        .select('*')
+        .eq('role', user.id);
+
+      if (userError) throw userError;
+
+      let uMatrix: Record<string, any> = JSON.parse(JSON.stringify(rMatrix)); // Rol izinlerini baz al
+      
+      if (userPermsData && userPermsData.length > 0) {
+        userPermsData.forEach(p => {
+          if (uMatrix[p.module]) {
+            // Sadece override edilmiş modülleri ez
+            uMatrix[p.module] = {
+              view: p.can_view,
+              create: p.can_create,
+              edit: p.can_edit,
+              delete: p.can_delete
+            };
+          }
+        });
+      }
+      setUserPermsMatrix(uMatrix);
     } catch (err: any) {
       toast.error("Yetkiler yüklenirken hata oluştu: " + err.message);
     } finally {
@@ -170,22 +187,49 @@ export default function UserListPage() {
     const toastId = toast.loading("Kullanıcı yetkileri kaydediliyor...");
     try {
       const upsertData: any[] = [];
+      const modulesToDelete: string[] = [];
+      
       Object.entries(userPermsMatrix).forEach(([module, perms]: [string, any]) => {
-        upsertData.push({
-          role: selectedUserForPerms.id,
-          module,
-          can_view: perms.view,
-          can_create: perms.create,
-          can_edit: perms.edit,
-          can_delete: perms.delete
-        });
+        const rolePerms = rolePermsMatrix[module];
+        
+        // Karşılaştır: rol ile birebir aynı mı?
+        const isSameAsRole = rolePerms && 
+          perms.view === rolePerms.view &&
+          perms.create === rolePerms.create &&
+          perms.edit === rolePerms.edit &&
+          perms.delete === rolePerms.delete;
+          
+        if (isSameAsRole) {
+          // Birebir aynıysa özel yetkiyi kaldır (delta silme)
+          modulesToDelete.push(module);
+        } else {
+          // Farklıysa özel yetki olarak ekle/güncelle (delta kaydetme)
+          upsertData.push({
+            role: selectedUserForPerms.id,
+            module,
+            can_view: perms.view,
+            can_create: perms.create,
+            can_edit: perms.edit,
+            can_delete: perms.delete
+          });
+        }
       });
 
-      const { error } = await supabase
-        .from('role_permissions')
-        .upsert(upsertData, { onConflict: 'role,module' });
-
-      if (error) throw error;
+      if (upsertData.length > 0) {
+        const { error } = await supabase
+          .from('role_permissions')
+          .upsert(upsertData, { onConflict: 'role,module' });
+        if (error) throw error;
+      }
+      
+      if (modulesToDelete.length > 0) {
+        const { error } = await supabase
+          .from('role_permissions')
+          .delete()
+          .eq('role', selectedUserForPerms.id)
+          .in('module', modulesToDelete);
+        if (error) throw error;
+      }
 
       toast.success("Kullanıcı yetkileri başarıyla güncellendi.", { id: toastId });
       setSelectedUserForPerms(null);

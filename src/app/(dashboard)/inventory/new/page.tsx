@@ -9,6 +9,7 @@ import { fetchDefaultCurrency } from "@/lib/defaultCurrency";
 import { logActivityAction } from "@/app/(dashboard)/activity-log/actions";
 import { uploadProductImageAction } from "@/app/(dashboard)/settings/profile/actions";
 import { formatDescription } from "@/lib/productImageHelper";
+import { usePermissions } from "@/hooks/usePermissions";
 
 // ─── Tipler ────────────────────────────────────────────────────────────────
 
@@ -58,6 +59,7 @@ function fmtCurr(val: number, currency: string): string {
 
 export default function NewInventoryPage() {
   const router = useRouter();
+  const { hasPermission, isLoading: permsLoading } = usePermissions();
 
   const [categories, setCategories] = useState<Category[]>([]);
   const [form, setForm] = useState<FormState>(INITIAL_FORM);
@@ -72,6 +74,24 @@ export default function NewInventoryPage() {
 
   const [imageUrl, setImageUrl] = useState<string>("");
   const [isImageUploading, setIsImageUploading] = useState<boolean>(false);
+
+  useEffect(() => {
+    if (!permsLoading && !hasPermission("stock", "create")) {
+      toast.error("Bu işlem için yetkiniz bulunmamaktadır.");
+      router.replace("/inventory");
+    }
+  }, [permsLoading, hasPermission, router]);
+
+  if (permsLoading) {
+    return (
+      <div className="flex-1 overflow-y-auto p-8 flex items-center justify-center min-h-[400px]">
+        <div className="flex flex-col items-center gap-4">
+          <div className="w-12 h-12 border-4 border-purple-200 border-t-purple-600 rounded-full animate-spin"></div>
+          <p className="text-slate-600">Yetkiler kontrol ediliyor...</p>
+        </div>
+      </div>
+    );
+  }
 
   const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];

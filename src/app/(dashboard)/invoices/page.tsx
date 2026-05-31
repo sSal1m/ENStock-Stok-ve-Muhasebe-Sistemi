@@ -5,7 +5,7 @@ import { supabase } from "@/lib/supabaseClient";
 import { useCurrencyConverter } from "@/hooks/useCurrencyConverter";
 import { softDeleteInvoice } from "@/app/(dashboard)/trash/actions";
 import Link from "next/link";
-import toast from "react-hot-toast";
+import { toast, Toaster } from "react-hot-toast";
 import { usePermissions } from "@/hooks/usePermissions";
 
 
@@ -224,6 +224,7 @@ export default function InvoicesPage() {
 
   return (
     <div className="p-6 lg:p-10 space-y-8">
+      <Toaster position="top-right" />
       {/* Content Area */}
       <div className="w-full space-y-8">
         {/* ── İstatistik Kartları ── */}

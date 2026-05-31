@@ -166,6 +166,7 @@ export default function RegisterPage() {
               company_name: formData.companyName,
               tax_id: formData.taxId,
               business_sector: formData.businessSector,
+              role: 'admin',
             },
           },
         });
@@ -235,6 +236,24 @@ export default function RegisterPage() {
           return;
         }
 
+        // Yeni kayıt olan kullanıcının profilini veritabanında admin olarak güncelle ve şirket bilgilerini doldur
+        const { error: profileError } = await supabase
+          .from('profiles')
+          .update({
+            role: 'admin',
+            company_name: formData.companyName,
+            tax_id: formData.taxId,
+            business_sector: formData.businessSector,
+            business_id: data.user.id,
+          })
+          .eq('id', data.user.id);
+
+        if (profileError) {
+          console.error('Kullanıcı profil tanımlama hatası:', profileError);
+        } else {
+          console.log('Kullanıcı profili başarıyla admin olarak tanımlandı.');
+        }
+
         setShowOtpModal(false);
         setOtpLoading(false);
 
@@ -248,7 +267,7 @@ export default function RegisterPage() {
         setOtpLoading(false);
       }
     },
-    [formData.fullName, formData.email, isMounted, otp, regEmail, router, showToast, supabase]
+    [formData, isMounted, otp, regEmail, router, showToast, supabase]
   );
 
   const handleOtpCancel = useCallback(() => {

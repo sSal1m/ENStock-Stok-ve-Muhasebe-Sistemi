@@ -1126,3 +1126,65 @@ export async function updateInvoiceAction(
     };
   }
 }
+
+/* ═══════════════════════════════════════════
+   FETCH INVOICE DATA SECURELY FOR EDITING
+   ═══════════════════════════════════════════ */
+export async function fetchInvoiceDataForEdit(userId: string, invoiceId: string) {
+  try {
+    const teamIds = await resolveTeamIdsServer(userId);
+
+    // Fetch invoice with team filter
+    const { data: invoiceData, error: invoiceError } = await applyTeamFilterServer(
+      supabaseServer
+        .from("invoices")
+        .select("*")
+        .eq("id", invoiceId),
+      teamIds
+    ).single();
+
+    if (invoiceError || !invoiceData) {
+      console.error("fetchInvoiceDataForEdit - Invoice not found or error:", invoiceError);
+      return { success: false, error: invoiceError?.message || "Fatura bulunamadı" };
+    }
+
+    // Fetch contact with team filter
+    const { data: contactData } = await applyTeamFilterServer(
+      supabaseServer
+        .from("contacts")
+        .select("id, name, tax_number, tax_office, type")
+        .eq("id", invoiceData.contact_id),
+      teamIds
+    ).single();
+
+    // Fetch items (no direct team filter needed since invoice access is verified)
+    const { data: itemsData, error: itemsError } = await supabaseServer
+      .from("invoice_items")
+      .select("*")
+      .eq("invoice_id", invoiceId);
+
+    // Fetch products in one batch query
+    let productsData: any[] = [];
+    if (itemsData && itemsData.length > 0) {
+      const productIds = itemsData.map((item: any) => item.product_id);
+      const { data: fetchedProducts } = await supabaseServer
+        .from("products")
+        .select("id, name, stock_quantity")
+        .in("id", productIds);
+      productsData = fetchedProducts || [];
+    }
+
+    return {
+      success: true,
+      invoice: invoiceData,
+      contact: contactData || null,
+      items: itemsData || [],
+      products: productsData,
+    };
+  } catch (err: any) {
+    console.error("fetchInvoiceDataForEdit error:", err);
+    return { success: false, error: err?.message || String(err) };
+  }
+}
+
+

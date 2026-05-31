@@ -2,7 +2,7 @@
 
 import { useState, useRef, useCallback, useEffect } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { createInvoiceAction, searchContacts, searchProducts, getNextInvoiceNumber, updateProposalAction, type InvoiceLineItem } from "@/app/(dashboard)/invoices/actions";
+import { createInvoiceAction, searchContacts, searchProducts, getNextInvoiceNumber, updateProposalAction, fetchInvoiceDataForEdit, type InvoiceLineItem } from "@/app/(dashboard)/invoices/actions";
 import { supabase } from "@/lib/supabaseClient";
 import Toast from "@/components/invoices/Toast";
 import { useCurrencyConverter } from "@/hooks/useCurrencyConverter";
@@ -180,19 +180,20 @@ export default function CreateInvoiceForm({
 
     const loadDraftInvoice = async () => {
       try {
-        // Fetch invoice
-        const { data: invoiceData, error: invoiceError } = await supabase
-          .from("invoices")
-          .select("*")
-          .eq("id", editInvoiceId)
-          .single();
+        // Fetch invoice, contact, items, and products in a single server-side call
+        const res = await fetchInvoiceDataForEdit(userId, editInvoiceId);
 
-        if (invoiceError || !invoiceData) {
-          console.error("Fatura yüklenemedi:", invoiceError);
-          addToast("error", "❌ Hata", "Taslak fatura yüklenemedi");
+        if (!res.success || !res.invoice) {
+          console.error("Fatura yüklenemedi:", res.error);
+          addToast("error", "❌ Hata", typeof res.error === "string" ? res.error : "Taslak fatura yüklenemedi");
           setIsInitialLoading(false);
           return;
         }
+
+        const invoiceData = res.invoice;
+        const contactData = res.contact;
+        const itemsData = res.items;
+        const productsData = res.products || [];
 
         // Set invoice metadata
         setInvoiceType(invoiceData.type === "sale" ? "sales" : "purchase");
@@ -232,44 +233,25 @@ export default function CreateInvoiceForm({
         // Set isPaid state based on status
         setIsPaid(invoiceData.status === "paid");
 
-        // Fetch and set contact
-        const { data: contactData, error: contactError } = await supabase
-          .from("contacts")
-          .select("id, name, tax_number, tax_office, type")
-          .eq("id", invoiceData.contact_id)
-          .single();
-
         if (contactData) {
           setSelectedContact(contactData as Contact);
         }
 
-        // Fetch invoice items
-        const { data: itemsData, error: itemsError } = await supabase
-          .from("invoice_items")
-          .select("*")
-          .eq("invoice_id", editInvoiceId);
-
         if (itemsData && itemsData.length > 0) {
-          const formattedItems = await Promise.all(
-            itemsData.map(async (item: any) => {
-              const { data: productData } = await supabase
-                .from("products")
-                .select("id, name, stock_quantity")
-                .eq("id", item.product_id)
-                .single();
+          const formattedItems = itemsData.map((item: any) => {
+            const productData = productsData.find((p: any) => p.id === item.product_id);
 
-              return {
-                id: Math.random().toString(36).substr(2, 9),
-                product_id: item.product_id,
-                product_name: productData?.name || "—",
-                stock_quantity: productData?.stock_quantity || 0,
-                quantity: Number(item.quantity),
-                unit_price: Number(item.unit_price),
-                vat_rate: Number(item.vat_rate),
-                line_total: Number(item.line_total),
-              };
-            })
-          );
+            return {
+              id: Math.random().toString(36).substr(2, 9),
+              product_id: item.product_id,
+              product_name: productData?.name || "—",
+              stock_quantity: productData?.stock_quantity || 0,
+              quantity: Number(item.quantity),
+              unit_price: Number(item.unit_price),
+              vat_rate: Number(item.vat_rate),
+              line_total: Number(item.line_total),
+            };
+          });
           setLineItems(formattedItems);
         }
 
@@ -283,7 +265,7 @@ export default function CreateInvoiceForm({
     };
 
     loadDraftInvoice();
-  }, [editInvoiceId]);
+  }, [editInvoiceId, userId]);
 
   // ✅ Load preselected contact
   useEffect(() => {

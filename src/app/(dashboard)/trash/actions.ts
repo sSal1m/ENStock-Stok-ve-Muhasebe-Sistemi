@@ -150,25 +150,27 @@ export async function softDeleteInvoice(invoiceId: string, userId: string) {
   }
 
   try {
-    // 1. Fatura bilgilerini al (bakiye geri alma için)
-    const { data: invoice, error: fetchError } = await supabaseServer
+    const teamIds = await resolveTeamIdsServer(userId);
+
+    // 1. Fatura bilgilerini al (bakiye geri alma için) — team-scoped
+    let fetchQuery = supabaseServer
       .from("invoices")
-      .select("id, invoice_number, type, total_amount, exchange_rate, contact_id, status")
-      .eq("id", invoiceId)
-      .eq("user_id", userId)
-      .single();
+      .select("id, invoice_number, type, total_amount, exchange_rate, contact_id, status, user_id")
+      .eq("id", invoiceId);
+    fetchQuery = applyTeamFilterServer(fetchQuery, teamIds);
+    const { data: invoice, error: fetchError } = await fetchQuery.single();
 
     if (fetchError || !invoice) {
       console.error("Fatura bulunamadı:", fetchError);
       return { success: false, message: "Fatura bulunamadı." };
     }
 
-    // 2. Soft delete uygula
+    // 2. Soft delete uygula — use the actual owner's user_id
     const { error } = await supabaseServer
       .from("invoices")
       .update({ deleted_at: new Date().toISOString() })
       .eq("id", invoiceId)
-      .eq("user_id", userId);
+      .eq("user_id", invoice.user_id);
 
     if (error) {
       console.error("Soft delete invoice error:", error);
@@ -177,9 +179,6 @@ export async function softDeleteInvoice(invoiceId: string, userId: string) {
 
     // 3. Carinin bakiyesini geri al (sadece kesilmiş/pending/paid faturalar için)
     if (invoice.status !== "draft" && invoice.contact_id) {
-      // Orijinal fatura oluşturulurken: sales → +total, purchase → -total
-      // Geri alma: sales → -total, purchase → +total
-      // current_balance TRY'de tutulur, fatura currency'sinden exchange_rate ile normalize edilir.
       const totalAmountTry = Number(invoice.total_amount) * Number(invoice.exchange_rate || 1);
       const balanceReversal = invoice.type === "sale" ? -totalAmountTry : totalAmountTry;
 
@@ -328,25 +327,27 @@ export async function restoreInvoice(invoiceId: string, userId: string) {
   }
 
   try {
-    // 1. Fatura bilgilerini al (bakiye tekrar ekleme için)
-    const { data: invoice, error: fetchError } = await supabaseServer
+    const teamIds = await resolveTeamIdsServer(userId);
+
+    // 1. Fatura bilgilerini al (bakiye tekrar ekleme için) — team-scoped
+    let fetchQuery = supabaseServer
       .from("invoices")
-      .select("id, invoice_number, type, total_amount, exchange_rate, contact_id, status")
-      .eq("id", invoiceId)
-      .eq("user_id", userId)
-      .single();
+      .select("id, invoice_number, type, total_amount, exchange_rate, contact_id, status, user_id")
+      .eq("id", invoiceId);
+    fetchQuery = applyTeamFilterServer(fetchQuery, teamIds);
+    const { data: invoice, error: fetchError } = await fetchQuery.single();
 
     if (fetchError || !invoice) {
       console.error("Fatura bulunamadı:", fetchError);
       return { success: false, message: "Fatura bulunamadı." };
     }
 
-    // 2. Geri yükle (deleted_at = null)
+    // 2. Geri yükle (deleted_at = null) — use the actual owner's user_id
     const { error } = await supabaseServer
       .from("invoices")
       .update({ deleted_at: null })
       .eq("id", invoiceId)
-      .eq("user_id", userId);
+      .eq("user_id", invoice.user_id);
 
     if (error) {
       console.error("Restore invoice error:", error);
@@ -355,9 +356,6 @@ export async function restoreInvoice(invoiceId: string, userId: string) {
 
     // 3. Carinin bakiyesini tekrar uygula (sadece kesilmiş faturalar için)
     if (invoice.status !== "draft" && invoice.contact_id) {
-      // Fatura geri yüklenince bakiye etkisi tekrar eklenir:
-      // sales → +total, purchase → -total
-      // current_balance TRY'de tutulur; fatura currency'sinden exchange_rate ile normalize.
       const totalAmountTry = Number(invoice.total_amount) * Number(invoice.exchange_rate || 1);
       const balanceChange = invoice.type === "sale" ? totalAmountTry : -totalAmountTry;
 
@@ -553,12 +551,15 @@ export async function softDeleteQuote(quoteId: string, userId: string) {
   }
 
   try {
-    const { data: quote, error: fetchError } = await supabaseServer
+    const teamIds = await resolveTeamIdsServer(userId);
+
+    // Team-scoped: teklifi takım üyelerinden herhangi biri silebilir
+    let fetchQuery = supabaseServer
       .from("quotes")
-      .select("id")
-      .eq("id", quoteId)
-      .eq("user_id", userId)
-      .single();
+      .select("id, user_id")
+      .eq("id", quoteId);
+    fetchQuery = applyTeamFilterServer(fetchQuery, teamIds);
+    const { data: quote, error: fetchError } = await fetchQuery.single();
 
     if (fetchError || !quote) {
       console.error("Teklif bulunamadı:", fetchError);
@@ -569,7 +570,7 @@ export async function softDeleteQuote(quoteId: string, userId: string) {
       .from("quotes")
       .update({ deleted_at: new Date().toISOString() })
       .eq("id", quoteId)
-      .eq("user_id", userId);
+      .eq("user_id", quote.user_id);
 
     if (error) {
       console.error("Soft delete quote error:", error);
@@ -592,11 +593,25 @@ export async function restoreQuote(quoteId: string, userId: string) {
   }
 
   try {
+    const teamIds = await resolveTeamIdsServer(userId);
+
+    // Team-scoped: teklifin sahibini bul
+    let fetchQuery = supabaseServer
+      .from("quotes")
+      .select("id, user_id")
+      .eq("id", quoteId);
+    fetchQuery = applyTeamFilterServer(fetchQuery, teamIds);
+    const { data: quote, error: fetchError } = await fetchQuery.single();
+
+    if (fetchError || !quote) {
+      return { success: false, message: "Teklif bulunamadı." };
+    }
+
     const { error } = await supabaseServer
       .from("quotes")
       .update({ deleted_at: null })
       .eq("id", quoteId)
-      .eq("user_id", userId);
+      .eq("user_id", quote.user_id);
 
     if (error) {
       console.error("Restore quote error:", error);
@@ -619,6 +634,20 @@ export async function permanentDeleteQuote(quoteId: string, userId: string) {
   }
 
   try {
+    const teamIds = await resolveTeamIdsServer(userId);
+
+    // Team-scoped: teklifin sahibini bul
+    let fetchQuery = supabaseServer
+      .from("quotes")
+      .select("id, user_id")
+      .eq("id", quoteId);
+    fetchQuery = applyTeamFilterServer(fetchQuery, teamIds);
+    const { data: quote } = await fetchQuery.single();
+
+    if (!quote) {
+      return { success: false, message: "Teklif bulunamadı." };
+    }
+
     await supabaseServer
       .from("quote_items")
       .delete()
@@ -628,7 +657,7 @@ export async function permanentDeleteQuote(quoteId: string, userId: string) {
       .from("quotes")
       .delete()
       .eq("id", quoteId)
-      .eq("user_id", userId);
+      .eq("user_id", quote.user_id);
 
     if (error) {
       console.error("Permanent delete quote error:", error);

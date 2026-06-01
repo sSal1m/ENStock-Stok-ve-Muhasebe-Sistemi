@@ -46,7 +46,7 @@ export default function LoginPage() {
         <div className="relative z-10">
           <div className="text-on-primary-container text-xl font-extrabold tracking-tight font-headline flex items-center gap-2">
             <div className="w-6 h-6 rounded-md overflow-hidden flex items-center justify-center bg-white">
-              <img src="/favicon.png" alt="ENStock" className="w-full h-full object-cover" />
+              <img src="/assets/favicon.png" alt="ENStock" className="w-full h-full object-cover" />
             </div>
             ENStock
           </div>
@@ -67,7 +67,7 @@ export default function LoginPage() {
         {/* Mobile Brand Header (Hidden on Desktop) */}
         <div className="md:hidden absolute top-8 left-8 flex items-center gap-2">
           <div className="w-6 h-6 rounded-md overflow-hidden flex items-center justify-center bg-white shadow-sm">
-            <img src="/favicon.png" alt="ENStock" className="w-full h-full object-cover" />
+            <img src="/assets/favicon.png" alt="ENStock" className="w-full h-full object-cover" />
           </div>
           <span className="text-primary font-headline font-extrabold tracking-tight text-lg">ENStock</span>
         </div>

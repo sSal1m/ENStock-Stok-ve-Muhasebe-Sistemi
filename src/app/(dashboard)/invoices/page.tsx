@@ -5,7 +5,7 @@ import { supabase } from "@/lib/supabaseClient";
 import { useCurrencyConverter } from "@/hooks/useCurrencyConverter";
 import { softDeleteInvoice } from "@/app/(dashboard)/trash/actions";
 import Link from "next/link";
-import toast from "react-hot-toast";
+import { toast, Toaster } from "react-hot-toast";
 import { usePermissions } from "@/hooks/usePermissions";
 
 
@@ -224,6 +224,7 @@ export default function InvoicesPage() {
 
   return (
     <div className="p-6 lg:p-10 space-y-8">
+      <Toaster position="top-right" />
       {/* Content Area */}
       <div className="w-full space-y-8">
         {/* ── İstatistik Kartları ── */}
@@ -378,7 +379,7 @@ export default function InvoicesPage() {
           <div className="flex flex-col items-center justify-center py-24 bg-white rounded-2xl shadow-sm border border-slate-200">
             <div className="w-32 h-32 mb-8 relative flex items-center justify-center rounded-2xl overflow-hidden bg-white border border-slate-200 shadow-md hover:scale-105 transition-transform duration-300">
               <img
-                src="/fatura.png"
+                src="/assets/fatura.png"
                 alt="Fatura"
                 className="w-full h-full object-cover scale-[1.38]"
               />

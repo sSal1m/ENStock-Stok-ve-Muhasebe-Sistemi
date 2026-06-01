@@ -8,6 +8,7 @@ import StockAdjustmentModal from "@/components/inventory/StockAdjustmentModal";
 import { useCurrencyConverter } from "@/hooks/useCurrencyConverter";
 import CurrencySwitcher from "@/components/common/CurrencySwitcher";
 import { parseDescription } from "@/lib/productImageHelper";
+import { usePermissions } from "@/hooks/usePermissions";
 
 // ─── Tipler ────────────────────────────────────────────────────────────────
 interface Product {
@@ -93,6 +94,7 @@ export default function ProductDetailPage() {
   const params = useParams();
   const router = useRouter();
   const id = params?.id as string;
+  const { hasPermission } = usePermissions();
 
   const [product, setProduct] = useState<Product | null>(null);
   const [allMovements, setAllMovements] = useState<AllMovements>({ data: [], total: 0 }); // ✅ TÜM VERİ BİR KEREDE
@@ -126,27 +128,41 @@ export default function ProductDetailPage() {
     if (!id || !userId) return;
 
     try {
-      const { data: prod, error: prodErr } = await supabase
-        .from("products")
-        .select("id, sku, name, description, purchase_price, sale_price, currency, purchase_price_in_currency, sale_price_in_currency, stock_quantity, critical_limit, tax_rate, categories(name)")
-        .eq("id", id)
-        .eq("user_id", userId)
-        .single();
+      const { fetchTeamScopedData } = await import("@/app/(dashboard)/teamActions");
 
-      if (prodErr) throw prodErr;
+      const { data: prodData } = await fetchTeamScopedData(
+        userId,
+        "products",
+        "id, sku, name, description, purchase_price, sale_price, currency, purchase_price_in_currency, sale_price_in_currency, stock_quantity, critical_limit, tax_rate, categories(name)",
+        {
+          additionalFilters: [{ column: "id", operator: "eq", value: id }],
+          limit: 1
+        }
+      );
+
+      const prod = prodData && prodData.length > 0 ? prodData[0] : null;
+
+      if (!prod) {
+        throw new Error("Ürün bulunamadı veya erişim izniniz yok.");
+      }
+
       setProduct(prod as Product);
       console.log("✅ Ürün verisi tazelendi:", prod);
 
       // 2. TÜM inventory_logs'u çek (20-30 kaydı bir seferde)
-      const { data: logs, error: logsErr, count: totalCount } = await supabase
-        .from("inventory_logs")
-        .select("id, product_id, action_type, quantity_change, previous_stock, new_stock, note, unit_price, created_at", { count: "exact" })
-        .eq("product_id", id)
-        .eq("user_id", userId)
-        .order("created_at", { ascending: false })
-        .limit(30); // ✅ Maksimum 30 kaydı bir kez yükle
+      const { data: logs, count: totalCount } = await fetchTeamScopedData(
+        userId,
+        "inventory_logs",
+        "id, product_id, action_type, quantity_change, previous_stock, new_stock, note, unit_price, created_at",
+        {
+          additionalFilters: [{ column: "product_id", operator: "eq", value: id }],
+          orderBy: "created_at",
+          orderAscending: false,
+          limit: 30
+        }
+      );
 
-      if (!logsErr && logs && logs.length > 0) {
+      if (logs && logs.length > 0) {
         const mapped: StockMovement[] = logs.map((log: InventoryLog) => ({
           id: log.id,
           date: log.created_at,
@@ -158,8 +174,8 @@ export default function ProductDetailPage() {
         setAllMovements({ data: mapped, total: totalCount || 0 });
         setCurrentPage(0); // ✅ Sayfayı 0'a dön
         console.log("✅ Inventory logs tazelendi:", mapped.length, "kayıt yüklendi");
-      } else if (logsErr) {
-        console.warn("⚠️ inventory_logs sorgusu başarısız, fallback yapılıyor...", logsErr);
+      } else {
+        console.warn("⚠️ inventory_logs bulunamadı, fallback yapılıyor...");
         // Fallback: Eski fatura verilerinden göster
         const { data: items, count: itemCount } = await supabase
           .from("invoice_items")
@@ -186,8 +202,6 @@ export default function ProductDetailPage() {
         } else {
           setAllMovements({ data: [], total: 0 });
         }
-      } else {
-        setAllMovements({ data: [], total: 0 });
       }
 
       setError(null);
@@ -378,20 +392,24 @@ export default function ProductDetailPage() {
 
           {/* Aksiyon Butonları */}
           <div className="flex flex-col gap-3 w-full lg:w-auto flex-shrink-0">
-            <button
-              onClick={() => router.push(`/inventory/${id}/edit`)}
-              className="flex items-center justify-center gap-2 px-6 py-3 bg-white text-on-surface font-bold rounded-xl shadow-sm border border-indigo-50 hover:bg-surface-container-low transition-all"
-            >
-              <span className="material-symbols-outlined text-lg">edit</span>
-              <span>Ürünü Düzenle</span>
-            </button>
-            <button
-              onClick={() => setIsStockModalOpen(true)}
-              className="flex items-center justify-center gap-2 px-6 py-3 bg-primary text-white font-bold rounded-xl shadow-lg shadow-indigo-100 hover:opacity-90 transition-all"
-            >
-              <span className="material-symbols-outlined text-lg">swap_vert</span>
-              <span>Stok Ekle/Çıkar</span>
-            </button>
+            {hasPermission("stock", "edit") && (
+              <button
+                onClick={() => router.push(`/inventory/${id}/edit`)}
+                className="flex items-center justify-center gap-2 px-6 py-3 bg-white text-on-surface font-bold rounded-xl shadow-sm border border-indigo-50 hover:bg-surface-container-low transition-all"
+              >
+                <span className="material-symbols-outlined text-lg">edit</span>
+                <span>Ürünü Düzenle</span>
+              </button>
+            )}
+            {hasPermission("stock", "edit") && (
+              <button
+                onClick={() => setIsStockModalOpen(true)}
+                className="flex items-center justify-center gap-2 px-6 py-3 bg-primary text-white font-bold rounded-xl shadow-lg shadow-indigo-100 hover:opacity-90 transition-all"
+              >
+                <span className="material-symbols-outlined text-lg">swap_vert</span>
+                <span>Stok Ekle/Çıkar</span>
+              </button>
+            )}
           </div>
         </div>
       </section>

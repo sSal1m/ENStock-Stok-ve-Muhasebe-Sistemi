@@ -198,26 +198,26 @@ export async function getNextInvoiceNumber(userId: string, invoiceType: "sales" 
 
     if (todayError) {
       console.error("Error fetching today's invoices:", todayError);
-      return `FTR-${todayStr}-001`;
+      return `FTR-${todayStr}-1`;
     }
 
     if (!todayInvoices || todayInvoices.length === 0) {
-      return `FTR-${todayStr}-001`; // İlk fatura bugün
+      return `FTR-${todayStr}-1`; // İlk fatura bugün
     }
 
-    // Son faturanın sıra numarasını çıkar (FTR-2026-05-03-001 ise 001'i al)
+    // Son faturanın sıra numarasını çıkar
     const lastNumberStr = todayInvoices[0].invoice_number;
     const match = lastNumberStr.match(/-(\d+)$/);
     if (match && match[1]) {
       const nextSeq = parseInt(match[1], 10) + 1;
-      return `FTR-${todayStr}-${nextSeq.toString().padStart(3, "0")}`;
+      return `FTR-${todayStr}-${nextSeq}`;
     }
 
-    return `FTR-${todayStr}-001`;
+    return `FTR-${todayStr}-1`;
   } catch (err) {
     console.error("Unexpected error in getNextInvoiceNumber:", err);
     const today = new Date();
-    return `FTR-${today.toISOString().split("T")[0]}-001`;
+    return `FTR-${today.toISOString().split("T")[0]}-1`;
   }
 }
 

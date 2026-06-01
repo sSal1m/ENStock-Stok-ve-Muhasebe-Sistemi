@@ -3,7 +3,8 @@
 
 import { useState, useEffect } from 'react';
 import { supabase } from '@/lib/supabaseClient';
-import { getRolePermissions, Permission } from '@/services/permissionService';
+import { Permission } from '@/services/permissionService';
+import { fetchUserPermissionsAction } from '@/app/(dashboard)/teamActions';
 
 export function usePermissions() {
   const [role, setRole] = useState<string | null>(null);
@@ -23,13 +24,19 @@ export function usePermissions() {
           
           if (profile) {
             setRole(profile.role);
-            // 1. Önce rol varsayılanlarını yükle
-            const rolePerms = await getRolePermissions(profile.role);
-            // 2. Sonra kullanıcı bazlı (user.id) özel izinleri yükle (delta)
-            const userPerms = await getRolePermissions(user.id);
             
-            // 3. İzinleri birleştir: rol izinlerinin üzerine kullanıcı izinlerini (varsa) yaz
-            setPermissions({ ...rolePerms, ...userPerms });
+            // Use Server Action to fetch permissions and bypass RLS
+            const result = await fetchUserPermissionsAction(user.id, profile.role);
+            
+            if (result.success) {
+              const rMatrix: Record<string, Permission> = {};
+              result.rolePerms?.forEach((p: any) => { rMatrix[p.module] = p; });
+              
+              const uMatrix: Record<string, Permission> = {};
+              result.userPerms?.forEach((p: any) => { uMatrix[p.module] = p; });
+              
+              setPermissions({ ...rMatrix, ...uMatrix });
+            }
           }
         }
       } catch (error) {

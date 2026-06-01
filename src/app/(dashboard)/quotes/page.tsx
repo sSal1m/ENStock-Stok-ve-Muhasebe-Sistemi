@@ -475,7 +475,7 @@ export default function QuotesPage() {
           <div className="flex flex-col items-center justify-center py-24 bg-white rounded-2xl shadow-sm border border-slate-200">
             <div className="w-32 h-32 mb-8 relative flex items-center justify-center rounded-full overflow-hidden bg-white border border-slate-200 shadow-md hover:scale-105 transition-transform duration-300">
               <img
-                src="/teklif.png"
+                src="/assets/teklif.png"
                 alt="Teklif"
                 className="w-full h-full object-cover scale-[1.28]"
               />

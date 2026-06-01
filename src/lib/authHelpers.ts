@@ -23,6 +23,12 @@ export async function requirePermission(
   }
 }
 
+import { createClient } from "@supabase/supabase-js";
+
+const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
+const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
+const supabaseAdmin = createClient(supabaseUrl, supabaseServiceKey);
+
 /**
  * Sunucu tarafında kullanıcının yetkisini döndürür (Boolean).
  * Arayüzde buton gizlemek/disabled yapmak için kullanılabilir.
@@ -33,8 +39,8 @@ export async function checkPermission(module: string, action: ActionType): Promi
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return false;
 
-  // 1. Önce kullanıcı bazlı (user.id) izinleri kontrol et
-  const { data: userPermission } = await supabase
+  // 1. Önce kullanıcı bazlı (user.id) izinleri kontrol et (Bypass RLS)
+  const { data: userPermission } = await supabaseAdmin
     .from('role_permissions')
     .select(action)
     .eq('role', user.id)
@@ -45,8 +51,8 @@ export async function checkPermission(module: string, action: ActionType): Promi
     return !!(userPermission as any)[action];
   }
 
-  // 2. Profil tablosundan kullanıcının rolünü al
-  const { data: profile } = await supabase
+  // 2. Profil tablosundan kullanıcının rolünü al (Bypass RLS for safety too, though not strictly required)
+  const { data: profile } = await supabaseAdmin
     .from('profiles')
     .select('role')
     .eq('id', user.id)
@@ -57,8 +63,8 @@ export async function checkPermission(module: string, action: ActionType): Promi
   // Admin ise her şeye yetkisi vardır
   if (profile.role === 'admin') return true;
 
-  // Rol izinleri tablosundan yetkiyi kontrol et
-  const { data: permission } = await supabase
+  // Rol izinleri tablosundan yetkiyi kontrol et (Bypass RLS)
+  const { data: permission } = await supabaseAdmin
     .from('role_permissions')
     .select(action)
     .eq('role', profile.role)

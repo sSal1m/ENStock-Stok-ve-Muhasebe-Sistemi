@@ -46,7 +46,7 @@ const MODULES = [
     description: "Finansal Analiz ve Grafik",
     icon: "analytics",
     color: "emerald",
-    actions: { view: true, create: true, edit: true, delete: true },
+    actions: { view: true, create: false, edit: false, delete: false },
   },
 ];
 
@@ -179,7 +179,16 @@ export default function RolesPermissionsPage() {
       const rolePerms = { ...(newMatrix[activeRoleId] || {}) };
       const modulePerms = { ...(rolePerms[moduleId] || { view: false, create: false, edit: false, delete: false }) };
 
-      modulePerms[permKey] = !modulePerms[permKey];
+      const newValue = !modulePerms[permKey];
+      modulePerms[permKey] = newValue;
+
+      // "Görüntüle" kapatılırsa diğer yetkiler de kapatılsın
+      if (permKey === 'view' && !newValue && moduleId !== 'reports') {
+        modulePerms.create = false;
+        modulePerms.edit = false;
+        modulePerms.delete = false;
+      }
+
       newPerms = { ...modulePerms }; // Sunucuya göndermek için kopyala
 
       rolePerms[moduleId] = modulePerms;
@@ -372,6 +381,7 @@ export default function RolesPermissionsPage() {
                           <Switch
                             checked={perms.create}
                             onChange={() => togglePermission(module.id, 'create')}
+                            disabled={!perms.view}
                           />
                         ) : (
                           <span className="text-slate-200 text-lg select-none" title="Bu modül için mevcut değil">—</span>
@@ -386,6 +396,7 @@ export default function RolesPermissionsPage() {
                           <Switch
                             checked={perms.edit}
                             onChange={() => togglePermission(module.id, 'edit')}
+                            disabled={!perms.view}
                           />
                         ) : (
                           <span className="text-slate-200 text-lg select-none" title="Bu modül için mevcut değil">—</span>
@@ -400,6 +411,7 @@ export default function RolesPermissionsPage() {
                           <Switch
                             checked={perms.delete}
                             onChange={() => togglePermission(module.id, 'delete')}
+                            disabled={!perms.view}
                           />
                         ) : (
                           <span className="text-slate-200 text-lg select-none" title="Bu modül için mevcut değil">—</span>

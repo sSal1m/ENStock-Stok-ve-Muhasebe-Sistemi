@@ -75,59 +75,20 @@ export default function DashboardPage() {
           return;
         }
 
-        const { fetchTeamScopedData } = await import("@/app/(dashboard)/teamActions");
+        const { getDashboardDataServer } = await import("@/app/(dashboard)/dashboard/actions");
+        const dashboardRes = await getDashboardDataServer(authUser.id);
 
-        const [
+        if (!dashboardRes.success || !dashboardRes.data) {
+          throw new Error(dashboardRes.error || "Veriler alınamadı.");
+        }
+
+        const {
           productsRes,
           revenueRes,
           activitiesRes,
           contactsRes,
           invoicesDetailsRes,
-        ] = await Promise.all([
-          fetchTeamScopedData(
-            authUser.id,
-            'products',
-            'id, name, stock_quantity, critical_limit, sale_price, currency, sale_price_in_currency',
-            { excludeDeleted: true }
-          ),
-
-          // ✅ Currency-aware revenue: total_amount fatura para biriminde saklı,
-          //   exchange_rate ile TRY karşılığını hesaplıyoruz
-          fetchTeamScopedData(
-            authUser.id,
-            'invoices',
-            'id, total_amount, currency, exchange_rate, type, issue_date',
-            { excludeDeleted: true }
-          ),
-
-          fetchTeamScopedData(
-            authUser.id,
-            'inventory_logs',
-            'id, action_type, quantity_change, created_at, products(name)',
-            { orderBy: 'created_at', orderAscending: false, limit: 5 }
-          ),
-
-          fetchTeamScopedData(
-            authUser.id,
-            'contacts',
-            'id, name, type',
-            { excludeDeleted: true, limit: 10 }
-          ),
-
-          // Son 7 gün satış trendleri + COGS hesabı için fatura kalemleri + ürün maliyeti
-          fetchTeamScopedData(
-            authUser.id,
-            'invoice_items',
-            'quantity, unit_price, invoice_id, product_id, invoices!inner(issue_date, type, currency, exchange_rate, deleted_at, user_id), products(purchase_price)',
-            {
-              teamFilterColumn: 'invoices.user_id',
-              additionalFilters: [
-                { column: 'invoices.deleted_at', operator: 'is', value: null },
-                { column: 'invoices.issue_date', operator: 'gte', value: new Date(Date.now() - 365 * 24 * 60 * 60 * 1000).toISOString().split('T')[0] }
-              ]
-            }
-          ),
-        ]);
+        } = dashboardRes.data;
 
         const allProducts = productsRes.data || [];
         const totalProducts = allProducts.length;
@@ -225,8 +186,8 @@ export default function DashboardPage() {
         setVendors(vendorData);
 
         // Aktivite logları (CRUD audit trail)
-        const logsRes = await getRecentActivityLogs(authUser.id, 6);
-        if (logsRes.success) {
+        const { logsRes } = dashboardRes.data;
+        if (logsRes && logsRes.success) {
           setActivityLogs(logsRes.data);
         }
       } catch (error) {

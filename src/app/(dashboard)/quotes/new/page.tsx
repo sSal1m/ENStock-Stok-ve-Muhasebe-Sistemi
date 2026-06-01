@@ -183,27 +183,6 @@ export default function NewQuotePage() {
     { id: "1", product_id: undefined, name: "", quantity: 1, unit: "Adet", price: 0, vatRate: 20 },
   ]);
 
-  useEffect(() => {
-    if (!permsLoading) {
-      const requiredPermission = editQuoteId ? "edit" : "create";
-      if (!hasPermission("quotes", requiredPermission)) {
-        toast.error("Bu işlem için yetkiniz bulunmamaktadır.");
-        router.replace("/quotes");
-      }
-    }
-  }, [permsLoading, hasPermission, router, editQuoteId]);
-
-  if (permsLoading) {
-    return (
-      <div className="flex-1 overflow-y-auto p-8 flex items-center justify-center min-h-[400px]">
-        <div className="flex flex-col items-center gap-4">
-          <div className="w-12 h-12 border-4 border-purple-200 border-t-purple-600 rounded-full animate-spin"></div>
-          <p className="text-slate-600">Yetkiler kontrol ediliyor...</p>
-        </div>
-      </div>
-    );
-  }
-
   const [contacts, setContacts] = useState<Contact[]>([]);
   const [products, setProducts] = useState<Product[]>([]);
 
@@ -299,13 +278,10 @@ export default function NewQuotePage() {
       if (productsData) setProducts(productsData as Product[]);
 
       if (editQuoteId) {
-        const { data: quoteData } = await supabase
-          .from("quotes")
-          .select("*")
-          .eq("id", editQuoteId)
-          .single();
-
-        if (quoteData) {
+        const res = await fetchTeamQuoteById(user.id, editQuoteId);
+        
+        if (res.success && res.quote) {
+          const quoteData = res.quote;
           setContactId(quoteData.contact_id);
           if (contactsData) {
             const selected = (contactsData as Contact[]).find((c) => c.id === quoteData.contact_id);
@@ -325,10 +301,7 @@ export default function NewQuotePage() {
           const validityStr = dayNum === 7 ? "7 Gun" : dayNum === 15 ? "15 Gun" : dayNum === 30 ? "30 Gun" : `${dayNum} Gun`;
           setValidityDays(validityStr);
 
-          const { data: itemsData } = await supabase
-            .from("quote_items")
-            .select("*")
-            .eq("quote_id", editQuoteId);
+          const itemsData = res.items;
 
           if (itemsData && itemsData.length > 0 && productsData) {
             setItems(itemsData.map((item: any) => {
@@ -350,6 +323,27 @@ export default function NewQuotePage() {
 
     init();
   }, [editQuoteId, router]);
+
+  useEffect(() => {
+    if (!permsLoading) {
+      const requiredPermission = editQuoteId ? "edit" : "create";
+      if (!hasPermission("quotes", requiredPermission)) {
+        toast.error("Bu işlem için yetkiniz bulunmamaktadır.");
+        router.replace("/quotes");
+      }
+    }
+  }, [permsLoading, hasPermission, router, editQuoteId]);
+
+  if (permsLoading) {
+    return (
+      <div className="flex-1 overflow-y-auto p-8 flex items-center justify-center min-h-[400px]">
+        <div className="flex flex-col items-center gap-4">
+          <div className="w-12 h-12 border-4 border-purple-200 border-t-purple-600 rounded-full animate-spin"></div>
+          <p className="text-slate-600">Yetkiler kontrol ediliyor...</p>
+        </div>
+      </div>
+    );
+  }
 
   const parseValidityDays = (days: string): number => {
     const match = days.match(/\d+/);

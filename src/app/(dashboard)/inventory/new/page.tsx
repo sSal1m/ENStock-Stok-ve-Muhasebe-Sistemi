@@ -82,17 +82,6 @@ export default function NewInventoryPage() {
     }
   }, [permsLoading, hasPermission, router]);
 
-  if (permsLoading) {
-    return (
-      <div className="flex-1 overflow-y-auto p-8 flex items-center justify-center min-h-[400px]">
-        <div className="flex flex-col items-center gap-4">
-          <div className="w-12 h-12 border-4 border-purple-200 border-t-purple-600 rounded-full animate-spin"></div>
-          <p className="text-slate-600">Yetkiler kontrol ediliyor...</p>
-        </div>
-      </div>
-    );
-  }
-
   const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file || !userId) return;
@@ -199,6 +188,17 @@ export default function NewInventoryPage() {
     },
     []
   );
+
+  if (permsLoading) {
+    return (
+      <div className="flex-1 overflow-y-auto p-8 flex items-center justify-center min-h-[400px]">
+        <div className="flex flex-col items-center gap-4">
+          <div className="w-12 h-12 border-4 border-purple-200 border-t-purple-600 rounded-full animate-spin"></div>
+          <p className="text-slate-600">Yetkiler kontrol ediliyor...</p>
+        </div>
+      </div>
+    );
+  }
 
   // ── Yeni Kategori Ekle ──────────────────────────────────────────────────
   async function handleAddCategory() {

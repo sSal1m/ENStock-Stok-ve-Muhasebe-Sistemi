@@ -155,4 +155,43 @@ export async function saveQuoteAction(userId: string, quoteData: any, itemsData:
     return { success: false, error: error.message || String(error) };
   }
 }
+export async function getNextQuoteNumber(userId: string) {
+  try {
+    const today = new Date();
+    const todayStr = today.toISOString().split("T")[0]; // YYYY-MM-DD
+    
+    const teamIds = await getTeamIdsSecure(userId);
 
+    // Bugün oluşturulan son teklifi bul
+    const { data: todayQuotes, error: todayError } = await supabaseAdmin
+      .from("quotes")
+      .select("quote_number")
+      .in("user_id", teamIds)
+      .like("quote_number", `TEK-${todayStr}-%`)
+      .order("created_at", { ascending: false })
+      .limit(1);
+
+    if (todayError) {
+      console.error("Error fetching today's quotes:", todayError);
+      return `TEK-${todayStr}-1`;
+    }
+
+    if (!todayQuotes || todayQuotes.length === 0) {
+      return `TEK-${todayStr}-1`; // İlk teklif bugün
+    }
+
+    // Son teklifin sıra numarasını çıkar
+    const lastNumberStr = todayQuotes[0].quote_number;
+    const match = lastNumberStr.match(/-(\d+)$/);
+    if (match && match[1]) {
+      const nextSeq = parseInt(match[1], 10) + 1;
+      return `TEK-${todayStr}-${nextSeq}`;
+    }
+
+    return `TEK-${todayStr}-1`;
+  } catch (err) {
+    console.error("Unexpected error in getNextQuoteNumber:", err);
+    const today = new Date();
+    return `TEK-${today.toISOString().split("T")[0]}-1`;
+  }
+}

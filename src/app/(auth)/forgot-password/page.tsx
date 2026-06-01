@@ -47,7 +47,7 @@ export default function ForgotPasswordPage() {
       <header className="absolute top-0 w-full z-10 flex justify-between items-center px-8 py-6">
         <div className="text-xl font-extrabold tracking-tighter text-slate-900 font-headline flex items-center gap-2">
           <div className="w-6 h-6 rounded-md overflow-hidden flex items-center justify-center bg-white shadow-sm">
-            <img src="/favicon.png" alt="ENStock" className="w-full h-full object-cover" />
+            <img src="/assets/favicon.png" alt="ENStock" className="w-full h-full object-cover" />
           </div>
           ENStock
         </div>
@@ -102,7 +102,7 @@ export default function ForgotPasswordPage() {
             {/* Branding for Mobile */}
             <div className="md:hidden mb-12 flex justify-center items-center gap-2">
               <div className="w-6 h-6 rounded-md overflow-hidden flex items-center justify-center bg-white shadow-md">
-                <img src="/favicon.png" alt="ENStock" className="w-full h-full object-cover" />
+                <img src="/assets/favicon.png" alt="ENStock" className="w-full h-full object-cover" />
               </div>
               <span className="font-headline font-extrabold text-2xl tracking-tighter text-primary">ENStock</span>
             </div>

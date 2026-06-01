@@ -139,16 +139,29 @@ export default function NewInventoryPage() {
     getUser();
   }, []);
 
-  // ── Kategorileri Çek (sadece bu kullanıcının) ────────────────────────────
+  // ── Kategorileri Çek (sadece bu şirketin) ────────────────────────────
   useEffect(() => {
     async function fetchCategories() {
       if (!userId) return;
+
+      const { data: profile } = await supabase
+        .from("profiles")
+        .select("business_id")
+        .eq("id", userId)
+        .single();
+      const business_id = profile?.business_id;
+
+      if (!business_id) {
+        setCategories([]);
+        setCatLoading(false);
+        return;
+      }
       
-      console.log("📦 Kategoriler çekiliyor - User ID:", userId);
+      console.log("📦 Kategoriler çekiliyor - Business ID:", business_id);
       const { data, error } = await supabase
         .from("categories")
         .select("id, name")
-        .eq("user_id", userId)
+        .eq("business_id", business_id)
         .order("name");
       
       if (error) {
@@ -200,31 +213,49 @@ export default function NewInventoryPage() {
       const { data: authData, error: authError } = await supabase.auth.getUser();
       
       if (authError || !authData.user) {
-        const errorMsg = "Kullanıcı oturum açmamış. Lütfen giriş yapınız.";
-        console.error("Auth hatası:", authError);
+        const errorMsg = "Kullanıcı oturum açmamış.";
+        toast.error(errorMsg);
+        setSavingCategory(false);
+        return;
+      }
+
+      const { data: profile } = await supabase
+        .from("profiles")
+        .select("business_id")
+        .eq("id", authData.user.id)
+        .single();
+      const business_id = profile?.business_id;
+
+      if (!business_id) {
+        const errorMsg = "Yetkisiz işlem";
         toast.error(errorMsg);
         setSavingCategory(false);
         return;
       }
 
       const currentUserId = authData.user.id;
-      console.log("🔐 Mevcut User ID:", currentUserId);
+      console.log("🔐 Mevcut User ID:", currentUserId, "Business ID:", business_id);
 
       // ✅ Debug: Insert işleminde gönderilecek veriyi göster
       const insertPayload = {
         user_id: currentUserId,
+        business_id: business_id,
         name: newCategoryName.trim(),
         created_at: new Date().toISOString(),
       };
       console.log("📤 Kategoriye gönderilecek veri:", insertPayload);
 
-      // ✅ Explicit ID: user_id mutlaka eklenmiş durumda
+      // ✅ Explicit ID: user_id ve business_id mutlaka eklenmiş durumda
       const { data: insertedCategory, error: insertError } = await supabase
         .from("categories")
         .insert(insertPayload)
         .select();
 
       if (insertError) {
+        if (insertError.code === '23505') {
+          toast.error("Bu isimde bir kategori şirketinizde zaten mevcut");
+          return;
+        }
         console.error("❌ Kategori ekleme hatası:", insertError);
         console.error("Hata detayları:", {
           message: insertError.message,

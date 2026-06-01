@@ -455,7 +455,7 @@ export default function QuotesPage() {
           <div className="flex flex-col items-center justify-center py-24 bg-white rounded-2xl shadow-sm border border-slate-200">
             <div className="w-32 h-32 mb-8 relative flex items-center justify-center rounded-full overflow-hidden bg-white border border-slate-200 shadow-md hover:scale-105 transition-transform duration-300">
               <img
-                src="/teklif.png"
+                src="/assets/teklif.png"
                 alt="Teklif"
                 className="w-full h-full object-cover scale-[1.28]"
               />
@@ -483,7 +483,7 @@ export default function QuotesPage() {
                     <th className="w-[120px] px-6 py-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest align-middle">Tarih</th>
                     <th className="w-[130px] px-6 py-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest align-middle text-right">Toplam Tutar</th>
                     <th className="w-[120px] px-6 py-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest align-middle">Durum</th>
-                    <th className="w-[170px] px-6 py-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest align-middle text-center">İşlemler</th>
+                    <th className="w-[320px] px-6 py-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest align-middle text-right">İşlemler</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-indigo-50/50">
@@ -546,40 +546,41 @@ export default function QuotesPage() {
                                   : quote.status}
                           </span>
                         </td>
-                        <td className="w-[170px] px-6 py-5">
+                        <td className="w-[320px] px-6 py-5">
                           <div className="flex items-center justify-end gap-2">
-                            {isPending && hasPermission("quotes", "edit") && (
-                              <button
-                                onClick={() => handleApprove(quote.id)}
-                                disabled={actionLoading === quote.id}
-                                className="inline-flex items-center justify-center gap-1 px-3 py-1.5 h-8 rounded-lg text-emerald-700 bg-emerald-100 hover:bg-emerald-200 transition-all disabled:opacity-50 disabled:cursor-not-allowed font-medium text-xs shadow-sm border border-emerald-200"
-                                title="Onayla"
-                              >
-                                <span
-                                  className={`material-symbols-outlined text-base ${actionLoading === quote.id ? "animate-spin" : ""
-                                    }`}
+                            {/* Sabit Genişlikli Dinamik Buton Alanı */}
+                            <div className="w-[150px] flex justify-end">
+                              {isPending && hasPermission("quotes", "edit") && (
+                                <button
+                                  onClick={() => handleApprove(quote.id)}
+                                  disabled={actionLoading === quote.id}
+                                  className="inline-flex items-center justify-center gap-1 px-3 py-1.5 h-8 rounded-lg text-emerald-700 bg-emerald-100 hover:bg-emerald-200 transition-all disabled:opacity-50 disabled:cursor-not-allowed font-medium text-xs shadow-sm border border-emerald-200 w-full"
+                                  title="Onayla"
                                 >
-                                  {actionLoading === quote.id ? "progress_activity" : "check_circle"}
-                                </span>
-                                Onayla
-                              </button>
-                            )}
-                            {isApproved && hasPermission("invoices", "create") && (
-                              <button
-                                onClick={() => handleConvertToInvoice(quote)}
-                                disabled={actionLoading === quote.id + "_convert"}
-                                className="inline-flex items-center justify-center gap-1 px-3 py-1.5 h-8 rounded-lg text-amber-700 bg-amber-100 hover:bg-amber-200 transition-all disabled:opacity-50 disabled:cursor-not-allowed font-medium text-xs shadow-sm border border-amber-200"
-                                title="Faturaya Dönüştür"
-                              >
-                                <span
-                                  className={`material-symbols-outlined text-base ${actionLoading === quote.id + "_convert" ? "animate-spin" : ""
-                                    }`}
+                                  <span
+                                    className={`material-symbols-outlined text-base ${actionLoading === quote.id ? "animate-spin" : ""}`}
+                                  >
+                                    {actionLoading === quote.id ? "progress_activity" : "check_circle"}
+                                  </span>
+                                  Onayla
+                                </button>
+                              )}
+                              {isApproved && hasPermission("invoices", "create") && (
+                                <button
+                                  onClick={() => handleConvertToInvoice(quote)}
+                                  disabled={actionLoading === quote.id + "_convert"}
+                                  className="inline-flex items-center justify-center gap-1 px-3 py-1.5 h-8 rounded-lg text-amber-700 bg-amber-100 hover:bg-amber-200 transition-all disabled:opacity-50 disabled:cursor-not-allowed font-medium text-xs shadow-sm border border-amber-200 w-full"
+                                  title="Faturaya Dönüştür"
                                 >
-                                  {actionLoading === quote.id + "_convert" ? "progress_activity" : "receipt_long"}
-                                </span>
-                                Faturaya Dönüştür
-                              </button>
-                            )}
+                                  <span
+                                    className={`material-symbols-outlined text-base ${actionLoading === quote.id + "_convert" ? "animate-spin" : ""}`}
+                                  >
+                                    {actionLoading === quote.id + "_convert" ? "progress_activity" : "receipt_long"}
+                                  </span>
+                                  Faturaya Dönüştür
+                                </button>
+                              )}
+                            </div>
 
                             <div className="w-px h-6 bg-slate-200 mx-1"></div>
 

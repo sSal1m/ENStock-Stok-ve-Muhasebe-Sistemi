@@ -8,7 +8,7 @@ export default function CompanyInformationPage() {
       <header className="absolute top-0 w-full z-10 flex justify-between items-center px-8 py-6 bg-transparent">
         <div className="text-xl font-extrabold tracking-tight text-indigo-600 font-headline flex items-center gap-2">
           <div className="w-6 h-6 rounded-md overflow-hidden flex items-center justify-center bg-white shadow-sm">
-            <img src="/favicon.png" alt="ENStock" className="w-full h-full object-cover" />
+            <img src="/assets/favicon.png" alt="ENStock" className="w-full h-full object-cover" />
           </div>
           ENStock
         </div>

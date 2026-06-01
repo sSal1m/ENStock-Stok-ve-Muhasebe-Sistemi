@@ -123,14 +123,29 @@ export default function ContactDetailPage() {
     if (showLoading) setLoading(true);
 
     try {
-      const { data: cariData, error: cariError } = await supabase
-        .from("contacts")
-        .select("*")
-        .eq("id", cariId)
-        .single();
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) {
+        setNotFound(true);
+        if (showLoading) setLoading(false);
+        return;
+      }
 
-      if (cariError || !cariData) {
-        console.error("Cari bulunamadı:", cariError);
+      const { fetchTeamScopedData } = await import("@/app/(dashboard)/teamActions");
+
+      const { data: cariDataArr } = await fetchTeamScopedData(
+        user.id,
+        "contacts",
+        "*",
+        {
+          additionalFilters: [{ column: "id", operator: "eq", value: cariId }],
+          limit: 1
+        }
+      );
+
+      const cariData = cariDataArr && cariDataArr.length > 0 ? cariDataArr[0] : null;
+
+      if (!cariData) {
+        console.error("Cari bulunamadı veya yetkiniz yok.");
         setNotFound(true);
         if (showLoading) setLoading(false);
         return;
@@ -138,41 +153,34 @@ export default function ContactDetailPage() {
 
       setCari(cariData as ContactRecord);
 
-      // ✅ Fetch contact_logs (single source of truth)
-      const { data: logsRes, error: logsError } = await supabase
-        .from("contact_logs")
-        .select("id, contact_id, created_at, action_type, amount_change, previous_balance, new_balance, note")
-        .eq("contact_id", cariId)
-        .order("created_at", { ascending: false });
-
-      if (logsError) {
-        console.error("contact_logs alınamadı:", logsError);
-        setAllLogs([]);
-      } else if (logsRes) {
-        setAllLogs(logsRes as ContactLog[]);
-      } else {
-        setAllLogs([]);
-      }
-
-      // ✅ Fetch unpaid invoices using fetchTeamScopedData to ensure team filtering works properly
-      const { data: { user } } = await supabase.auth.getUser();
-      if (user) {
-        const { fetchTeamScopedData } = await import("@/app/(dashboard)/teamActions");
-        const { data: invoicesData } = await fetchTeamScopedData(user.id, "invoices", "id, invoice_number, total_amount, currency, exchange_rate, type, status, issue_date", {
-          excludeDeleted: true,
-          additionalFilters: [
-            { column: "contact_id", operator: "eq", value: cariId }
-          ],
-          orderBy: "issue_date",
-          orderAscending: false
-        });
-
-        if (invoicesData) {
-          const filteredInvoices = invoicesData.filter((inv: any) => inv.status === "pending" || inv.status === "approved");
-          setUnpaidInvoices(filteredInvoices);
-        } else {
-          setUnpaidInvoices([]);
+      // ✅ Fetch contact_logs (single source of truth) using fetchTeamScopedData
+      const { data: logsRes } = await fetchTeamScopedData(
+        user.id,
+        "contact_logs",
+        "id, contact_id, created_at, action_type, amount_change, previous_balance, new_balance, note",
+        {
+          additionalFilters: [{ column: "contact_id", operator: "eq", value: cariId }],
+          orderBy: "created_at",
+          orderAscending: false,
+          teamFilterColumn: "created_by"
         }
+      );
+
+      setAllLogs((logsRes || []) as ContactLog[]);
+
+      // ✅ Fetch unpaid invoices using fetchTeamScopedData
+      const { data: invoicesData } = await fetchTeamScopedData(user.id, "invoices", "id, invoice_number, total_amount, currency, exchange_rate, type, status, issue_date", {
+        excludeDeleted: true,
+        additionalFilters: [
+          { column: "contact_id", operator: "eq", value: cariId }
+        ],
+        orderBy: "issue_date",
+        orderAscending: false
+      });
+
+      if (invoicesData) {
+        const filteredInvoices = invoicesData.filter((inv: any) => inv.status === "pending" || inv.status === "approved");
+        setUnpaidInvoices(filteredInvoices);
       } else {
         setUnpaidInvoices([]);
       }

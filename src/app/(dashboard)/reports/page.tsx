@@ -211,7 +211,7 @@ export default function RaporlarSayfasi() {
             <p className="text-xs font-bold uppercase tracking-widest text-slate-400">Toplam Stok</p>
           </div>
           <p className="text-2xl font-extrabold text-slate-800 tabular-nums">
-            {fmt(stokAdedi)} <span className="text-sm font-bold text-slate-400">Birim</span>
+            {stokAdedi.toLocaleString('tr-TR')} <span className="text-sm font-bold text-slate-400">Birim</span>
           </p>
         </div>
       </section>

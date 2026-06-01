@@ -248,12 +248,6 @@ export default function NewQuotePage() {
 
   useEffect(() => {
     const init = async () => {
-      const today = new Date();
-      const year = today.getFullYear();
-      const month = String(today.getMonth() + 1).padStart(2, "0");
-      const day = String(today.getDate()).padStart(2, "0");
-      const randomNum = String(Math.floor(Math.random() * 1000)).padStart(3, "0");
-      setQuoteNumber((prev) => prev || `TEK-${year}-${month}-${day}-${randomNum}`);
       setIssueDate(new Date().toISOString().split("T")[0]);
 
       const { data: { user } } = await supabase.auth.getUser();
@@ -268,6 +262,11 @@ export default function NewQuotePage() {
         const defaultCur = await fetchDefaultCurrency(user.id);
         setCurrency(defaultCur);
         prevCurrencyRef.current = defaultCur;
+        
+        // Sıralı teklif numarası oluştur
+        const { getNextQuoteNumber } = await import("../actions");
+        const nextNum = await getNextQuoteNumber(user.id);
+        setQuoteNumber((prev) => prev || nextNum);
       }
 
       const resContacts = await fetchTeamScopedData(user.id, "contacts", "*", { orderBy: "name" });

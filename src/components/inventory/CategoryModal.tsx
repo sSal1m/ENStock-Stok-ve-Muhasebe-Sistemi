@@ -41,13 +41,37 @@ export default function CategoryModal({ isOpen, onClose, onSuccess, userId }: Pr
     if (!name.trim()) { setError("Kategori adı zorunludur."); return; }
     setSaving(true);
     setError(null);
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) {
+      setError("Kullanıcı oturum açmamış.");
+      setSaving(false);
+      return;
+    }
+
+    const { data: profile } = await supabase
+      .from("profiles")
+      .select("business_id")
+      .eq("id", user.id)
+      .single();
+      
+    const business_id = profile?.business_id;
+
+    if (!business_id) {
+      setError("Yetkisiz işlem");
+      setSaving(false);
+      return;
+    }
 
     const { error: insertError } = await supabase
       .from("categories")
-      .insert({ user_id: userId, name: name.trim(), description: description.trim() || null });  // ✅ user_id eklendi
+      .insert({ user_id: userId, business_id, name: name.trim(), description: description.trim() || null });
 
     if (insertError) {
-      setError(insertError.message);
+      if (insertError.code === '23505') {
+        setError("Bu isimde bir kategori şirketinizde zaten mevcut");
+      } else {
+        setError(insertError.message);
+      }
       setSaving(false);
       return;
     }

@@ -47,7 +47,7 @@ export default function HomePage() {
         <div className="text-2xl font-extrabold tracking-tighter text-primary font-headline flex items-center gap-2">
           {/* Logo icon */}
           <div className="w-8 h-8 rounded-lg overflow-hidden flex items-center justify-center shadow-sm relative bg-white">
-            <img src="/favicon.png" alt="ENStock" className="w-full h-full object-cover" />
+            <img src="/assets/favicon.png" alt="ENStock" className="w-full h-full object-cover" />
           </div>
           ENStock
         </div>
@@ -274,7 +274,7 @@ export default function HomePage() {
         <div className="max-w-7xl mx-auto grid grid-cols-1 md:grid-cols-4 gap-12">
           <div className="md:col-span-2">
             <div className="mb-4 flex items-center gap-3 opacity-90">
-              <img src="/logo_wide.png" alt="ENStock Logo" className="h-10 object-contain rounded" />
+              <img src="/assets/logo_wide.png" alt="ENStock Logo" className="h-10 object-contain rounded" />
               <span className="text-2xl font-extrabold tracking-tighter text-white font-headline">ENStock</span>
             </div>
             <p className="text-sm font-medium text-outline-variant max-w-sm leading-relaxed">

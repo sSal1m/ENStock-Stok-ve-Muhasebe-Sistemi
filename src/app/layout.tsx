@@ -5,7 +5,7 @@ export const metadata: Metadata = {
   title: "ENStock - KOBİ Muhasebe & Ekosistem",
   description: "KOBİ'ler için muhasebe, stok, satış ve cari yönetim sistemi",
   icons: {
-    icon: "/favicon.png",
+    icon: "/assets/favicon.png",
   },
 };
 

@@ -52,12 +52,12 @@ export async function fetchDashboardSummary(userId: string): Promise<DashboardSu
           additionalFilters: [{ column: "status", operator: "neq", value: "draft" }]
         }
       ),
-      // 2) Stok adedi
+      // 2) Stok adetleri (tüm ürünlerin stok miktarlarının toplamı)
       fetchTeamScopedData(
         userId,
         "products",
-        "id",
-        { excludeDeleted: true, countOnly: true }
+        "stock_quantity",
+        { excludeDeleted: true }
       ),
       // 3) Tüm takım kapsamındaki contacts (hızlı isim eşleme için)
       fetchTeamScopedData(
@@ -81,7 +81,8 @@ export async function fetchDashboardSummary(userId: string): Promise<DashboardSu
     ]);
 
     const invoices = invoicesRes.data ?? [];
-    const totalStockCount = productsRes.count ?? 0;
+    const products = productsRes.data ?? [];
+    const totalStockQuantity = products.reduce((sum: number, p: any) => sum + (Number(p.stock_quantity) || 0), 0);
     const contactsData = contactsRes.data ?? [];
     const rawItems = itemsRes.data ?? [];
 
@@ -193,7 +194,7 @@ export async function fetchDashboardSummary(userId: string): Promise<DashboardSu
     return {
       total_income: totalIncome,
       total_expense: totalExpense,
-      total_stock: totalStockCount ?? 0,
+      total_stock: totalStockQuantity,
       top_contacts: topContacts,
       income_by_category: incomeByCategoryArr,
       expense_by_category: expenseByCategoryArr,

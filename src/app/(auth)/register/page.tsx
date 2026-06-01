@@ -374,7 +374,7 @@ export default function RegisterPage() {
           <div className="relative z-10">
             <div className="text-2xl font-headline font-extrabold tracking-tight flex items-center gap-2">
               <div className="w-6 h-6 rounded-md overflow-hidden flex items-center justify-center bg-white shadow-sm">
-                <img src="/favicon.png" alt="ENStock" className="w-full h-full object-cover" />
+                <img src="/assets/favicon.png" alt="ENStock" className="w-full h-full object-cover" />
               </div>
               ENStock
             </div>

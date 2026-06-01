@@ -162,7 +162,7 @@ export default function InviteRegisterForm({ emailFromUrl }: { emailFromUrl: str
       <section className="hidden md:flex md:w-[40%] signature-gradient relative overflow-hidden flex-col justify-between p-12 text-on-primary-container">
         <div className="relative z-10 text-2xl font-headline font-extrabold tracking-tight flex items-center gap-2">
           <div className="w-6 h-6 rounded-md overflow-hidden flex items-center justify-center bg-white shadow-sm">
-            <img src="/favicon.png" alt="ENStock" className="w-full h-full object-cover" />
+            <img src="/assets/favicon.png" alt="ENStock" className="w-full h-full object-cover" />
           </div>
           ENStock
         </div>

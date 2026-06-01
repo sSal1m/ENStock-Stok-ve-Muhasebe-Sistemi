@@ -379,7 +379,7 @@ export default function InvoicesPage() {
           <div className="flex flex-col items-center justify-center py-24 bg-white rounded-2xl shadow-sm border border-slate-200">
             <div className="w-32 h-32 mb-8 relative flex items-center justify-center rounded-2xl overflow-hidden bg-white border border-slate-200 shadow-md hover:scale-105 transition-transform duration-300">
               <img
-                src="/fatura.png"
+                src="/assets/fatura.png"
                 alt="Fatura"
                 className="w-full h-full object-cover scale-[1.38]"
               />

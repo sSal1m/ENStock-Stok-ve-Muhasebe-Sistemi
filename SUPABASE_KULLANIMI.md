@@ -5,11 +5,14 @@ Merhaba ekip! Supabase veritabanı projemize başarıyla bağlandı. Sayfaları 
 ## 1. İlk Kurulum (Çok Önemli)
 Projeyi ilk defa kendi bilgisayarınıza çektiğinizde:
 1. Proje dizininde `.env.local` adında bir dosya oluşturun (veya `.env.local` şablonunu kopyalayın).
-2. İçerisine size iletilen/projeye ait Supabase URL ve Anon Key değerlerini yapıştırın:
+2. İçerisine size iletilen/projeye ait Supabase URL, Anon Key ve Site URL değerlerini yapıştırın:
    ```env
    NEXT_PUBLIC_SUPABASE_URL=gercek_url_buraya
    NEXT_PUBLIC_SUPABASE_ANON_KEY=gercek_anon_key_buraya
+   NEXT_PUBLIC_SITE_URL=http://localhost:3000
    ```
+   - **Yerel geliştirme** için: `NEXT_PUBLIC_SITE_URL=http://localhost:3000`
+   - **Vercel deployment** için: `NEXT_PUBLIC_SITE_URL=https://yourdomain.com` (Vercel ortam ayarlarında yapılandırılacak)
 3. Terminalde `npm install` komutunu çalıştırarak paketleri yükleyin.
 
 ## 2. Supabase İstemcisini (Client) İçeri Aktarma

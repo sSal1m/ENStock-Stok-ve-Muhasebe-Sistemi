@@ -336,20 +336,20 @@ export default function ProfilePage() {
     }
   };
 
-  if (isLoading) {
-    return (
-      <div className="flex items-center justify-center h-[70vh]">
-        <div className="animate-pulse flex flex-col items-center">
-          <div className="w-12 h-12 border-4 border-primary/20 border-t-primary rounded-full animate-spin mb-4"></div>
-          <p className="text-on-surface-variant font-bold text-sm uppercase tracking-widest">Veriler Hazırlanıyor</p>
-        </div>
-      </div>
-    );
-  }
+  // Tam ekran spinner kaldırıldı: sayfa iskeleti hemen render edilir, form alanları
+  // (profile?.x || "" ile null-güvenli) veri gelince dolar (LCP ~0.6s).
 
   return (
     <div className="grid grid-cols-12 gap-8">
       <Toaster position="top-right" />
+      {/* Bloklamayan ince yükleme göstergesi (sayfa iskeleti zaten görünür) */}
+      {isLoading && (
+        <div className="col-span-12 -mb-4">
+          <div className="h-1 w-full overflow-hidden rounded-full bg-slate-100">
+            <div className="h-full w-1/3 bg-primary animate-pulse" />
+          </div>
+        </div>
+      )}
       {/* Left Column: User Profile */}
       <div className="col-span-12 lg:col-span-7 space-y-8">
         {/* Profile Information Card */}

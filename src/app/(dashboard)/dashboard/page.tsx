@@ -433,16 +433,11 @@ export default function DashboardPage() {
     }
   };
 
-  if (loading) {
-    return (
-      <div className="flex items-center justify-center min-h-screen">
-        <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary mx-auto mb-4"></div>
-          <p className="text-slate-600">Veriler yükleniyor...</p>
-        </div>
-      </div>
-    );
-  }
+  // Yüklenirken tam ekran spinner yerine sayfa iskeleti hemen render edilir;
+  // dinamik sayılar hazır olunca skeleton'ın yerini alır (LCP ~0.6s).
+  const NumSkeleton = () => (
+    <span className="inline-block h-7 w-20 max-w-full bg-slate-100 rounded-md animate-pulse align-middle" />
+  );
 
   return (
     <div className="p-6 lg:p-10 space-y-8">
@@ -494,7 +489,7 @@ export default function DashboardPage() {
           </div>
           <p className="text-sm font-semibold text-slate-500">Toplam Ürün</p>
           <h3 className="text-2xl font-black text-indigo-900">
-            {kpiData.totalProducts.toLocaleString('tr-TR')}
+            {loading ? <NumSkeleton /> : kpiData.totalProducts.toLocaleString('tr-TR')}
           </h3>
         </div>
 
@@ -507,7 +502,7 @@ export default function DashboardPage() {
           </div>
           <p className="text-sm font-semibold text-slate-500">Kritik Stok Ürünleri</p>
           <h3 className="text-2xl font-black text-error">
-            {kpiData.criticalStockItems}
+            {loading ? <NumSkeleton /> : kpiData.criticalStockItems}
           </h3>
         </div>
 
@@ -522,7 +517,7 @@ export default function DashboardPage() {
             Günlük Net Cirosu
           </p>
           <h3 className="text-2xl font-extrabold mt-1 text-slate-900">
-            {fmt(convert(kpiData.todayRevenue), viewCurrency)}
+            {loading ? <NumSkeleton /> : fmt(convert(kpiData.todayRevenue), viewCurrency)}
           </h3>
         </div>
 
@@ -535,7 +530,7 @@ export default function DashboardPage() {
           </div>
           <p className="text-sm font-semibold text-slate-500">Son İşlemler</p>
           <h3 className="text-2xl font-black text-primary">
-            {activities.length}
+            {loading ? <NumSkeleton /> : activities.length}
           </h3>
         </div>
       </div>
